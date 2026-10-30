@@ -1,0 +1,263 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &5308890283464151197
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5308890283464151196}
+  - component: {fileID: 5308890283464151194}
+  - component: {fileID: 5308890283464151195}
+  - component: {fileID: 5308890283464151193}
+  - component: {fileID: 5308890283464151192}
+  - component: {fileID: 5308890283464151191}
+  - component: {fileID: 5308890283464151190}
+  - component: {fileID: 5308890283464151189}
+  - component: {fileID: 5308890283464151188}
+  - component: {fileID: 5308890283464151187}
+  - component: {fileID: 5308890283464151186}
+  m_Layer: 0
+  m_Name: PinchRecordingPrototype
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5308890283464151196
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5308890283464151194
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 153147980af64a92b97e0412e9d0bb1f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  headsetLocalPosition: {x: 0, y: -0.12, z: 0.5}
+  sphereSize: 0.025
+  labelOffset: 0.055
+  recordingColor: {r: 1, g: 0.025, b: 0.025, a: 1}
+  emissionIntensity: 3
+  pulse: 1
+  pulseAmount: 0.18
+  pulseSpeed: 1.5
+  statusPanelOffset: {x: 0.1, y: 0, z: 0}
+  meterFullScaleRms: 0.08
+  showNumericRms: 1
+  followSmoothTime: 0.05
+--- !u!114 &5308890283464151195
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bb0f170726f44a3990c19e9b96a6b2ec, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  centerEyeAnchor: {fileID: 0}
+  leftHand:
+    displayName: Left
+    hand: {fileID: 0}
+    skeleton: {fileID: 0}
+  rightHand:
+    displayName: Right
+    hand: {fileID: 0}
+    skeleton: {fileID: 0}
+  indicator: {fileID: 5308890283464151194}
+  diagnosticsPanel: {fileID: 5308890283464151193}
+  jointDebugVisualizer: {fileID: 5308890283464151192}
+  microphoneRecorder: {fileID: 5308890283464151190}
+  transcriptionCoordinator: {fileID: 5308890283464151187}
+  selectedRecordingHand: 1
+  holdDuration: 0.5
+  cooldownDuration: 0.35
+  neutralRearmDuration: 0.2
+  gestureBreakGracePeriod: 0.12
+  thumbDirectionTolerance: 75
+  maximumCurledChordRatio: 0.82
+  requiredCurledFingerCount: 3
+  debugShowIndicator: 0
+--- !u!114 &5308890283464151193
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7341ca2fce5745ec8ddc154ad9cbb522, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  showDiagnostics: 0
+  headsetLocalPosition: {x: 0, y: 0.05, z: 0.65}
+  fontSize: 23
+  textColor: {r: 1, g: 1, b: 1, a: 1}
+  backgroundColor: {r: 0, g: 0, b: 0, a: 0.78}
+--- !u!114 &5308890283464151192
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 47ca4f19e24648529e6cd7647bb43327, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  showJointMarkers: 0
+  markerSize: 0.025
+  lineWidth: 0.006
+  showRenderingSelfTest: 0
+  selfTestHeadsetOffset: {x: 0, y: -0.18, z: 0.5}
+--- !u!114 &5308890283464151191
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e76c2985e69145de9148a477f1ac485a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  recordingGestureController: {fileID: 5308890283464151195}
+  authoredMenuPrefab: {fileID: 7145748928855083668, guid: 44db108a4dccd6241bbaca03651c7294, type: 3}
+  debugShowAuthoredMenuAtHeadset: 0
+  authoredTestHeadsetOffset: {x: 0, y: -0.03, z: 0.55}
+  fistArmHoldDuration: 0.3
+  fistToOpenTimeout: 2
+  openPalmHoldDuration: 0.2
+  closeFistHoldDuration: 0.35
+  sequenceTrackingLossGrace: 0.35
+  fistReleaseDebounce: 0.08
+  palmUpTolerance: 45
+  extendedFingerChordRatio: 0.82
+  curledFingerChordRatio: 0.78
+  requiredExtendedFingers: 3
+  thumbFoldedPalmWidthRatio: 1.05
+  menuOffsetFromHand: {x: 0, y: 0.1, z: 0.03}
+  followSmoothTime: 0.08
+  facingSmoothSpeed: 10
+  readyMessageDuration: 0.6
+  progressOffsetFromHand: {x: 0, y: 0.065, z: 0.02}
+  canvasScale: 0.00032
+  panelSize: {x: 620, y: 620}
+  duplicateClickGuard: 0.2
+  menuFont: {fileID: 11400000, guid: 98aedc4b4904493eb2d18f72390ef925, type: 2}
+  showOpenPalmDiagnostics: 0
+  showInteractionDiagnostics: 0
+  showCanvasFrontDiagnostics: 0
+  showFrontTestLabel: 0
+  diagnosticsHeadsetOffset: {x: 0, y: -0.18, z: 0.55}
+--- !u!114 &5308890283464151190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f9a188644ca4b12bf98df80b081a5ac, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  requestedSampleRate: 48000
+  maximumDuration: 60
+  minimumDuration: 0.15
+  startTimeout: 5
+  meterUpdatesPerSecond: 12
+  meterWindowFrames: 2048
+  meterSmoothingSeconds: 0.12
+  meaningfulAudioRmsThreshold: 0.001
+  enableDevelopmentPlayback: 0
+--- !u!114 &5308890283464151189
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a59595741d64519a48b10532c91f6bb, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  backendUrl:
+  requestTimeoutSeconds: 45
+--- !u!114 &5308890283464151188
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8bd09c3c8cf4d9a820cf15df90c7ef1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  headsetLocalPosition: {x: 0, y: -0.03, z: 0.62}
+  panelSize: {x: 620, y: 430}
+  canvasScale: 0.0005
+  charactersPerPage: 700
+--- !u!114 &5308890283464151187
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49648b9b18cd4aee89fa7e064d77b5de, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  microphoneRecorder: {fileID: 5308890283464151190}
+  gestureController: {fileID: 5308890283464151195}
+  transcriptionService: {fileID: 5308890283464151189}
+  transcriptPanel: {fileID: 5308890283464151188}
+  reviewPanel: {fileID: 5308890283464151186}
+  developmentTestClip: {fileID: 0}
+  developmentUseOutputTestToneForPlay: 0
+  enableDevelopmentWavExport: 0
+--- !u!114 &5308890283464151186
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5308890283464151197}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e91e3b70a3574d38b5b9aa2c75505455, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  headsetLocalPosition: {x: 0, y: -0.03, z: 0.62}
+  panelSize: {x: 560, y: 430}
+  canvasScale: 0.0005
