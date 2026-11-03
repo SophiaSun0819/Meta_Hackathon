@@ -1,0 +1,12 @@
+name = "thinking-space-backend"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Non-secret settings. Model names change over time: check the provider's current
+# model list before deploying. Secrets (OPENAI_API_KEY, APP_KEY) are set with
+# `npx wrangler secret put <NAME>`, never here.
+[vars]
+LLM_TIMEOUT_MS = "7000"
+TTS_TIMEOUT_MS = "6000"
+TTS_VOICE = "alloy"
+TTS_INSTRUCTIONS = "Warm, curious and concise, like a friendly brainstorming partner."
