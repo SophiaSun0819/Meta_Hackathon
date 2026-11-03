@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local `npm run dev`. .dev.vars is gitignored.
+# Leave OPENAI_API_KEY empty to run in mock mode.
+OPENAI_API_KEY=
+LLM_MODEL=
+TTS_MODEL=
+APP_KEY=dev-key
