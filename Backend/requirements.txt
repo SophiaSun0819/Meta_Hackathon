@@ -1,4 +1,4 @@
-fastapi>=0.115,<1
-uvicorn[standard]>=0.34,<1
-openai>=1.70,<2
-python-dotenv>=1.0,<2
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+openai==1.109.1
+python-dotenv==1.2.4
