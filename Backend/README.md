@@ -64,6 +64,14 @@ The Blueprint provides non-secret defaults for:
 - `OPENAI_TIMEOUT_SECONDS=40`
 - `MAX_WAV_BYTES=15728640`
 - `MAX_REQUESTS_PER_MINUTE=10`
+- `OPENAI_IDEA_MODEL=gpt-5-mini`
+- `OPENAI_IDEA_TIMEOUT_SECONDS=45`
+- `MAX_IDEA_REQUEST_BYTES=32768`
+- `MAX_IDEA_REQUESTS_PER_MINUTE=20`
+- `OPENAI_INTENT_MODEL=gpt-5-mini`
+- `OPENAI_INTENT_TIMEOUT_SECONDS=30`
+- `MAX_INTENT_REQUEST_BYTES=32768`
+- `MAX_INTENT_REQUESTS_PER_MINUTE=30`
 
 Render supplies `PORT`. Do not define it manually. Syncing the Blueprint or creating a service is a
 deployment action; review all settings first and do not sync until the team approves deployment.
@@ -209,3 +217,298 @@ Before the first Render deployment:
 No database or disk is currently used. Transcripts and audio are not intentionally persisted by this
 service. The in-memory limiter is process-local, resets on restart, and is not sufficient for multiple
 instances or hostile traffic.
+
+## AI Manager Milestone 1
+
+The AI manager is a separate module in `idea_manager.py`. Transcription never calls it automatically.
+The existing `/api/transcriptions` route and its raw/cleaned transcript fields remain independent.
+
+`POST /api/ideas/process` accepts JSON and requires the existing `X-ThinkingSpace-Token` header.
+The default JSON body limit is 32 KiB, the transcript limit is 8,000 characters, and the default
+AI-manager rate limit is 20 authenticated requests per rolling minute per backend process.
+
+The supported actions are:
+
+- `create_idea`: creates a new concise idea from the selected transcript.
+- `expand_idea`: creates a derived suggestion linked to, but not overwriting, `idea_id`.
+- `challenge_idea`: creates constructive questions/risks linked to `idea_id`.
+- `combine_ideas`: creates a new result linked to at least two `related_idea_ids`.
+
+Every successful action receives a new backend-generated `idea_id`. The model cannot assign request
+IDs, session IDs, idea IDs, actions, relationship IDs, status, or Unity scene operations. It returns
+only validated `title`, `summary`, `category`, and `spoken_response` fields. The backend uses OpenAI
+Structured Outputs and performs an additional Pydantic validation pass.
+
+### Request contract
+
+```json
+{
+  "request_id": "idea-request-001",
+  "session_id": "Session 1",
+  "action": "expand_idea",
+  "raw_transcript": "Add community workshops to the solar workspace idea.",
+  "cleaned_transcript": null,
+  "transcript_source": "raw",
+  "idea_id": "idea-original",
+  "related_idea_ids": [],
+  "existing_ideas": [
+    {
+      "idea_id": "idea-original",
+      "title": "Solar Study Hub",
+      "summary": "A solar-powered community workspace for students."
+    }
+  ]
+}
+```
+
+`raw_transcript` is always retained as submitted. `transcript_source` defaults to `raw`. A cleaned
+transcript is used only when the caller explicitly sends `transcript_source: "cleaned"` and supplies
+a nonempty `cleaned_transcript`; it never overwrites the raw value.
+
+Action-specific references:
+
+- `create_idea`: omit `idea_id`; related IDs are optional.
+- `expand_idea` / `challenge_idea`: supply a valid `idea_id`.
+- `combine_ideas`: supply two to eight unique `related_idea_ids`.
+- If `existing_ideas` is supplied, it must contain context for every referenced ID.
+
+### Versioned response contract
+
+```json
+{
+  "contract_version": "1.0",
+  "request_id": "idea-request-001",
+  "session_id": "Session 1",
+  "action": "expand_idea",
+  "idea_id": "idea_0123456789abcdef0123456789abcdef",
+  "title": "Community Workshop Program",
+  "summary": "Add scheduled peer-led workshops without changing the original hub idea.",
+  "category": "Community",
+  "related_idea_ids": ["idea-original"],
+  "spoken_response": "You could expand the hub with peer-led community workshops.",
+  "status": "completed",
+  "error": null
+}
+```
+
+Errors use the same response shape with `status: "error"`, null result fields, and a sanitized error.
+Authentication failures retain the existing generic HTTP 401 behavior. Provider details, prompts,
+credentials, and raw exceptions are never returned.
+
+Duplicate `request_id` values are rejected for ten minutes after a successful request. Only one
+AI-manager request per session is allowed in flight in a process. These guards are in memory and must
+eventually move to shared storage if Render runs multiple instances.
+
+### Model configuration
+
+`OPENAI_IDEA_MODEL` selects the text model and defaults to `gpt-5-mini`. The OpenAI key remains
+backend-only. `OPENAI_IDEA_TIMEOUT_SECONDS` controls the provider timeout. No custom model is trained,
+and no cleanup, text-to-speech, subtitle, summarization, or Unity scene operation is performed.
+
+### Mocked tests
+
+The test suite makes no OpenAI requests:
+
+```powershell
+cd Backend
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+`requirements-dev.txt` adds Starlette's current `httpx2` test transport. It is intentionally separate
+from the Render production requirements. With FastAPI 0.162/Starlette 1.10, running `TestClient` with
+only legacy `httpx` emits a deprecation warning and can hang rather than executing requests.
+
+It covers all four actions, missing transcript, invalid IDs, invalid authentication, provider timeout,
+malformed structured output, and duplicate request rejection.
+
+### Future Unity integration
+
+Unity should call the manager only after explicit user confirmation. On a completed response it may:
+
+1. Store `idea_id` as application data, not as authority to execute code.
+2. Render `title`, `summary`, and `category` into a newly created idea bubble.
+3. Connect bubbles using `related_idea_ids` after verifying those IDs exist locally.
+4. Send `spoken_response` to the future voice service and display the identical text as subtitles.
+5. Ignore scene-operation language in text fields and use only fixed, client-owned rendering logic.
+
+Unity must handle non-200 responses, `status: "error"`, timeouts, duplicate responses, unknown related
+IDs, and contract versions it does not support. The backend never directly modifies Unity objects.
+
+## Voice-command intent routing
+
+`POST /api/intents/route` classifies an approved transcript before any idea or application action is
+requested. It uses the existing development authentication and a separate request-size limit, rolling
+rate limit, timeout, duplicate registry, and one-request-per-session overlap guard.
+
+Supported intents:
+
+- `create_idea`
+- `expand_idea`
+- `challenge_idea`
+- `combine_ideas`
+- `show_ideas`
+- `resize_bubble`
+- `move_bubble`
+- `hide_bubble`
+- `converse`
+- `clarification_required`
+
+Ordinary brainstorming statements can route to `create_idea`; not every transcript does. Questions
+can route to `converse`, explicit application commands route to their corresponding semantic action,
+and ambiguous references route to `clarification_required`.
+
+### Routing request
+
+```json
+{
+  "request_id": "route-request-001",
+  "session_id": "Session 1",
+  "raw_transcript": "Move the solar study hub closer.",
+  "cleaned_transcript": null,
+  "transcript_source": "raw",
+  "available_ideas": [
+    {
+      "idea_id": "idea-solar-hub",
+      "title": "Solar Study Hub",
+      "summary": "A solar-powered community study space."
+    }
+  ]
+}
+```
+
+`raw_transcript` remains unchanged. A cleaned transcript is routed only when the caller explicitly
+selects it. The transcript can remain internal to the workflow; displaying it in the final user UI is
+optional. The existing transcript panel remains useful for diagnostics and user correction.
+
+### Companion routing response
+
+```json
+{
+  "contract_version": "1.0",
+  "request_id": "route-request-001",
+  "session_id": "Session 1",
+  "intent": "move_bubble",
+  "action": "move_bubble",
+  "target_idea_ids": ["idea-solar-hub"],
+  "parameters": {
+    "scale": null,
+    "direction": "closer",
+    "question": null
+  },
+  "spoken_response": "I'll bring the Solar Study Hub idea closer.",
+  "subtitle_text": "I'll bring the Solar Study Hub idea closer.",
+  "suggested_emotion": "attentive",
+  "status": "completed",
+  "error": null
+}
+```
+
+The backend generates `spoken_response` and `subtitle_text` from one validated `response_text`, so
+the two fields always match. No audio is generated.
+
+### Command validation
+
+- Target IDs must match IDs supplied in `available_ideas`; unknown IDs are never forwarded.
+- Ambiguous, missing, or invented targets become `clarification_required` with no target IDs.
+- Expand, challenge, resize, move, and hide require exactly one known target.
+- Combine requires at least two known targets.
+- Resize accepts only `smaller`, `larger`, `small`, `medium`, `large`, or `reset`.
+- Movement accepts only `left`, `right`, `up`, `down`, `closer`, `farther`, or `reset_layout`.
+- Coordinates, rotations, transforms, object names, file paths, and code are not parameters.
+- The model cannot select values outside these strict enums.
+- Every result is a proposed action. Unity remains responsible for authorization and execution.
+
+Local controls—including thumbs-up recording, thumbs-down stopping, future sideways-thumb pause, and
+Meta system gestures—never pass through the intent router and remain independent of AI output.
+
+### Companion emotion contract
+
+The allowed suggestions are `neutral`, `attentive`, `thinking`, `happy`, `excited`, `concerned`, and
+`confused`. This value is advisory metadata only. Unity owns animation selection, transition timing,
+safety, tracking, and fallback behavior. A clarification generated by backend validation uses
+`confused`; errors use `concerned`.
+
+### Router model configuration
+
+- `OPENAI_INTENT_MODEL` defaults to `OPENAI_IDEA_MODEL`, currently `gpt-5-mini`.
+- `OPENAI_INTENT_TIMEOUT_SECONDS` defaults to 30 seconds.
+- `CLARIFICATION_EXPIRATION_SECONDS` defaults to 120 seconds.
+- `MAX_PENDING_CLARIFICATIONS` defaults to 128 sessions.
+
+### Conversational clarification
+
+`POST /api/intents/route` accepts natural speech and does not require fixed command phrases. A clear,
+reversible command returns immediately with `requires_confirmation: false`. When an action or bubble
+reference is ambiguous, the response contains a `clarification_id`, `pending_action`, candidate idea IDs,
+and a question. Submit the user's next utterance to the same endpoint with a new `request_id`, the same
+`session_id`, and that `clarification_id`.
+
+```json
+{
+  "request_id": "request-follow-up-2",
+  "session_id": "Session 1",
+  "raw_transcript": "The first one",
+  "transcript_source": "raw",
+  "clarification_id": "clar_0123456789abcdef",
+  "available_ideas": [
+    {"idea_id": "idea-one", "title": "Solar Hub", "summary": "A solar study hub."},
+    {"idea_id": "idea-two", "title": "Workshop", "summary": "Peer-led workshops."}
+  ]
+}
+```
+
+The server interprets contextual yes/no, ordinal selections, idea names, “other,” “neither,” and cancel.
+It validates every selected ID against the candidates before returning a final semantic action. Unity must
+still authorize the action and resolve IDs to its own objects; the backend never sends coordinates, code,
+or GameObject operations. `spoken_response` and `subtitle_text` are identical.
+
+A yes response is accepted only when the pending candidates have the correct cardinality for the action.
+In particular, yes cannot choose between multiple candidates for expand, challenge, resize, move, or hide;
+the router asks again instead of forwarding several IDs to a single-target command.
+
+Pending clarifications are session-scoped, expire after the configured interval, and are cancelled after
+two unresolved answers. A new ambiguity for the same session replaces the older one. Clear reversible
+actions do not require confirmation. Future destructive or irreversible actions must add an explicit
+confirmation gate before being exposed.
+
+This state is bounded but held in process memory. It is appropriate only for the current single-process
+prototype: restarts lose pending questions, and multiple Render instances would not share them. Use a
+shared store such as Redis with TTLs and atomic session keys before horizontal scaling or if recovery
+across deploys is required. Do not log transcripts, tokens, or clarification payloads.
+- `MAX_INTENT_REQUEST_BYTES` defaults to 32 KiB.
+- `MAX_INTENT_REQUESTS_PER_MINUTE` defaults to 30 per process.
+
+The provider uses strict OpenAI Structured Outputs and a second Pydantic validation pass. It can only
+classify and propose semantic parameters; it has no tools and cannot manipulate Unity, GameObjects,
+transforms, files, network resources, or arbitrary code.
+
+### Future companion integration
+
+Unity should implement the AI handoff as an explicit client-owned workflow:
+
+1. Retain the completed transcription response and preserve `raw_transcript` exactly. A corrected
+   `cleaned_transcript` remains a separate optional value.
+2. After user approval, set Orby to `Thinking` and send the selected transcript plus the current session's
+   locally known ideas to `POST /api/intents/route`.
+3. Validate HTTP status, `contract_version`, `request_id`, `session_id`, status, target IDs, parameter enums,
+   and the local allowlist before doing anything with the response.
+4. For `clarification_required`, retain `clarification_id`, show/speak the question, return Orby to an
+   attentive/listening state, and route the next approved utterance with the same session and a new request ID.
+5. For `create_idea`, `expand_idea`, `challenge_idea`, or `combine_ideas`, build an
+   `/api/ideas/process` request from the approved transcript and validated local idea context. Do not call the
+   idea manager for spatial commands or ordinary conversation.
+6. Validate the idea response and pass only its data contract to the future bubble manager. The bubble
+   manager owns GameObject creation, transforms, relationships, and failure recovery.
+7. Pass `spoken_response` to the future voice service and the same text to optional subtitles. Never treat
+   either text field as executable instructions.
+8. Treat `suggested_emotion` as advisory. Unity's Orby state controller owns animation and should transition
+   from `Thinking` to future `Speaking` while voice plays, then to `Idle` or `Listening`. On timeout, invalid
+   response, or cancellation, transition to `Error` and then a safe recoverable state.
+9. Correlate every callback with the active request and session, ignore stale responses, and cancel or
+   invalidate outstanding work when the session ends.
+
+Clear spatial commands such as resize and move skip the idea-manager endpoint and go directly to the
+client's allowlisted action validator. Bubble changes must use client-owned scale increments and movement
+distances. The placeholder sphere and final model can consume the same client-side companion state
+interface without changing this backend contract.

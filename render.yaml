@@ -22,3 +22,23 @@ services:
         value: "15728640"
       - key: MAX_REQUESTS_PER_MINUTE
         value: "10"
+      - key: OPENAI_IDEA_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_IDEA_TIMEOUT_SECONDS
+        value: "45"
+      - key: MAX_IDEA_REQUEST_BYTES
+        value: "32768"
+      - key: MAX_IDEA_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: OPENAI_INTENT_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_INTENT_TIMEOUT_SECONDS
+        value: "30"
+      - key: MAX_INTENT_REQUEST_BYTES
+        value: "32768"
+      - key: MAX_INTENT_REQUESTS_PER_MINUTE
+        value: "30"
+      - key: CLARIFICATION_EXPIRATION_SECONDS
+        value: "120"
+      - key: MAX_PENDING_CLARIFICATIONS
+        value: "128"
