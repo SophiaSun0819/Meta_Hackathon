@@ -51,6 +51,8 @@ namespace ThinkingSpace.UI
         private readonly List<Button> runtimeSessionButtons = new List<Button>();
         private Action<int> reopenSession;
         private Button mainPreviousButton, mainNextButton, sessionPreviousButton, sessionNextButton;
+        private Button silenceMinusButton, silencePlusButton, conversationalButton, manualButton;
+        private TMP_Text silenceValueLabel, settingsTitle;
         private TMP_Text mainPageIndicator, sessionPageIndicator;
         private int mainPage, mainPageCount, sessionPage;
         private const int SessionsPerPage = 3;
@@ -69,13 +71,15 @@ namespace ThinkingSpace.UI
                 out mainNextButton, out mainPageIndicator, ChangeMainPage);
             CreatePageNavigation(sessionPanel, sessionCloseButton, out sessionPreviousButton,
                 out sessionNextButton, out sessionPageIndicator, ChangeSessionPage);
+            CreateAudioSettingsPage();
         }
 
         public void Bind(
             Action startSession, Action voiceHelp, Action gestureHelp,
             Action selectLeft, Action selectRight, Action close,
             Action challenge, Action expand, Action connect, Action whiteboard,
-            Action endSession, Action backFromHelp)
+            Action endSession, Action backFromHelp,
+            Action decreaseSilence, Action increaseSilence, Action conversationalMode, Action manualMode)
         {
             BindButton(startSessionButton, startSession);
             BindButton(mainVoiceButton, voiceHelp);
@@ -95,6 +99,18 @@ namespace ThinkingSpace.UI
             BindButton(sessionCloseButton, close);
             BindButton(voiceBackButton, backFromHelp);
             BindButton(gesturesBackButton, backFromHelp);
+            BindButton(silenceMinusButton, decreaseSilence);
+            BindButton(silencePlusButton, increaseSilence);
+            BindButton(conversationalButton, conversationalMode);
+            BindButton(manualButton, manualMode);
+        }
+
+        public void SetAudioPreferences(float silenceSeconds,
+            ThumbRecordingGestureController.RecordingMode mode)
+        {
+            if (silenceValueLabel != null) silenceValueLabel.text = silenceSeconds.ToString("0.0") + " seconds";
+            SetButtonSelected(conversationalButton, mode == ThumbRecordingGestureController.RecordingMode.Conversational);
+            SetButtonSelected(manualButton, mode == ThumbRecordingGestureController.RecordingMode.Manual);
         }
 
         public void ShowMain(
@@ -120,7 +136,7 @@ namespace ThinkingSpace.UI
             }
             SetHandSelection(mainLeftHandButton, mainRightHandButton, recordingHand);
             mainPage = 0;
-            mainPageCount = Mathf.Max(1, Mathf.CeilToInt(sessions.Count / (float)SessionsPerPage)) + 1;
+            mainPageCount = Mathf.Max(1, Mathf.CeilToInt(sessions.Count / (float)SessionsPerPage)) + 2;
             RefreshMainPage(sessions.Count);
         }
 
@@ -167,22 +183,51 @@ namespace ThinkingSpace.UI
         private void RefreshMainPage(int sessionCount)
         {
             int sessionPageCount = Mathf.Max(1, Mathf.CeilToInt(sessionCount / (float)SessionsPerPage));
-            bool settingsPage = mainPage >= sessionPageCount;
-            if (sessionList != null) sessionList.gameObject.SetActive(!settingsPage);
-            if (startSessionButton != null) startSessionButton.gameObject.SetActive(!settingsPage);
-            if (noSessionsLabel != null) noSessionsLabel.SetActive(!settingsPage && sessionCount == 0 && mainPage == 0);
+            bool settingsPage = mainPage == sessionPageCount;
+            bool audioPage = mainPage > sessionPageCount;
+            bool sessionPage = !settingsPage && !audioPage;
+            if (sessionList != null) sessionList.gameObject.SetActive(sessionPage);
+            if (startSessionButton != null) startSessionButton.gameObject.SetActive(sessionPage);
+            if (noSessionsLabel != null) noSessionsLabel.SetActive(sessionPage && sessionCount == 0 && mainPage == 0);
             for (int i = 0; i < runtimeSessionButtons.Count; i++)
-                runtimeSessionButtons[i].gameObject.SetActive(!settingsPage
+                runtimeSessionButtons[i].gameObject.SetActive(sessionPage
                     && i >= mainPage * SessionsPerPage && i < (mainPage + 1) * SessionsPerPage);
             SetActive(mainVoiceButton, settingsPage);
             SetActive(mainGesturesButton, settingsPage);
             SetActive(mainLeftHandButton, settingsPage);
             SetActive(mainRightHandButton, settingsPage);
             SetActive(mainCloseButton, settingsPage);
+            SetActive(silenceMinusButton, audioPage); SetActive(silencePlusButton, audioPage);
+            SetActive(conversationalButton, audioPage); SetActive(manualButton, audioPage);
+            if (silenceValueLabel != null) silenceValueLabel.gameObject.SetActive(audioPage);
+            if (settingsTitle != null) settingsTitle.gameObject.SetActive(audioPage);
             SetLabelVisible(mainPanel, "Brainstorming Sessions", !settingsPage);
             SetLabelVisible(mainPanel, "Recording Hand", settingsPage);
             UpdateNavigation(mainPreviousButton, mainNextButton, mainPageIndicator, mainPage, mainPageCount);
         }
+
+        private void CreateAudioSettingsPage()
+        {
+            if (mainPanel == null || mainCloseButton == null) return;
+            RectTransform parent = mainPanel.GetComponent<RectTransform>();
+            silenceMinusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silenceMinusButton, "− 0.5s", new Vector2(.08f,.50f), new Vector2(.34f,.62f));
+            silencePlusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silencePlusButton, "+ 0.5s", new Vector2(.66f,.50f), new Vector2(.92f,.62f));
+            conversationalButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(conversationalButton, "Conversational", new Vector2(.08f,.25f), new Vector2(.47f,.38f));
+            manualButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(manualButton, "Manual", new Vector2(.53f,.25f), new Vector2(.92f,.38f));
+            TMP_Text source = mainCloseButton.GetComponentInChildren<TMP_Text>(true);
+            if (source != null)
+            {
+                settingsTitle = Instantiate(source, parent); settingsTitle.text = "Recording Settings";
+                settingsTitle.alignment = TextAlignmentOptions.Center; settingsTitle.raycastTarget = false;
+                SetRect(settingsTitle.rectTransform, new Vector2(.08f,.76f), new Vector2(.92f,.91f));
+                silenceValueLabel = Instantiate(source, parent); silenceValueLabel.text = "2.0 seconds";
+                silenceValueLabel.alignment = TextAlignmentOptions.Center; silenceValueLabel.raycastTarget = false;
+                SetRect(silenceValueLabel.rectTransform, new Vector2(.35f,.50f), new Vector2(.65f,.62f));
+            }
+        }
+
+        private static void SetRect(RectTransform rect, Vector2 min, Vector2 max)
+        { rect.anchorMin=min; rect.anchorMax=max; rect.offsetMin=rect.offsetMax=Vector2.zero; LayoutElement layout=rect.GetComponent<LayoutElement>(); if(layout!=null)layout.ignoreLayout=true; }
 
         private void ChangeSessionPage(int delta)
         {

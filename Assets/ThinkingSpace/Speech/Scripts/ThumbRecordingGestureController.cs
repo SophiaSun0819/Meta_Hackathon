@@ -8,6 +8,7 @@ namespace ThinkingSpace.Speech
     public sealed class ThumbRecordingGestureController : MonoBehaviour
     {
         public enum RecordingHand { Left, Right }
+        public enum RecordingMode { Conversational, Manual }
 
         private enum RecordingGestureState { Idle, StartGesturePending, Recording, StopGesturePending }
         private enum ThumbGesture { None, Up, Down }
@@ -67,9 +68,11 @@ namespace ThinkingSpace.Speech
         [SerializeField] private ThumbJointDebugVisualizer jointDebugVisualizer;
         [SerializeField] private QuestMicrophoneRecorder microphoneRecorder;
         [SerializeField] private SpeechTranscriptionCoordinator transcriptionCoordinator;
+        [SerializeField] private ConversationalListeningController conversationalListening;
 
         [Header("Recording Hand")]
         [SerializeField] private RecordingHand selectedRecordingHand = RecordingHand.Right;
+        [SerializeField] private RecordingMode recordingMode = RecordingMode.Conversational;
 
         [Header("Gesture Timing")]
         [SerializeField, Min(0f)] private float holdDuration = 0.5f;
@@ -101,8 +104,15 @@ namespace ThinkingSpace.Speech
 
         public string DiagnosticText { get; private set; }
         public RecordingHand SelectedRecordingHand => selectedRecordingHand;
+        public RecordingMode CurrentRecordingMode => recordingMode;
         public bool SessionActive => sessionActive;
         public bool IsMicrophoneRecording => microphoneRecorder != null && microphoneRecorder.IsRecording;
+        public bool ShouldLockMenuForRecording => recordingMode == RecordingMode.Manual
+            ? IsMicrophoneRecording
+            : conversationalListening != null
+                && (conversationalListening.State == ConversationalListeningState.SpeechActive
+                    || conversationalListening.State == ConversationalListeningState.SilenceCountdown
+                    || conversationalListening.State == ConversationalListeningState.Finalizing);
         public QuestMicrophoneRecorder MicrophoneRecorder => microphoneRecorder;
         public Transform CenterEyeAnchor => centerEyeAnchor;
         public OVRHand LeftOVRHand => leftHand.hand;
@@ -119,6 +129,9 @@ namespace ThinkingSpace.Speech
             if (microphoneRecorder == null) microphoneRecorder = GetComponent<QuestMicrophoneRecorder>();
             if (microphoneRecorder == null) microphoneRecorder = gameObject.AddComponent<QuestMicrophoneRecorder>();
             if (transcriptionCoordinator == null) transcriptionCoordinator = GetComponent<SpeechTranscriptionCoordinator>();
+            if (conversationalListening == null) conversationalListening = GetComponent<ConversationalListeningController>();
+            if (conversationalListening == null) conversationalListening = gameObject.AddComponent<ConversationalListeningController>();
+            conversationalListening.Configure(microphoneRecorder, transcriptionCoordinator);
             appliedRecordingHand = selectedRecordingHand;
             sessionActive = false;
             gestureArmed = true;
@@ -159,7 +172,8 @@ namespace ThinkingSpace.Speech
                 return;
             }
 
-            if (microphoneRecorder != null && (microphoneRecorder.State == MicrophoneRecordingState.RequestingPermission
+            if (recordingMode == RecordingMode.Manual && microphoneRecorder != null
+                && (microphoneRecorder.State == MicrophoneRecordingState.RequestingPermission
                 || microphoneRecorder.State == MicrophoneRecordingState.Starting
                 || microphoneRecorder.State == MicrophoneRecordingState.Stopping))
             {
@@ -186,7 +200,8 @@ namespace ThinkingSpace.Speech
                 case RecordingGestureState.StopGesturePending:
                     UpdatePendingGesture(
                         ThumbGesture.Down,
-                        RecordingGestureState.Recording,
+                        recordingMode == RecordingMode.Conversational
+                            ? RecordingGestureState.Idle : RecordingGestureState.Recording,
                         selectedGesture);
                     break;
             }
@@ -253,11 +268,22 @@ namespace ThinkingSpace.Speech
             ApplyRecordingHandChange();
         }
 
+        public void SetRecordingMode(RecordingMode mode)
+        {
+            if (recordingMode == mode) return;
+            conversationalListening?.DisableListening("Recording mode changed", true);
+            recordingMode = mode;
+            RequireFreshRecordingGesture();
+        }
+
+        public ConversationalListeningController ConversationalListening => conversationalListening;
+
         public void SetSessionActive(bool active)
         {
             if (sessionActive == active) return;
             sessionActive = active;
             if (transcriptionCoordinator != null) transcriptionCoordinator.SetSessionActive(active);
+            conversationalListening?.SetSessionActive(active);
             state = RecordingGestureState.Idle;
             pendingHand = null;
             pendingTimer = 0f;
@@ -296,7 +322,16 @@ namespace ThinkingSpace.Speech
 
         private void UpdateIdle(ThumbGesture selectedGesture)
         {
-            if (transcriptionCoordinator != null && !transcriptionCoordinator.CanBeginRecording)
+            bool conversationEnabled = recordingMode == RecordingMode.Conversational
+                && conversationalListening != null && conversationalListening.ListeningEnabled;
+            if (conversationEnabled && selectedGesture == ThumbGesture.Down
+                && gestureArmed && cooldownTimer <= 0f)
+            {
+                BeginPending(SelectedHandBinding, RecordingGestureState.StopGesturePending);
+                return;
+            }
+            if (!conversationEnabled && transcriptionCoordinator != null
+                && !transcriptionCoordinator.CanBeginRecording)
             {
                 gestureArmed = false;
                 neutralTimer = 0f;
@@ -311,14 +346,17 @@ namespace ThinkingSpace.Speech
         private void UpdateRecording(ThumbGesture selectedGesture)
         {
             // Tracking loss cannot end an active recording.
-            indicator.SetHeadset(centerEyeAnchor);
-            if (microphoneRecorder != null)
-                indicator.SetRecordingStatus(
-                    microphoneRecorder.ElapsedSeconds,
-                    microphoneRecorder.LiveRms,
-                    microphoneRecorder.LivePeak,
-                    microphoneRecorder.State.ToString(),
-                    microphoneRecorder.LastStatus);
+            if (recordingMode == RecordingMode.Manual)
+            {
+                indicator.SetHeadset(centerEyeAnchor);
+                if (microphoneRecorder != null)
+                    indicator.SetRecordingStatus(
+                        microphoneRecorder.ElapsedSeconds,
+                        microphoneRecorder.LiveRms,
+                        microphoneRecorder.LivePeak,
+                        microphoneRecorder.State.ToString(),
+                        microphoneRecorder.LastStatus);
+            }
             UpdateNeutralRearm(selectedGesture);
             if (!gestureArmed || cooldownTimer > 0f) return;
             if (selectedGesture == ThumbGesture.Down)
@@ -358,6 +396,13 @@ namespace ThinkingSpace.Speech
 
         private void EnterRecording()
         {
+            if (recordingMode == RecordingMode.Conversational)
+            {
+                conversationalListening?.EnableListening();
+                indicator.Hide();
+                ResetTransitionState(RecordingGestureState.Idle);
+                return;
+            }
             if (transcriptionCoordinator != null && !transcriptionCoordinator.CanBeginRecording)
             {
                 ResetTransitionState(RecordingGestureState.Idle);
@@ -376,15 +421,24 @@ namespace ThinkingSpace.Speech
         {
             ResetTransitionState(RecordingGestureState.Idle);
             indicator.Hide();
+            if (recordingMode == RecordingMode.Conversational)
+            {
+                conversationalListening?.DisableListening();
+                return;
+            }
             if (microphoneRecorder != null) microphoneRecorder.StopRecording();
         }
 
         private void HandleMicrophoneStarted()
         {
             ResetTransitionState(RecordingGestureState.Recording);
-            indicator.Show(centerEyeAnchor);
-            indicator.SetRecordingStatus(0f, 0f, 0f, microphoneRecorder.State.ToString(),
-                microphoneRecorder.LastStatus);
+            if (recordingMode == RecordingMode.Manual)
+            {
+                indicator.Show(centerEyeAnchor);
+                indicator.SetRecordingStatus(0f, 0f, 0f, microphoneRecorder.State.ToString(),
+                    microphoneRecorder.LastStatus);
+            }
+            else indicator.Hide();
         }
 
         private void HandleMicrophoneCompleted(CompletedMicrophoneRecording recording)
@@ -607,6 +661,7 @@ namespace ThinkingSpace.Speech
             StringBuilder text = new StringBuilder(1200);
             text.AppendLine("THUMB RECORDING DIAGNOSTICS");
             text.Append("Session recording: ").AppendLine(sessionActive ? "ENABLED" : "DISABLED");
+            text.Append("Recording mode: ").AppendLine(recordingMode.ToString());
             HandBinding selected = SelectedHandBinding;
             text.Append("Selected recording hand: ").AppendLine(selectedRecordingHand.ToString());
             text.Append("Selected-hand gesture: ").AppendLine(selected.detectedGesture.ToString());
@@ -625,6 +680,7 @@ namespace ThinkingSpace.Speech
             if (microphoneRecorder != null) text.AppendLine(microphoneRecorder.GetDiagnosticSummary());
             else text.AppendLine("Mic: recorder component missing");
             if (transcriptionCoordinator != null) text.AppendLine(transcriptionCoordinator.DiagnosticText);
+            if (conversationalListening != null) text.AppendLine(conversationalListening.DiagnosticText);
             if (jointDebugVisualizer == null)
                 text.AppendLine("Joint markers: visualizer reference missing");
             else if (!jointDebugVisualizer.enabled)

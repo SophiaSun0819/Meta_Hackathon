@@ -16,6 +16,8 @@ namespace ThinkingSpace.Speech
         [SerializeField] private SpeechTranscriptionService transcriptionService;
         [SerializeField] private TranscriptPanel transcriptPanel;
         [SerializeField] private RecordingReviewPanel reviewPanel;
+        [SerializeField] private ThinkingSpaceAIWorkflowController aiWorkflow;
+        [SerializeField] private ConversationalListeningController conversationalListening;
         [Header("Development Test")]
         [SerializeField] private AudioClip developmentTestClip;
         [Tooltip("Routes a generated 440 Hz tone through the review AudioSource instead of the retained clip.")]
@@ -40,7 +42,8 @@ namespace ThinkingSpace.Speech
         private const float PlaybackStartupGrace = 0.75f;
 
         public RecordingWorkflowState State { get; private set; } = RecordingWorkflowState.Ready;
-        public bool CanBeginRecording => sessionActive && State == RecordingWorkflowState.Ready;
+        public bool CanBeginRecording => sessionActive && State == RecordingWorkflowState.Ready
+            && (aiWorkflow == null || !aiWorkflow.IsBlockingRecording);
         public string DiagnosticText { get; private set; } = "WORKFLOW: Ready";
 
         private void Awake()
@@ -53,9 +56,20 @@ namespace ThinkingSpace.Speech
             if (transcriptPanel == null) transcriptPanel = gameObject.AddComponent<TranscriptPanel>();
             if (reviewPanel == null) reviewPanel = GetComponent<RecordingReviewPanel>();
             if (reviewPanel == null) reviewPanel = gameObject.AddComponent<RecordingReviewPanel>();
+            if (aiWorkflow == null) aiWorkflow = GetComponent<ThinkingSpaceAIWorkflowController>();
+            if (aiWorkflow == null) aiWorkflow = gameObject.AddComponent<ThinkingSpaceAIWorkflowController>();
+            if (conversationalListening == null) conversationalListening = GetComponent<ConversationalListeningController>();
+            if (conversationalListening == null) conversationalListening = gameObject.AddComponent<ConversationalListeningController>();
             Transform headset = gestureController != null ? gestureController.CenterEyeAnchor : null;
             transcriptPanel.SetHeadset(headset);
             reviewPanel.SetHeadset(headset);
+            aiWorkflow.Configure(transcriptionService, headset);
+            // BrainstormMenuController can restore a session before this component's Awake
+            // creates the runtime AI workflow. Replay the coordinator's current gate so the
+            // dynamically added workflow cannot remain incorrectly inactive.
+            aiWorkflow.SetSessionActive(sessionActive);
+            conversationalListening.Configure(microphoneRecorder, this);
+            conversationalListening.SetSessionActive(sessionActive);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             reviewPanel.ConfigureDevelopmentExport(enableDevelopmentWavExport, ExportPendingRecordingForDevelopment);
 #else
@@ -124,6 +138,8 @@ namespace ThinkingSpace.Speech
         public void SetSessionActive(bool active)
         {
             sessionActive = active;
+            aiWorkflow?.SetSessionActive(active);
+            conversationalListening?.SetSessionActive(active);
             if (!active)
             {
                 CancelActiveRequest(); StopPlayback(); ClearPendingRecording();
@@ -141,19 +157,29 @@ namespace ThinkingSpace.Speech
         private void HandleRecordingStarted()
         {
             if (!sessionActive) return;
+            if (conversationalListening != null && conversationalListening.OwnsCapture)
+            {
+                conversationalListening.NotifyRecordingStarted();
+                aiWorkflow?.NotifyListening();
+                UpdateDiagnostic("Conversational microphone monitoring");
+                return;
+            }
             State = RecordingWorkflowState.Recording;
+            aiWorkflow?.NotifyListening();
             UpdateDiagnostic("Recording");
         }
 
         private void HandleRecordingCompleted(CompletedMicrophoneRecording recording)
         {
             if (!sessionActive || recording.Clip == null) return;
+            conversationalListening?.NotifyRecordingCompleted();
             StopPlayback();
             pendingRecording = recording;
             pendingWav = null;
             pendingTranscript = null;
             pendingRecordingIdentifier = CreateRecordingIdentifier();
             State = RecordingWorkflowState.Reviewing;
+            aiWorkflow?.NotifyReviewing();
             transcriptPanel.Hide();
             reviewPanel.Show(recording.Clip.length, TogglePlayback, SendToAI, Discard, Rerecord);
             UpdateDiagnostic("Reviewing completed recording");
@@ -161,10 +187,26 @@ namespace ThinkingSpace.Speech
 
         private void HandleRecordingFailed(string message)
         {
+            conversationalListening?.NotifyRecordingFailed(message);
             if (State != RecordingWorkflowState.Recording) return;
             State = RecordingWorkflowState.Ready;
+            aiWorkflow?.NotifyError(message);
             UpdateDiagnostic("Microphone failed: " + message);
             transcriptPanel.ShowNotice("Recording Failed", message, transcriptPanel.Hide);
+        }
+
+        public void NotifyConversationalSpeechStarted()
+        {
+            if (!sessionActive || State != RecordingWorkflowState.Ready) return;
+            State = RecordingWorkflowState.Recording;
+            aiWorkflow?.NotifyListening();
+            UpdateDiagnostic("Conversational speech detected");
+        }
+
+        public void NotifyConversationalCaptureCancelled()
+        {
+            if (pendingRecording.HasValue || State != RecordingWorkflowState.Ready) return;
+            UpdateDiagnostic("Silent conversational monitor recycled or stopped");
         }
 
         private void TogglePlayback()
@@ -230,6 +272,7 @@ namespace ThinkingSpace.Speech
         {
             if (!reuseWav) pendingWav = null;
             State = RecordingWorkflowState.Transcribing;
+            aiWorkflow?.NotifyThinking();
             transcriptPanel.ShowTranscribing(pendingRecordingIdentifier, BackToRecording);
             int generation = ++requestGeneration;
             activeRequest = StartCoroutine(EncodeAndTranscribe(generation));
@@ -265,6 +308,7 @@ namespace ThinkingSpace.Speech
                 yield break;
             }
             State = RecordingWorkflowState.TranscriptReady;
+            aiWorkflow?.NotifyReviewing();
             pendingTranscript = result.Transcript;
             DiagnosticText = BuildDiagnostic(recording, pendingWav.Length, "Transcript ready", result.HttpStatus,
                 result.RequestDurationSeconds, result.Transcript != null ? result.Transcript.Length : 0, null);
@@ -275,6 +319,7 @@ namespace ThinkingSpace.Speech
         {
             if (generation != requestGeneration || !sessionActive) return;
             State = RecordingWorkflowState.TranscriptionFailed;
+            aiWorkflow?.NotifyError(error);
             CompletedMicrophoneRecording recording = pendingRecording.Value;
             DiagnosticText = BuildDiagnostic(recording, pendingWav != null ? pendingWav.Length : 0,
                 "Transcription failed", status, seconds, 0, error);
@@ -284,10 +329,19 @@ namespace ThinkingSpace.Speech
         private void ConfirmTranscript()
         {
             if (State != RecordingWorkflowState.TranscriptReady) return;
+            if (aiWorkflow == null || !aiWorkflow.SubmitApprovedTranscript(pendingTranscript))
+            {
+                string reason = aiWorkflow != null
+                    ? aiWorkflow.LastSubmissionRejection
+                    : "The AI workflow component is unavailable.";
+                transcriptPanel.ShowNotice("AI Request Unavailable",
+                    reason + "\n\nThe completed recording remains available.", BackToRecording);
+                return;
+            }
             transcriptPanel.Hide(); ClearPendingRecording();
             State = RecordingWorkflowState.Ready;
             gestureController.RequireFreshRecordingGesture();
-            UpdateDiagnostic("Transcript accepted; ready");
+            UpdateDiagnostic("Transcript accepted; AI processing started");
         }
 
         private void BackToRecording()
@@ -296,6 +350,7 @@ namespace ThinkingSpace.Speech
             if (State == RecordingWorkflowState.Transcribing) CancelActiveRequest();
             transcriptPanel.Hide();
             State = RecordingWorkflowState.Reviewing;
+            aiWorkflow?.NotifyReviewing();
             CompletedMicrophoneRecording recording = pendingRecording.Value;
             reviewPanel.Show(recording.Clip.length, TogglePlayback, SendToAI, Discard, Rerecord);
             UpdateDiagnostic("Returned to recording review");
@@ -306,6 +361,7 @@ namespace ThinkingSpace.Speech
             if (State == RecordingWorkflowState.Transcribing) return;
             StopPlayback(); reviewPanel.Hide(); transcriptPanel.Hide(); ClearPendingRecording();
             State = RecordingWorkflowState.Ready;
+            aiWorkflow?.NotifyIdle();
             gestureController.RequireFreshRecordingGesture();
             UpdateDiagnostic("Recording discarded; ready");
         }
@@ -319,6 +375,12 @@ namespace ThinkingSpace.Speech
                 State = RecordingWorkflowState.Ready;
                 UpdateDiagnostic("Rerecord unavailable: no active session");
                 transcriptPanel.ShowNotice("Recording Unavailable", "Start or reopen a brainstorming session first.", transcriptPanel.Hide);
+                return;
+            }
+            if (conversationalListening != null && conversationalListening.ListeningEnabled)
+            {
+                State = RecordingWorkflowState.Ready;
+                UpdateDiagnostic("Rerecord requested; conversational listening resumed");
                 return;
             }
             State = RecordingWorkflowState.Recording;

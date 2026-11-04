@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -41,10 +42,26 @@ namespace ThinkingSpace.Speech
         [SerializeField, Tooltip("Hosted deployments must use HTTPS. For Quest development, use an HTTPS tunnel to your LAN backend.")]
         private string backendUrl = "";
         [SerializeField, Range(5, 120)] private int requestTimeoutSeconds = 45;
+        [Header("Development Authentication")]
+        [SerializeField, Tooltip("Environment variable used in the Editor or desktop development builds.")]
+        private string developmentTokenEnvironmentVariable = "THINKING_SPACE_DEV_TOKEN";
+        [SerializeField, Tooltip("Token filename under Application.persistentDataPath/ThinkingSpace on Quest.")]
+        private string developmentTokenFileName = "dev-token.txt";
 
         private UnityWebRequest activeRequest;
+        private string runtimeDevelopmentToken;
         public bool IsBusy => activeRequest != null;
         public string BackendUrl => backendUrl;
+        public string BackendBaseUrl
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(backendUrl)) return string.Empty;
+                int api = backendUrl.IndexOf("/api/", StringComparison.OrdinalIgnoreCase);
+                string value = api >= 0 ? backendUrl.Substring(0, api + 1) : backendUrl.TrimEnd('/') + "/";
+                return value;
+            }
+        }
 
         [Serializable]
         private sealed class BackendResponse
@@ -81,6 +98,13 @@ namespace ThinkingSpace.Speech
                 completed?.Invoke(Failure(request, "Backend URL must use HTTPS outside private-network development.", 0, 0f));
                 yield break;
             }
+            string developmentToken = ResolveDevelopmentToken();
+            if (string.IsNullOrEmpty(developmentToken))
+            {
+                completed?.Invoke(Failure(request,
+                    "Development authentication token is not configured on this device.", 0, 0f));
+                yield break;
+            }
 
             float startedAt = Time.realtimeSinceStartup;
             activeRequest = new UnityWebRequest(backendUrl, UnityWebRequest.kHttpVerbPOST)
@@ -94,6 +118,7 @@ namespace ThinkingSpace.Speech
             activeRequest.SetRequestHeader("X-Session-ID", request.SessionIdentifier ?? string.Empty);
             activeRequest.SetRequestHeader("X-Sample-Rate", request.SampleRate.ToString());
             activeRequest.SetRequestHeader("X-Recording-Duration", request.RecordingDuration.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+            activeRequest.SetRequestHeader("X-ThinkingSpace-Token", developmentToken);
 
             UnityWebRequest requestInFlight = activeRequest;
             yield return requestInFlight.SendWebRequest();
@@ -141,6 +166,39 @@ namespace ThinkingSpace.Speech
             activeRequest = null;
             request.Abort();
             request.Dispose();
+        }
+
+        public void SetDevelopmentTokenForCurrentRun(string token)
+        {
+            runtimeDevelopmentToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+        }
+
+        public string GetDevelopmentTokenForCurrentRun() => ResolveDevelopmentToken();
+
+        public string DevelopmentTokenPath => Path.Combine(
+            Application.persistentDataPath, "ThinkingSpace", developmentTokenFileName);
+
+        private string ResolveDevelopmentToken()
+        {
+            if (!string.IsNullOrEmpty(runtimeDevelopmentToken)) return runtimeDevelopmentToken;
+            string fromEnvironment = Environment.GetEnvironmentVariable(developmentTokenEnvironmentVariable);
+            if (!string.IsNullOrWhiteSpace(fromEnvironment))
+                return runtimeDevelopmentToken = fromEnvironment.Trim();
+            try
+            {
+                string path = DevelopmentTokenPath;
+                if (File.Exists(path))
+                {
+                    string fromFile = File.ReadAllText(path).Trim();
+                    if (!string.IsNullOrEmpty(fromFile)) return runtimeDevelopmentToken = fromFile;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("Thinking Space development token file could not be read: "
+                    + ex.GetType().Name, this);
+            }
+            return null;
         }
 
         private static SpeechTranscriptionResult Failure(

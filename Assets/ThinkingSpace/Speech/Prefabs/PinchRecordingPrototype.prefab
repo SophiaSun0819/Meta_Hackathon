@@ -148,8 +148,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   recordingGestureController: {fileID: 5308890283464151195}
   authoredMenuPrefab: {fileID: 7145748928855083668, guid: 44db108a4dccd6241bbaca03651c7294, type: 3}
+  palmMenuButtonPrefab: {fileID: 3892896257314365986, guid: 430abea635073354fbcdcbd4eb52be96, type: 3}
   debugShowAuthoredMenuAtHeadset: 0
   authoredTestHeadsetOffset: {x: 0, y: -0.03, z: 0.55}
+  debugShowPalmMenuButtonAtHeadset: 0
+  palmButtonTestHeadsetOffset: {x: 0, y: -0.12, z: 0.5}
   fistArmHoldDuration: 0.3
   fistToOpenTimeout: 2
   openPalmHoldDuration: 0.2
@@ -164,6 +167,19 @@ MonoBehaviour:
   menuOffsetFromHand: {x: 0, y: 0.1, z: 0.03}
   followSmoothTime: 0.08
   facingSmoothSpeed: 10
+  palmButtonHoldDuration: 0.2
+  palmButtonOffset: {x: 0, y: 0.055, z: 0.015}
+  palmButtonFollowSmoothTime: 0.06
+  ownerTrackingLossGrace: 1
+  palmUpExitTolerance: 75
+  palmPoseLossGrace: 0.5
+  interactionEnableDelay: 0.35
+  developmentPalmNormalCalibration: 0
+  captureLeftPalmUpPose: 0
+  captureRightPalmUpPose: 0
+  showPalmNormalVisualization: 0
+  leftPalmNormalSign: 1
+  rightPalmNormalSign: -1
   readyMessageDuration: 0.6
   progressOffsetFromHand: {x: 0, y: 0.065, z: 0.02}
   canvasScale: 0.00032
@@ -174,7 +190,8 @@ MonoBehaviour:
   showInteractionDiagnostics: 0
   showCanvasFrontDiagnostics: 0
   showFrontTestLabel: 0
-  diagnosticsHeadsetOffset: {x: 0, y: -0.18, z: 0.55}
+  diagnosticPage: 1
+  diagnosticsHeadsetOffset: {x: 0, y: 0, z: 0.72}
 --- !u!114 &5308890283464151190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -185,8 +202,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2f9a188644ca4b12bf98df80b081a5ac, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   requestedSampleRate: 48000
   maximumDuration: 60
   minimumDuration: 0.15
@@ -206,10 +223,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1a59595741d64519a48b10532c91f6bb, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  backendUrl:
+  m_Name: 
+  m_EditorClassIdentifier: 
+  backendUrl: 
   requestTimeoutSeconds: 45
+  developmentTokenEnvironmentVariable: THINKING_SPACE_DEV_TOKEN
+  developmentTokenFileName: dev-token.txt
 --- !u!114 &5308890283464151188
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -220,8 +239,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c8bd09c3c8cf4d9a820cf15df90c7ef1, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   headsetLocalPosition: {x: 0, y: -0.03, z: 0.62}
   panelSize: {x: 620, y: 430}
   canvasScale: 0.0005
@@ -236,8 +255,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 49648b9b18cd4aee89fa7e064d77b5de, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   microphoneRecorder: {fileID: 5308890283464151190}
   gestureController: {fileID: 5308890283464151195}
   transcriptionService: {fileID: 5308890283464151189}
@@ -256,8 +275,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e91e3b70a3574d38b5b9aa2c75505455, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   headsetLocalPosition: {x: 0, y: -0.03, z: 0.62}
   panelSize: {x: 560, y: 430}
   canvasScale: 0.0005

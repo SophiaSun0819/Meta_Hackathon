@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
@@ -15,15 +16,19 @@ namespace ThinkingSpace.UI
     {
         private enum MenuScreen { Main, Session, VoiceHelp, GestureHelp }
         private enum OpeningHand { None, Left, Right }
+        private enum MenuButtonState { WaitingForPalm, Stabilizing, Visible, WaitingForRelease }
         private enum MenuGestureState { WaitingForFist, FistHold, WaitingForOpen, OpenHold, WaitingForRelease }
 
         [Header("Existing References")]
         [SerializeField] private ThumbRecordingGestureController recordingGestureController;
         [SerializeField] private BrainstormMenuView authoredMenuPrefab;
+        [SerializeField] private PalmMenuButtonView palmMenuButtonPrefab;
 
         [Header("Authored UI Test")]
         [SerializeField] private bool debugShowAuthoredMenuAtHeadset;
         [SerializeField] private Vector3 authoredTestHeadsetOffset = new Vector3(0f, -0.03f, 0.55f);
+        [SerializeField] private bool debugShowPalmMenuButtonAtHeadset;
+        [SerializeField] private Vector3 palmButtonTestHeadsetOffset = new Vector3(0f, -0.12f, 0.5f);
 
         [Header("Open Palm")]
         [SerializeField, Min(0.05f)] private float fistArmHoldDuration = 0.3f;
@@ -42,6 +47,26 @@ namespace ThinkingSpace.UI
         [SerializeField, Min(0.01f)] private float followSmoothTime = 0.08f;
         [SerializeField, Min(0.1f)] private float facingSmoothSpeed = 10f;
 
+        [Header("Palm Menu Button")]
+        [SerializeField, Min(0.05f)] private float palmButtonHoldDuration = 0.2f;
+        [SerializeField] private Vector3 palmButtonOffset = new Vector3(0f, 0.055f, 0.015f);
+        [SerializeField, Min(0.01f)] private float palmButtonFollowSmoothTime = 0.06f;
+        [SerializeField, Min(0.05f)] private float ownerTrackingLossGrace = 1f;
+        [SerializeField, Range(46f, 85f)] private float palmUpExitTolerance = 75f;
+        [SerializeField, Min(0.05f)] private float palmPoseLossGrace = 0.5f;
+        [FormerlySerializedAs("interactionEnableDelay")]
+        [SerializeField, HideInInspector] private float legacyInteractionEnableDelay;
+
+        [Header("Palm Normal Development Calibration")]
+        [SerializeField] private bool developmentPalmNormalCalibration;
+        [SerializeField] private bool captureLeftPalmUpPose;
+        [SerializeField] private bool captureRightPalmUpPose;
+        [SerializeField] private bool showPalmNormalVisualization;
+        // Quest runtime evidence showed the prior (-1/+1) convention accepted palm-down.
+        // Keep these serialized and independently calibratable rather than hard-coding a cross-product flip.
+        [SerializeField, Range(-1f, 1f)] private float leftPalmNormalSign = 1f;
+        [SerializeField, Range(-1f, 1f)] private float rightPalmNormalSign = -1f;
+
         [Header("Fist Progress")]
         [SerializeField, Min(0.1f)] private float readyMessageDuration = 0.6f;
         [SerializeField] private Vector3 progressOffsetFromHand = new Vector3(0f, 0.065f, 0.02f);
@@ -57,7 +82,8 @@ namespace ThinkingSpace.UI
         [SerializeField] private bool showInteractionDiagnostics;
         [SerializeField] private bool showCanvasFrontDiagnostics;
         [SerializeField] private bool showFrontTestLabel;
-        [SerializeField] private Vector3 diagnosticsHeadsetOffset = new Vector3(0f, -0.18f, 0.55f);
+        [SerializeField, Range(1, 4)] private int diagnosticPage = 1;
+        [SerializeField] private Vector3 diagnosticsHeadsetOffset = new Vector3(0f, 0f, 0.72f);
 
         private sealed class FingerChain
         {
@@ -78,6 +104,10 @@ namespace ThinkingSpace.UI
             public int curledCount, extendedCount;
             public float palmFacingAngle = 180f, palmUpAngle = 180f;
             public float palmUpDot;
+            public Vector3 rawPalmNormalWorld, palmNormalWorld;
+            public float calibrationSign = 1f;
+            public bool calibrated;
+            public bool tracked, jointsResolved;
             public bool fistRecognized, openRecognized;
             public string classification = "NEUTRAL";
             public float thumbPalmRatio = 10f;
@@ -85,16 +115,20 @@ namespace ThinkingSpace.UI
                 && thumbTip != null && index.Resolved && middle.Resolved && ring.Resolved && pinky.Resolved;
         }
 
-        private readonly BrainstormSessionStore sessionStore = new BrainstormSessionStore();
+        private BrainstormSessionStore sessionStore;
         private readonly OpenPalmHand left = new OpenPalmHand();
         private readonly OpenPalmHand right = new OpenPalmHand();
         private Canvas menuCanvas;
+        private Canvas palmButtonCanvas;
+        private PalmMenuButtonView palmMenuButtonView;
         private BrainstormMenuView authoredView;
         private RectTransform contentRoot;
         private RectTransform canvasRect;
         private BoundsClipper canvasBoundsClipper;
         private GameObject diagnosticsRoot;
         private TextMeshPro diagnosticsText;
+        private GameObject diagnosticsBackground;
+        private Material diagnosticsBackgroundMaterial;
         private GameObject fistProgressRoot;
         private Transform fistProgressFill;
         private TextMeshPro fistProgressText;
@@ -102,24 +136,72 @@ namespace ThinkingSpace.UI
         private Material progressFillMaterial;
         private GameObject frontTestRoot;
         private bool authoredTestWasVisible;
+        private bool palmButtonTestWasVisible;
+        private bool palmButtonDebugOpenedMenu;
         private MenuScreen currentScreen = MenuScreen.Main;
         private MenuScreen helpReturnScreen = MenuScreen.Main;
+        private OpeningHand buttonOwner;
+        private OpeningHand rearmOwner;
+        // Legacy diagnostic fields retained for serialized compatibility; fist activation is no longer evaluated.
         private OpeningHand sequenceOwner;
         private OpeningHand menuOwner;
+        private MenuButtonState buttonState = MenuButtonState.WaitingForPalm;
         private MenuGestureState gestureState = MenuGestureState.WaitingForFist;
         private float gestureHoldTimer;
         private float sequenceTimer;
         private float trackingLossTimer;
         private float fistReleaseTimer;
         private float closeFistTimer;
+        private float palmPoseLossTimer;
         private float lastButtonActivation = -10f;
         private string leftPalmDiagnostic = "Not evaluated";
         private string rightPalmDiagnostic = "Not evaluated";
         private string leftFistDiagnostic = "Not evaluated";
         private string rightFistDiagnostic = "Not evaluated";
         private string interactionDiagnostic = "No UI interaction received";
+        private string lastPointerHover = "None", lastPointerPress = "None", lastPointerClick = "None";
         private Vector3 followVelocity;
+        private Vector3 palmButtonFollowVelocity;
+        private Vector3 lastStableButtonAnchor;
         private bool microphoneMenuLock;
+        private bool rearmRequired;
+        private float canvasFacingDot;
+        private string trackingLossStatus = "None";
+        private string buttonConstructionStatus = "Not built";
+        private string buttonDismissalReason = "None";
+        private TextMeshProUGUI palmButtonLabel;
+        private Button palmMenuButton;
+        private Image palmMenuButtonImage;
+        private GraphicRaycaster palmMenuGraphicRaycaster;
+        private float debugClickConfirmationUntil;
+        private bool palmButtonVisualVisible;
+        private bool palmButtonInteractionActive;
+        private bool palmButtonPoseLocked;
+        private bool menuPoseLocked;
+        private bool palmButtonHovered;
+        private bool palmButtonSelected;
+        private bool menuHovered;
+        private bool menuSelected;
+        private bool debugButtonPosePlaced;
+        private Vector3 debugButtonFrozenPosition;
+        private Quaternion debugButtonFrozenRotation;
+        private int interactionEventSequence;
+        private readonly Queue<string> interactionEventHistory = new Queue<string>(12);
+        private string menuVisibilityDiagnostic = "Menu not opened";
+        private int buttonTransitionCount;
+        private string lastButtonTransition = "Initialized";
+        private HandNormalVisualization leftNormalVisual, rightNormalVisual;
+
+        private sealed class HandNormalVisualization
+        {
+            public GameObject root;
+            public Transform marker;
+            public LineRenderer normalLine, upLine;
+        }
+
+        public BrainstormSessionStore SessionStore => sessionStore;
+        public ThinkingSpacePreferencesStore PreferencesStore => preferencesStore;
+        private ThinkingSpacePreferencesStore preferencesStore;
 
         private static readonly Color PanelColor = new Color(0.035f, 0.055f, 0.09f, 0.97f);
         private static readonly Color ButtonColor = new Color(0.11f, 0.2f, 0.32f, 1f);
@@ -127,6 +209,10 @@ namespace ThinkingSpace.UI
 
         private void Awake()
         {
+            // MonoBehaviour field initializers run during Unity object construction, where
+            // Application.persistentDataPath is forbidden. Resolve it on the main thread here.
+            if (sessionStore == null) sessionStore = BrainstormSessionStore.CreateForApplication();
+            if (preferencesStore == null) preferencesStore = ThinkingSpacePreferencesStore.CreateForApplication();
             if (recordingGestureController == null)
                 recordingGestureController = GetComponent<ThumbRecordingGestureController>();
             if (recordingGestureController == null)
@@ -143,12 +229,16 @@ namespace ThinkingSpace.UI
             left.skeleton = recordingGestureController.LeftOVRSkeleton;
             right.hand = recordingGestureController.RightOVRHand;
             right.skeleton = recordingGestureController.RightOVRSkeleton;
-            recordingGestureController.SetSessionActive(false);
+            bool restoredSession = sessionStore.ActiveSession != null;
+            if (restoredSession)
+                recordingGestureController.SetSessionIdentifier("Session " + sessionStore.ActiveSession.Number);
+            recordingGestureController.SetSessionActive(restoredSession);
+            ApplyPreferences();
             EnsureMetaCanvasEventSystem();
             if (authoredMenuPrefab != null) BuildAuthoredMenu();
             else BuildCanvas();
+            BuildPalmMenuButton();
             BuildDiagnostics();
-            BuildFistProgress();
             if (authoredView == null) BuildFrontTestLabel();
         }
 
@@ -171,134 +261,115 @@ namespace ThinkingSpace.UI
         private void Update()
         {
             if (UpdateAuthoredMenuTestMode()) return;
+            if (UpdatePalmButtonTestMode()) return;
             bool microphoneRecording = recordingGestureController != null
-                && recordingGestureController.IsMicrophoneRecording;
+                && recordingGestureController.ShouldLockMenuForRecording;
             if (microphoneRecording)
             {
                 if (!microphoneMenuLock)
                 {
                     microphoneMenuLock = true;
                     CloseMenuInternal(OpeningHand.None);
-                    ResetOpeningSequence();
+                    ResetPalmButton(true);
                 }
-                if (fistProgressRoot != null) fistProgressRoot.SetActive(false);
+                SetPalmButtonVisible(false);
                 return;
             }
             if (microphoneMenuLock)
             {
                 microphoneMenuLock = false;
-                ResetOpeningSequence();
+                ResetPalmButton(true);
             }
             ResetFrameMetrics(left);
             ResetFrameMetrics(right);
-            bool leftOpen = IsOpenPalm(left, true, out Vector3 leftAnchor);
-            bool rightOpen = IsOpenPalm(right, false, out Vector3 rightAnchor);
-            bool leftFist = IsFist(left, true);
-            bool rightFist = IsFist(right, false);
+            bool leftPalmUp = IsPalmUp(left, true, out Vector3 leftAnchor);
+            bool rightPalmUp = IsPalmUp(right, false, out Vector3 rightAnchor);
+            HandlePalmCalibration(left, true);
+            HandlePalmCalibration(right, false);
 
             if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
             {
-                UpdateMenuFollowing();
-                bool ownerTracked = IsOwnerTracked(menuOwner);
-                bool ownerFist = menuOwner == OpeningHand.Left ? leftFist : rightFist;
-                if (ownerTracked && ownerFist)
+                SetPalmButtonVisible(false);
+                return;
+            }
+
+            if (rearmRequired)
+            {
+                SetPalmButtonVisible(false);
+                bool releaseObserved = rearmOwner == OpeningHand.Left ? !leftPalmUp
+                    : rearmOwner == OpeningHand.Right ? !rightPalmUp : !leftPalmUp && !rightPalmUp;
+                if (releaseObserved)
                 {
-                    closeFistTimer += Time.unscaledDeltaTime;
-                    if (closeFistTimer >= closeFistHoldDuration) CloseMenuInternal(menuOwner);
-                }
-                else if (ownerTracked)
-                {
-                    closeFistTimer = 0f;
+                    rearmRequired = false;
+                    SetButtonState(MenuButtonState.WaitingForPalm, "Rearm owner left palm-up pose");
+                    buttonOwner = OpeningHand.None;
+                    rearmOwner = OpeningHand.None;
                 }
                 return;
             }
 
-            switch (gestureState)
+            if (buttonState == MenuButtonState.Visible)
             {
-                case MenuGestureState.WaitingForFist:
-                    OpeningHand candidate = leftFist ? OpeningHand.Left
-                        : rightFist ? OpeningHand.Right : OpeningHand.None;
-                    if (candidate != OpeningHand.None)
+                if (!IsOwnerTracked(buttonOwner))
+                {
+                    trackingLossTimer += Time.unscaledDeltaTime;
+                    trackingLossStatus = "Button owner tracking lost " + trackingLossTimer.ToString("0.00") + "s";
+                    if (trackingLossTimer >= ownerTrackingLossGrace)
                     {
-                        sequenceOwner = candidate;
-                        gestureHoldTimer = 0f;
-                        trackingLossTimer = 0f;
-                        gestureState = MenuGestureState.FistHold;
+                        buttonDismissalReason = "Owner tracking lost beyond grace period";
+                        lastButtonTransition = buttonDismissalReason;
+                        ResetPalmButton(false);
                     }
-                    break;
-
-                case MenuGestureState.FistHold:
-                    if (!IsOwnerTracked(sequenceOwner))
+                }
+                else
+                {
+                    trackingLossTimer = 0f; trackingLossStatus = "None";
+                    OpenPalmHand owner = buttonOwner == OpeningHand.Left ? left : right;
+                    float exitDot = Mathf.Cos(palmUpExitTolerance * Mathf.Deg2Rad);
+                    if (!owner.jointsResolved || owner.palmUpDot < exitDot)
                     {
-                        if (AccumulateTrackingLoss()) ResetOpeningSequence();
-                        break;
+                        palmPoseLossTimer += Time.unscaledDeltaTime;
+                        if (palmPoseLossTimer >= palmPoseLossGrace)
+                        {
+                            buttonDismissalReason = owner.jointsResolved
+                                ? "Owner palm left the " + palmUpExitTolerance.ToString("0") + "° exit cone"
+                                : "Owner palm joints unresolved beyond grace period";
+                            lastButtonTransition = buttonDismissalReason;
+                            ResetPalmButton(false);
+                        }
                     }
-                    trackingLossTimer = 0f;
-                    if (!GetOwnerPose(sequenceOwner, leftFist, rightFist))
-                    {
-                        ResetOpeningSequence();
-                        break;
-                    }
-                    gestureHoldTimer += Time.unscaledDeltaTime;
-                    if (gestureHoldTimer >= fistArmHoldDuration)
-                    {
-                        gestureHoldTimer = 0f;
-                        sequenceTimer = 0f;
-                        fistReleaseTimer = 0f;
-                        gestureState = MenuGestureState.WaitingForOpen;
-                    }
-                    break;
-
-                case MenuGestureState.WaitingForOpen:
-                case MenuGestureState.OpenHold:
-                    sequenceTimer += Time.unscaledDeltaTime;
-                    if (sequenceTimer > fistToOpenTimeout)
-                    {
-                        ResetOpeningSequence();
-                        break;
-                    }
-                    if (!IsOwnerTracked(sequenceOwner))
-                    {
-                        if (AccumulateTrackingLoss()) ResetOpeningSequence();
-                        break;
-                    }
-                    trackingLossTimer = 0f;
-                    bool ownerStillFist = GetOwnerPose(sequenceOwner, leftFist, rightFist);
-                    if (ownerStillFist)
-                    {
-                        fistReleaseTimer = 0f;
-                        gestureHoldTimer = 0f;
-                        gestureState = MenuGestureState.WaitingForOpen;
-                        break;
-                    }
-                    fistReleaseTimer += Time.unscaledDeltaTime;
-                    if (fistReleaseTimer < fistReleaseDebounce) break;
-                    bool ownerOpen = GetOwnerPose(sequenceOwner, leftOpen, rightOpen);
-                    if (!ownerOpen)
-                    {
-                        gestureHoldTimer = 0f;
-                        gestureState = MenuGestureState.WaitingForOpen;
-                        break;
-                    }
-                    if (gestureState != MenuGestureState.OpenHold)
-                    {
-                        gestureState = MenuGestureState.OpenHold;
-                        gestureHoldTimer = 0f;
-                    }
-                    gestureHoldTimer += Time.unscaledDeltaTime;
-                    if (gestureHoldTimer >= openPalmHoldDuration)
-                    {
-                        Vector3 anchor = sequenceOwner == OpeningHand.Left ? leftAnchor : rightAnchor;
-                        OpenMenu(sequenceOwner, anchor);
-                    }
-                    break;
-
-                case MenuGestureState.WaitingForRelease:
-                    if (!IsOwnerTracked(sequenceOwner)) break;
-                    bool stillFist = GetOwnerPose(sequenceOwner, leftFist, rightFist);
-                    if (!stillFist) ResetOpeningSequence();
-                    break;
+                    else palmPoseLossTimer = 0f;
+                }
+                return;
             }
+
+            if (buttonState == MenuButtonState.Stabilizing && buttonOwner != OpeningHand.None)
+            {
+                bool ownerStillUp = buttonOwner == OpeningHand.Left ? leftPalmUp : rightPalmUp;
+                if (!ownerStillUp)
+                {
+                    buttonOwner = OpeningHand.None; gestureHoldTimer = 0f;
+                    SetButtonState(MenuButtonState.WaitingForPalm, "Qualifying palm lost during stability hold"); return;
+                }
+                gestureHoldTimer += Time.unscaledDeltaTime;
+                if (gestureHoldTimer >= palmButtonHoldDuration)
+                {
+                    SetButtonState(MenuButtonState.Visible, "Palm stable for entry hold"); trackingLossTimer = 0f;
+                    palmPoseLossTimer = 0f;
+                    SetPalmButtonVisible(true);
+                    PlacePalmButtonImmediately(buttonOwner == OpeningHand.Left ? leftAnchor : rightAnchor);
+                }
+                return;
+            }
+
+            OpeningHand candidate = leftPalmUp ? OpeningHand.Left : rightPalmUp ? OpeningHand.Right : OpeningHand.None;
+            if (candidate == OpeningHand.None)
+            {
+                buttonOwner = OpeningHand.None; gestureHoldTimer = 0f;
+                SetButtonState(MenuButtonState.WaitingForPalm, "No qualifying palm"); return;
+            }
+            buttonOwner = candidate; SetButtonState(MenuButtonState.Stabilizing, candidate + " palm entered 45° cone");
+            gestureHoldTimer = 0f;
         }
 
         private static void ResetFrameMetrics(OpenPalmHand hand)
@@ -308,6 +379,8 @@ namespace ThinkingSpace.UI
             hand.curledCount = 0;
             hand.extendedCount = 0;
             hand.classification = "NEUTRAL";
+            hand.tracked = false;
+            hand.jointsResolved = false;
         }
 
         private bool AccumulateTrackingLoss()
@@ -334,7 +407,7 @@ namespace ThinkingSpace.UI
             gestureHoldTimer = sequenceTimer = trackingLossTimer = fistReleaseTimer = 0f;
         }
 
-        private bool IsOpenPalm(OpenPalmHand hand, bool isLeft, out Vector3 anchor)
+        private bool IsPalmUp(OpenPalmHand hand, bool isLeft, out Vector3 anchor)
         {
             anchor = Vector3.zero;
             hand.openRecognized = false;
@@ -348,15 +421,16 @@ namespace ThinkingSpace.UI
                 SetPalmDiagnostic(isLeft, "Hand not tracked");
                 return false;
             }
+            hand.tracked = true;
             if (!ResolveOpenPalmJoints(hand))
             {
                 SetPalmDiagnostic(isLeft, "Required OpenXR joints unresolved");
                 return false;
             }
+            hand.jointsResolved = true;
             UpdateFingerRatios(hand);
 
-            anchor = hand.palm != null ? hand.palm.position
-                : (hand.index.proximal.position + hand.pinky.proximal.position + hand.wrist.position) / 3f;
+            anchor = GetStablePalmAnchor(hand);
             Transform headset = recordingGestureController.CenterEyeAnchor;
             if (headset == null)
             {
@@ -366,11 +440,12 @@ namespace ThinkingSpace.UI
 
             Vector3 acrossPalm = hand.index.proximal.position - hand.pinky.proximal.position;
             Vector3 alongPalm = hand.middle.proximal.position - hand.wrist.position;
-            Vector3 palmNormal = Vector3.Cross(acrossPalm, alongPalm).normalized;
-            // OpenXR hand geometry is mirrored. Quest runtime measurements show
-            // this cross product already points out of the left palm, while the
-            // right-hand result must be inverted to preserve the anatomical sign.
-            if (!isLeft) palmNormal = -palmNormal;
+            Vector3 rawPalmNormal = Vector3.Cross(acrossPalm, alongPalm).normalized;
+            float sign = isLeft ? leftPalmNormalSign : rightPalmNormalSign;
+            Vector3 palmNormal = rawPalmNormal * (sign < 0f ? -1f : 1f);
+            hand.rawPalmNormalWorld = rawPalmNormal;
+            hand.palmNormalWorld = palmNormal;
+            hand.calibrationSign = sign < 0f ? -1f : 1f;
             Vector3 towardHeadset = (headset.position - anchor).normalized;
             float requiredUpDot = Mathf.Cos(palmUpTolerance * Mathf.Deg2Rad);
             float facingDot = Vector3.Dot(palmNormal, towardHeadset);
@@ -394,17 +469,35 @@ namespace ThinkingSpace.UI
                     + " / angle " + upAngle.ToString("0") + "°; extended " + extended + "/4");
                 return false;
             }
-            if (extended < requiredExtendedFingers)
-            {
-                SetPalmDiagnostic(isLeft, "Only " + extended + "/4 fingers extended");
-                return false;
-            }
-            SetPalmDiagnostic(isLeft, "OPEN PALM UP; dot " + upDot.ToString("0.00")
+            SetPalmDiagnostic(isLeft, "PALM UP; dot " + upDot.ToString("0.00")
                 + "; head " + facingAngle.ToString("0") + "° / up " + upAngle.ToString("0")
                 + "°; extended " + extended + "/4");
             hand.openRecognized = true;
-            hand.classification = "OPEN";
+            hand.classification = "PALM UP";
             return true;
+        }
+
+        private void HandlePalmCalibration(OpenPalmHand hand, bool isLeft)
+        {
+            if (!developmentPalmNormalCalibration || !hand.tracked || !hand.jointsResolved) return;
+            bool capture = isLeft ? captureLeftPalmUpPose : captureRightPalmUpPose;
+            if (!capture) return;
+            float rawUpDot = Vector3.Dot(hand.rawPalmNormalWorld, Vector3.up);
+            float required = Mathf.Cos(palmUpTolerance * Mathf.Deg2Rad);
+            if (Mathf.Abs(rawUpDot) < required || hand.extendedCount < 3)
+            {
+                SetPalmDiagnostic(isLeft, "CALIBRATION waiting: deliberately hold anatomical palm up within "
+                    + palmUpTolerance.ToString("0") + "° with 3+ fingers extended; raw dot "
+                    + rawUpDot.ToString("0.00") + ", extended " + hand.extendedCount + "/4");
+                return;
+            }
+            float capturedSign = rawUpDot >= 0f ? 1f : -1f;
+            if (isLeft) { leftPalmNormalSign = capturedSign; captureLeftPalmUpPose = false; }
+            else { rightPalmNormalSign = capturedSign; captureRightPalmUpPose = false; }
+            hand.calibrationSign = capturedSign;
+            hand.calibrated = true;
+            SetPalmDiagnostic(isLeft, "CALIBRATED from deliberate palm-up pose; raw dot "
+                + rawUpDot.ToString("0.00") + ", sign " + capturedSign.ToString("+0;-0"));
         }
 
         private bool IsFist(OpenPalmHand hand, bool isLeft)
@@ -546,7 +639,8 @@ namespace ThinkingSpace.UI
 
         private void BuildAuthoredMenu()
         {
-            authoredView = Instantiate(authoredMenuPrefab, transform);
+            // Keep the world-space UI independent of any motion or scale on the speech prototype.
+            authoredView = Instantiate(authoredMenuPrefab);
             authoredView.name = "Brainstorm Menu (Authored)";
             menuCanvas = authoredView.GetComponent<Canvas>();
             canvasRect = menuCanvas.GetComponent<RectTransform>();
@@ -563,9 +657,117 @@ namespace ThinkingSpace.UI
                 () => InvokeGuarded(() => ShowPlaceholder("Connect My Ideas — Coming Soon")),
                 () => InvokeGuarded(() => ShowPlaceholder("Whiteboard — Coming Soon")),
                 () => InvokeGuarded(EndSession),
-                () => InvokeGuarded(() => ShowScreen(helpReturnScreen)));
+                () => InvokeGuarded(() => ShowScreen(helpReturnScreen)),
+                () => InvokeGuarded(() => ChangeSilenceDuration(-ThinkingSpacePreferencesStore.StepSeconds)),
+                () => InvokeGuarded(() => ChangeSilenceDuration(ThinkingSpacePreferencesStore.StepSeconds)),
+                () => InvokeGuarded(() => ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode.Conversational)),
+                () => InvokeGuarded(() => ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode.Manual)));
+            authoredView.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
+                preferencesStore.Data.RecordingMode);
             authoredView.SetFrontMarkerVisible(false);
             authoredView.gameObject.SetActive(false);
+        }
+
+        private void ApplyPreferences()
+        {
+            if (preferencesStore == null || recordingGestureController == null) return;
+            recordingGestureController.SetRecordingMode(preferencesStore.Data.RecordingMode);
+            recordingGestureController.ConversationalListening?.SetSilenceDuration(
+                preferencesStore.Data.SilenceDurationSeconds);
+        }
+
+        private void ChangeSilenceDuration(float delta)
+        {
+            if (preferencesStore == null) return;
+            if (!preferencesStore.SetSilenceDuration(preferencesStore.Data.SilenceDurationSeconds + delta))
+            { authoredView?.SetSessionStatus(preferencesStore.LastError); return; }
+            recordingGestureController.ConversationalListening?.SetSilenceDuration(
+                preferencesStore.Data.SilenceDurationSeconds);
+            authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
+                preferencesStore.Data.RecordingMode);
+        }
+
+        private void ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode mode)
+        {
+            if (preferencesStore == null || !preferencesStore.SetRecordingMode(mode)) return;
+            recordingGestureController.SetRecordingMode(mode);
+            authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds, mode);
+        }
+
+        private void BuildPalmMenuButton()
+        {
+            if (palmMenuButtonPrefab == null)
+            {
+                buttonConstructionStatus = "Authored PalmMenuButton prefab reference missing";
+                Debug.LogError(buttonConstructionStatus, this);
+                return;
+            }
+            palmMenuButtonView = Instantiate(palmMenuButtonPrefab);
+            palmMenuButtonView.name = "Palm Menu Button (Authored)";
+            palmButtonCanvas = palmMenuButtonView.WorldCanvas;
+            palmMenuGraphicRaycaster = palmMenuButtonView.GraphicRaycaster;
+            palmMenuButton = palmMenuButtonView.MenuButton;
+            palmMenuButtonImage = palmMenuButtonView.ButtonImage;
+            palmButtonLabel = palmMenuButtonView.Label;
+            palmMenuButton.onClick.RemoveAllListeners();
+            palmMenuButton.onClick.AddListener(() => InvokeGuarded(PressPalmMenuButton));
+            palmMenuButtonView.UnityPointerDown += HandleUnityPointerDown;
+            palmMenuButtonView.UnityPointerUp += HandleUnityPointerUp;
+            palmMenuButtonView.UnityPointerClick += HandleUnityPointerClick;
+            buttonConstructionStatus = palmMenuButtonView.InteractionComponentsValid
+                ? "Authored prefab ready" : "Authored prefab has missing component references";
+            if (!palmMenuButtonView.InteractionComponentsValid)
+                Debug.LogError(buttonConstructionStatus, this);
+            palmButtonVisualVisible = true;
+            SetPalmButtonVisible(false);
+        }
+
+        private bool UpdatePalmButtonTestMode()
+        {
+            if (!debugShowPalmMenuButtonAtHeadset)
+            {
+                if (palmButtonTestWasVisible)
+                {
+                    palmButtonTestWasVisible = false;
+                    palmButtonDebugOpenedMenu = false;
+                    debugButtonPosePlaced = false;
+                    SetPalmButtonVisible(false);
+                    ResetPalmButton(false);
+                }
+                return false;
+            }
+            Transform headset = recordingGestureController != null
+                ? recordingGestureController.CenterEyeAnchor : null;
+            if (headset == null)
+            {
+                buttonConstructionStatus = "Debug test rejected: CenterEyeAnchor missing";
+                return true;
+            }
+            palmButtonTestWasVisible = true;
+            if (palmButtonDebugOpenedMenu)
+            {
+                SetPalmButtonVisible(false);
+                return true;
+            }
+            SetPalmButtonVisible(true);
+            if (!debugButtonPosePlaced)
+            {
+                debugButtonPosePlaced = true;
+                debugButtonFrozenPosition = headset.TransformPoint(palmButtonTestHeadsetOffset);
+                debugButtonFrozenRotation = headset.rotation;
+                palmButtonCanvas.transform.SetPositionAndRotation(
+                    debugButtonFrozenPosition, debugButtonFrozenRotation);
+                RecordInteractionEvent("DEBUG BASELINE PLACED", null,
+                    palmButtonCanvas.gameObject);
+            }
+            else
+            {
+                palmButtonCanvas.transform.SetPositionAndRotation(
+                    debugButtonFrozenPosition, debugButtonFrozenRotation);
+            }
+            if (palmButtonLabel != null && Time.unscaledTime >= debugClickConfirmationUntil)
+                palmButtonLabel.text = "Menu";
+            return true;
         }
 
         private bool UpdateAuthoredMenuTestMode()
@@ -577,13 +779,14 @@ namespace ThinkingSpace.UI
                 {
                     authoredView.gameObject.SetActive(false);
                     authoredTestWasVisible = false;
-                    ResetOpeningSequence();
+                    ResetPalmButton(true);
                 }
                 return false;
             }
 
             Transform headset = recordingGestureController.CenterEyeAnchor;
             if (headset == null) return true;
+            SetPalmButtonVisible(false);
             if (!authoredTestWasVisible)
             {
                 authoredView.gameObject.SetActive(true);
@@ -600,7 +803,6 @@ namespace ThinkingSpace.UI
         private void BuildCanvas()
         {
             GameObject canvasObject = new GameObject("Brainstorm Hand Menu");
-            canvasObject.transform.SetParent(transform, false);
             menuCanvas = canvasObject.AddComponent<Canvas>();
             menuCanvas.renderMode = RenderMode.WorldSpace;
             menuCanvas.overrideSorting = true;
@@ -669,17 +871,82 @@ namespace ThinkingSpace.UI
         private void BuildDiagnostics()
         {
             diagnosticsRoot = new GameObject("Open Palm Diagnostics", typeof(RectTransform));
-            diagnosticsRoot.transform.SetParent(transform, false);
             RectTransform rect = diagnosticsRoot.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(82f, 48f);
-            rect.localScale = Vector3.one * 0.01f;
+            rect.sizeDelta = new Vector2(0.72f, 0.52f);
+            rect.localScale = Vector3.one;
             diagnosticsText = diagnosticsRoot.AddComponent<TextMeshPro>();
             diagnosticsText.font = menuFont;
-            diagnosticsText.fontSize = 2.6f;
+            diagnosticsText.fontSharedMaterial = menuFont != null ? menuFont.material : null;
+            diagnosticsText.enableAutoSizing = false;
+            // TMP's 3D text scale makes the previous 0.055 value roughly 4 mm high.
+            // 0.20 produces approximately 14 mm capitals with the configured Rubik SDF.
+            diagnosticsText.fontSize = 0.20f;
             diagnosticsText.color = Color.white;
             diagnosticsText.alignment = TextAlignmentOptions.TopLeft;
             diagnosticsText.textWrappingMode = TextWrappingModes.Normal;
+            diagnosticsText.overflowMode = TextOverflowModes.Truncate;
+            diagnosticsText.margin = new Vector4(0.03f, 0.025f, 0.03f, 0.025f);
+
+            diagnosticsBackground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            diagnosticsBackground.name = "Diagnostics Background (Non-interactive)";
+            diagnosticsBackground.transform.SetParent(diagnosticsRoot.transform, false);
+            diagnosticsBackground.transform.localPosition = new Vector3(0f, 0f, 0.012f);
+            diagnosticsBackground.transform.localScale = new Vector3(0.76f, 0.56f, 0.008f);
+            Collider backgroundCollider = diagnosticsBackground.GetComponent<Collider>();
+            if (backgroundCollider != null) Destroy(backgroundCollider);
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            diagnosticsBackgroundMaterial = CreateProgressMaterial(shader,
+                new Color(0.005f, 0.01f, 0.02f, 0.96f), "Palm Diagnostics Background");
+            diagnosticsBackground.GetComponent<Renderer>().sharedMaterial = diagnosticsBackgroundMaterial;
+
+            leftNormalVisual = BuildHandNormalVisualization("Left Palm Normal", Color.red);
+            rightNormalVisual = BuildHandNormalVisualization("Right Palm Normal", Color.cyan);
             diagnosticsRoot.SetActive(false);
+        }
+
+        private HandNormalVisualization BuildHandNormalVisualization(string name, Color normalColor)
+        {
+            var visual = new HandNormalVisualization { root = new GameObject(name) };
+            GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            marker.name = "Palm Center"; marker.transform.SetParent(visual.root.transform, false);
+            marker.transform.localScale = Vector3.one * 0.018f;
+            Collider collider = marker.GetComponent<Collider>(); if (collider != null) Destroy(collider);
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            marker.GetComponent<Renderer>().sharedMaterial = CreateProgressMaterial(shader, normalColor, name + " Marker");
+            visual.marker = marker.transform;
+            visual.normalLine = CreateDiagnosticLine("Anatomical Palm Normal", visual.root.transform, normalColor, shader);
+            visual.upLine = CreateDiagnosticLine("World Up Reference", visual.root.transform, Color.green, shader);
+            visual.root.SetActive(false);
+            return visual;
+        }
+
+        private static LineRenderer CreateDiagnosticLine(string name, Transform parent, Color color, Shader shader)
+        {
+            GameObject lineObject = new GameObject(name);
+            lineObject.transform.SetParent(parent, false);
+            LineRenderer line = lineObject.AddComponent<LineRenderer>();
+            line.useWorldSpace = true; line.positionCount = 2;
+            line.startWidth = 0.006f; line.endWidth = 0.002f;
+            line.numCapVertices = 4;
+            line.sharedMaterial = CreateProgressMaterial(shader, color, name + " Material");
+            line.startColor = line.endColor = color;
+            return line;
+        }
+
+        private void UpdateHandNormalVisualization(HandNormalVisualization visual, OpenPalmHand hand)
+        {
+            bool visible = showPalmNormalVisualization && hand.tracked && hand.jointsResolved;
+            if (visual == null) return;
+            visual.root.SetActive(visible);
+            if (!visible) return;
+            Vector3 center = GetStablePalmAnchor(hand);
+            visual.marker.position = center;
+            visual.normalLine.SetPosition(0, center);
+            visual.normalLine.SetPosition(1, center + hand.palmNormalWorld * 0.09f);
+            visual.upLine.SetPosition(0, center);
+            visual.upLine.SetPosition(1, center + Vector3.up * 0.07f);
         }
 
         private void BuildFistProgress()
@@ -748,7 +1015,10 @@ namespace ThinkingSpace.UI
 
         private void LateUpdate()
         {
-            UpdateFistProgressVisual();
+            UpdatePalmButtonFollowing();
+            UpdateMenuFollowing();
+            UpdateHandNormalVisualization(leftNormalVisual, left);
+            UpdateHandNormalVisualization(rightNormalVisual, right);
             if (frontTestRoot != null)
             {
                 frontTestRoot.SetActive(showFrontTestLabel && menuCanvas != null && menuCanvas.gameObject.activeSelf);
@@ -767,35 +1037,41 @@ namespace ThinkingSpace.UI
             Vector3 diagnosticsForward = diagnosticsRoot.transform.position - headset.position;
             if (diagnosticsForward.sqrMagnitude > 0.001f)
                 diagnosticsRoot.transform.rotation = Quaternion.LookRotation(diagnosticsForward.normalized, Vector3.up);
-            string palmStatus = showOpenPalmDiagnostics
-                ? "FIST-TO-OPEN MENU   LEFT: " + left.classification + "   RIGHT: " + right.classification
-                    + FormatHandMetrics("Left", left, leftFistDiagnostic, leftPalmDiagnostic)
-                    + FormatHandMetrics("Right", right, rightFistDiagnostic, rightPalmDiagnostic)
-                    + "\nState: " + gestureState + "   Sequence hand: " + sequenceOwner
-                    + "   Hold: " + gestureHoldTimer.ToString("0.00")
-                    + "   Window: " + sequenceTimer.ToString("0.00") + "/" + fistToOpenTimeout.ToString("0.00")
-                    + "\nOwner: " + menuOwner + "   Close fist: " + closeFistTimer.ToString("0.00")
-                : string.Empty;
-            string interactionStatus = showInteractionDiagnostics
-                ? (palmStatus.Length > 0 ? "\n" : string.Empty) + "UI: " + interactionDiagnostic
-                : string.Empty;
-            string canvasStatus = showCanvasFrontDiagnostics ? GetCanvasFrontDiagnostic(headset) : string.Empty;
-            diagnosticsText.text = palmStatus + interactionStatus + canvasStatus
-                + "\nMenu: " + (menuCanvas != null && menuCanvas.gameObject.activeSelf ? "OPEN" : "closed");
+            if (diagnosticPage == 1)
+                diagnosticsText.text = "PALM  1 / 4"
+                    + FormatHandMetrics("LEFT", left, leftPalmDiagnostic)
+                    + FormatHandMetrics("RIGHT", right, rightPalmDiagnostic);
+            else if (diagnosticPage == 2)
+                diagnosticsText.text = "BUTTON  2 / 4"
+                    + "\nState " + buttonState + " | owner " + buttonOwner
+                    + "\nVisible " + palmButtonVisualVisible + " | eligible " + palmButtonInteractionActive
+                    + "\nLocked " + palmButtonPoseLocked + " | hold "
+                    + gestureHoldTimer.ToString("0.00") + "/" + palmButtonHoldDuration.ToString("0.00")
+                    + "\nGrace pose/tracking " + palmPoseLossTimer.ToString("0.00") + "/" + trackingLossTimer.ToString("0.00")
+                    + "\nDismiss " + buttonDismissalReason
+                    + "\nTransitions " + buttonTransitionCount + " | " + lastButtonTransition;
+            else if (diagnosticPage == 3)
+                diagnosticsText.text = "INTERACTION  3 / 4"
+                    + "\nBuilt " + buttonConstructionStatus
+                    + "\nCanvas/Raycaster " + (palmButtonCanvas != null && palmButtonCanvas.enabled)
+                    + "/" + (palmMenuGraphicRaycaster != null && palmMenuGraphicRaycaster.enabled)
+                    + "\nButton/Meta " + (palmMenuButton != null && palmMenuButton.interactable)
+                    + "/" + (palmMenuButtonView != null && palmMenuButtonView.IsEligible)
+                    + "\nHover/Select " + palmButtonHovered + "/" + palmButtonSelected
+                    + "\nLast " + interactionDiagnostic
+                    + "\nMenu " + menuVisibilityDiagnostic;
+            else
+                diagnosticsText.text = "EVENT CHAIN  4 / 4\n" + string.Join("\n", interactionEventHistory);
         }
 
-        private static string FormatHandMetrics(string name, OpenPalmHand hand, string fistReason, string openReason)
+        private static string FormatHandMetrics(string name, OpenPalmHand hand, string openReason)
         {
-            return "\n[" + name + "] Fist: " + (hand.fistRecognized ? "YES" : "no")
-                + "   Open: " + (hand.openRecognized ? "YES" : "no")
-                + "   Curled: " + hand.curledCount + "/4   Extended: " + hand.extendedCount + "/4"
-                + "\nRatios I/M/R/P: " + hand.indexRatio.ToString("0.00") + "/"
-                + hand.middleRatio.ToString("0.00") + "/" + hand.ringRatio.ToString("0.00")
-                + "/" + hand.pinkyRatio.ToString("0.00")
-                + "   Head: " + hand.palmFacingAngle.ToString("0") + "°   Up: "
-                + hand.palmUpAngle.ToString("0") + "°   Up dot: " + hand.palmUpDot.ToString("0.00")
-                + "   Thumb/palm: " + hand.thumbPalmRatio.ToString("0.00")
-                + "\nFist reason: " + fistReason + "\nOpen reason: " + openReason;
+            return "\n[" + name + "] Tracked: " + (hand.tracked ? "YES" : "no")
+                + "   Joints: " + (hand.jointsResolved ? "RESOLVED" : "unresolved")
+                + "   Pose: " + (hand.openRecognized ? "UP" : "rejected")
+                + "\nAngle: " + hand.palmUpAngle.ToString("0") + "°   Dot: "
+                + hand.palmUpDot.ToString("0.00") + "   Sign: " + hand.calibrationSign.ToString("+0;-0")
+                + "\nReason: " + openReason;
         }
 
         private void UpdateFistProgressVisual()
@@ -870,25 +1146,105 @@ namespace ThinkingSpace.UI
         private void HandleCanvasHover(PointableCanvasEventArgs args)
         {
             if (args.Canvas == menuCanvas)
+            {
+                menuHovered = true;
+                menuPoseLocked = true;
                 interactionDiagnostic = "Hover: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META HOVER MENU", args.PointerId, args.Hovered);
+            }
+            else if (args.Canvas == palmButtonCanvas)
+            {
+                palmButtonHovered = true;
+                palmButtonPoseLocked = true;
+                interactionDiagnostic = "Palm Menu hover: " + GetInteractionObjectName(args.Hovered);
+                lastPointerHover = GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META HOVER", args.PointerId, args.Hovered);
+            }
         }
 
         private void HandleCanvasUnhover(PointableCanvasEventArgs args)
         {
             if (args.Canvas == menuCanvas)
+            {
+                menuHovered = false;
+                menuPoseLocked = menuSelected;
                 interactionDiagnostic = "Hover ended: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META UNHOVER MENU", args.PointerId, args.Hovered);
+            }
+            else if (args.Canvas == palmButtonCanvas)
+            {
+                palmButtonHovered = false;
+                palmButtonPoseLocked = palmButtonSelected;
+                interactionDiagnostic = "Palm Menu hover ended: " + GetInteractionObjectName(args.Hovered);
+                lastPointerHover = "Released hover: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META UNHOVER", args.PointerId, args.Hovered);
+            }
         }
 
         private void HandleCanvasPress(PointableCanvasEventArgs args)
         {
             if (args.Canvas == menuCanvas)
+            {
+                menuSelected = true;
+                menuPoseLocked = true;
                 interactionDiagnostic = "Press: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META SELECT MENU", args.PointerId, args.Hovered);
+            }
+            else if (args.Canvas == palmButtonCanvas)
+            {
+                palmButtonSelected = true;
+                palmButtonPoseLocked = true;
+                interactionDiagnostic = "Palm Menu press: " + GetInteractionObjectName(args.Hovered);
+                lastPointerPress = GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META SELECT", args.PointerId, args.Hovered);
+            }
         }
 
         private void HandleCanvasRelease(PointableCanvasEventArgs args)
         {
             if (args.Canvas == menuCanvas)
+            {
+                menuSelected = false;
+                menuPoseLocked = menuHovered;
                 interactionDiagnostic = "Release: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META UNSELECT MENU", args.PointerId, args.Hovered);
+            }
+            else if (args.Canvas == palmButtonCanvas)
+            {
+                palmButtonSelected = false;
+                palmButtonPoseLocked = palmButtonHovered;
+                interactionDiagnostic = "Palm Menu release: " + GetInteractionObjectName(args.Hovered);
+                lastPointerPress = "Released: " + GetInteractionObjectName(args.Hovered);
+                RecordInteractionEvent("META UNSELECT", args.PointerId, args.Hovered);
+            }
+        }
+
+        private void HandleUnityPointerDown(PointerEventData args)
+        {
+            palmButtonPoseLocked = true;
+            RecordInteractionEvent("UNITY POINTER DOWN", args.pointerId, args.pointerPressRaycast.gameObject);
+        }
+
+        private void HandleUnityPointerUp(PointerEventData args)
+        {
+            RecordInteractionEvent("UNITY POINTER UP", args.pointerId, args.pointerPressRaycast.gameObject);
+            palmButtonPoseLocked = palmButtonHovered || palmButtonSelected;
+        }
+
+        private void HandleUnityPointerClick(PointerEventData args)
+        {
+            RecordInteractionEvent("UNITY POINTER CLICK", args.pointerId, args.pointerPressRaycast.gameObject);
+        }
+
+        private void RecordInteractionEvent(string eventName, int? pointerId, GameObject target)
+        {
+            interactionEventSequence++;
+            string entry = "#" + interactionEventSequence + " F" + Time.frameCount
+                + " T" + Time.unscaledTime.ToString("0.000")
+                + " P" + (pointerId.HasValue ? pointerId.Value.ToString() : "-")
+                + " " + eventName + " > " + GetInteractionObjectName(target);
+            while (interactionEventHistory.Count >= 6) interactionEventHistory.Dequeue();
+            interactionEventHistory.Enqueue(entry);
         }
 
         private static string GetInteractionObjectName(GameObject target)
@@ -908,46 +1264,201 @@ namespace ThinkingSpace.UI
             else rightFistDiagnostic = message;
         }
 
+        private void PressPalmMenuButton()
+        {
+            RecordInteractionEvent("UNITY BUTTON ONCLICK", null,
+                palmMenuButton != null ? palmMenuButton.gameObject : null);
+            if (debugShowPalmMenuButtonAtHeadset)
+            {
+                interactionDiagnostic = "Debug palm Menu button clicked successfully";
+                lastPointerClick = "Debug Menu button at " + Time.unscaledTime.ToString("0.00") + "s";
+                debugClickConfirmationUntil = Time.unscaledTime + 1.5f;
+                if (palmButtonLabel != null) palmButtonLabel.text = "Clicked ✓";
+                Transform headset = recordingGestureController != null
+                    ? recordingGestureController.CenterEyeAnchor : null;
+                if (headset == null || menuCanvas == null)
+                {
+                    interactionDiagnostic = "Debug click received, but headset or authored menu is missing";
+                    return;
+                }
+                palmButtonDebugOpenedMenu = true;
+                SetPalmButtonVisible(false);
+                OpenMenuAtHeadset(headset);
+                RecordInteractionEvent("CONTROLLER OPEN CALLBACK", null, menuCanvas.gameObject);
+                return;
+            }
+            if (buttonState != MenuButtonState.Visible || buttonOwner == OpeningHand.None) return;
+            OpeningHand activatingHand = buttonOwner;
+            lastPointerClick = "Menu opened at " + Time.unscaledTime.ToString("0.00") + "s";
+            SetPalmButtonVisible(false);
+            // Use the last stable tracked anchor. A single joint-resolution drop on
+            // the poke/release frame must not consume a valid Unity Button click.
+            OpenMenu(activatingHand, lastStableButtonAnchor);
+            RecordInteractionEvent("CONTROLLER OPEN CALLBACK", null, menuCanvas.gameObject);
+        }
+
+        private static Vector3 GetStablePalmAnchor(OpenPalmHand hand)
+        {
+            return (hand.wrist.position + hand.index.proximal.position + hand.middle.proximal.position
+                + hand.ring.proximal.position + hand.pinky.proximal.position) * 0.2f;
+        }
+
+        private void SetPalmButtonVisible(bool visible)
+        {
+            if (palmButtonCanvas == null) return;
+            bool changed = palmButtonVisualVisible != visible
+                || palmButtonInteractionActive != visible;
+            palmButtonVisualVisible = visible;
+            palmButtonInteractionActive = visible;
+            if (changed)
+            {
+                buttonTransitionCount++;
+                lastButtonTransition = (visible ? "Shown + eligible" : "Hidden + ineligible") + " at "
+                    + Time.unscaledTime.ToString("0.00") + "s";
+            }
+            if (palmMenuButtonView != null)
+                palmMenuButtonView.SetEligibility(visible);
+            else
+            {
+                palmButtonCanvas.enabled = visible;
+                if (palmMenuGraphicRaycaster != null) palmMenuGraphicRaycaster.enabled = visible;
+                if (palmMenuButtonImage != null) palmMenuButtonImage.raycastTarget = visible;
+                if (palmMenuButton != null) palmMenuButton.interactable = visible;
+            }
+            if (!visible)
+            {
+                palmButtonHovered = palmButtonSelected = palmButtonPoseLocked = false;
+                palmButtonCanvas.transform.position = new Vector3(0f, -1000f, 0f);
+            }
+        }
+
+        private void ResetPalmButton(bool requireRelease)
+        {
+            SetPalmButtonVisible(false);
+            palmButtonHovered = palmButtonSelected = palmButtonPoseLocked = false;
+            buttonOwner = OpeningHand.None;
+            SetButtonState(requireRelease ? MenuButtonState.WaitingForRelease : MenuButtonState.WaitingForPalm,
+                requireRelease ? "Waiting for owner palm release" : "Button reset");
+            rearmRequired = requireRelease;
+            if (!requireRelease) rearmOwner = OpeningHand.None;
+            gestureHoldTimer = trackingLossTimer = palmPoseLossTimer = 0f;
+            palmButtonFollowVelocity = Vector3.zero;
+        }
+
+        private void SetButtonState(MenuButtonState next, string reason)
+        {
+            if (buttonState == next) return;
+            buttonState = next;
+            buttonTransitionCount++;
+            lastButtonTransition = next + ": " + reason + " at " + Time.unscaledTime.ToString("0.00") + "s";
+        }
+
+        private void PlacePalmButtonImmediately(Vector3 anchor)
+        {
+            Transform headset = recordingGestureController.CenterEyeAnchor;
+            lastStableButtonAnchor = anchor;
+            palmButtonCanvas.transform.position = GetPalmButtonTargetPosition(anchor, headset);
+            FaceCanvasToHeadset(palmButtonCanvas.transform, headset, true);
+        }
+
+        private void UpdatePalmButtonFollowing()
+        {
+            if (palmButtonCanvas == null || !palmButtonVisualVisible
+                || buttonOwner == OpeningHand.None || palmButtonPoseLocked
+                || debugShowPalmMenuButtonAtHeadset) return;
+            OpenPalmHand owner = buttonOwner == OpeningHand.Left ? left : right;
+            if (!IsOwnerTracked(buttonOwner) || !ResolveOpenPalmJoints(owner)) return;
+            Transform headset = recordingGestureController.CenterEyeAnchor;
+            lastStableButtonAnchor = GetStablePalmAnchor(owner);
+            Vector3 target = GetPalmButtonTargetPosition(lastStableButtonAnchor, headset);
+            palmButtonCanvas.transform.position = Vector3.SmoothDamp(palmButtonCanvas.transform.position,
+                target, ref palmButtonFollowVelocity, palmButtonFollowSmoothTime,
+                Mathf.Infinity, Time.unscaledDeltaTime);
+            FaceCanvasToHeadset(palmButtonCanvas.transform, headset, false);
+        }
+
+        private Vector3 GetPalmButtonTargetPosition(Vector3 anchor, Transform headset)
+        {
+            Vector3 towardHeadset = headset != null ? (headset.position - anchor).normalized : Vector3.zero;
+            Vector3 horizontal = headset != null ? headset.right * palmButtonOffset.x : Vector3.zero;
+            return anchor + horizontal + Vector3.up * palmButtonOffset.y + towardHeadset * palmButtonOffset.z;
+        }
+
+        private void FaceCanvasToHeadset(Transform target, Transform headset, bool immediate)
+        {
+            if (target == null || headset == null) return;
+            Vector3 awayFromHeadset = target.position - headset.position;
+            if (awayFromHeadset.sqrMagnitude < 0.001f) return;
+            Quaternion desired = Quaternion.LookRotation(awayFromHeadset.normalized, Vector3.up);
+            if (immediate) target.rotation = desired;
+            else
+            {
+                float blend = 1f - Mathf.Exp(-facingSmoothSpeed * Time.unscaledDeltaTime);
+                target.rotation = Quaternion.Slerp(target.rotation, desired, blend);
+            }
+        }
+
         private void OpenMenu(OpeningHand owner, Vector3 handAnchor)
         {
             menuOwner = owner;
-            sequenceOwner = OpeningHand.None;
+            buttonOwner = OpeningHand.None;
+            SetButtonState(MenuButtonState.WaitingForRelease, "Menu button clicked; full menu opened");
+            buttonDismissalReason = "Menu button clicked; full menu opened";
+            SetPalmButtonVisible(false);
             gestureHoldTimer = sequenceTimer = trackingLossTimer = fistReleaseTimer = closeFistTimer = 0f;
             followVelocity = Vector3.zero;
             Transform headset = recordingGestureController.CenterEyeAnchor;
-            Vector3 position = GetMenuTargetPosition(handAnchor, headset);
+            Vector3 position = ConstrainMenuPosition(GetMenuTargetPosition(handAnchor, headset), headset);
             menuCanvas.transform.position = position;
-            if (headset != null)
-            {
-                Vector3 forward = position - headset.position;
-                if (forward.sqrMagnitude > 0.001f)
-                    menuCanvas.transform.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
-            }
+            FaceCanvasToHeadset(menuCanvas.transform, headset, true);
+            menuCanvas.enabled = true;
             menuCanvas.gameObject.SetActive(true);
             ShowScreen(sessionStore.ActiveSession == null ? MenuScreen.Main : MenuScreen.Session);
+            ValidateMenuVisibility(headset, "palm open callback");
+        }
+
+        private void OpenMenuAtHeadset(Transform headset)
+        {
+            menuOwner = OpeningHand.None;
+            buttonOwner = OpeningHand.None;
+            SetButtonState(MenuButtonState.WaitingForRelease, "Debug button clicked; full menu opened");
+            buttonDismissalReason = "Debug Menu button clicked; full menu opened";
+            menuCanvas.transform.position = ConstrainMenuPosition(
+                headset.TransformPoint(authoredTestHeadsetOffset), headset);
+            FaceCanvasToHeadset(menuCanvas.transform, headset, true);
+            menuCanvas.enabled = true;
+            menuCanvas.gameObject.SetActive(true);
+            ShowScreen(sessionStore.ActiveSession == null ? MenuScreen.Main : MenuScreen.Session);
+            ValidateMenuVisibility(headset, "debug open callback");
+            interactionDiagnostic = "Click callback completed; " + menuVisibilityDiagnostic;
         }
 
         private void UpdateMenuFollowing()
         {
-            if (menuCanvas == null || !menuCanvas.gameObject.activeSelf || menuOwner == OpeningHand.None) return;
+            if (menuCanvas == null || !menuCanvas.gameObject.activeSelf || menuOwner == OpeningHand.None
+                || menuPoseLocked) return;
             OpenPalmHand owner = menuOwner == OpeningHand.Left ? left : right;
             if (owner.hand == null || owner.skeleton == null || !owner.hand.IsTracked
-                || !ResolveOpenPalmJoints(owner)) return;
+                || !ResolveOpenPalmJoints(owner))
+            {
+                trackingLossStatus = "Menu owner tracking unavailable; panel pose frozen";
+                return;
+            }
+            trackingLossStatus = "None";
 
-            Vector3 anchor = owner.palm != null ? owner.palm.position
-                : (owner.index.proximal.position + owner.pinky.proximal.position + owner.wrist.position) / 3f;
+            Vector3 anchor = GetStablePalmAnchor(owner);
             Transform headset = recordingGestureController.CenterEyeAnchor;
-            Vector3 targetPosition = GetMenuTargetPosition(anchor, headset);
+            Vector3 targetPosition = ConstrainMenuPosition(GetMenuTargetPosition(anchor, headset), headset);
             menuCanvas.transform.position = Vector3.SmoothDamp(
                 menuCanvas.transform.position, targetPosition, ref followVelocity,
                 followSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 
-            if (headset == null) return;
-            Vector3 forward = menuCanvas.transform.position - headset.position;
-            if (forward.sqrMagnitude < 0.001f) return;
-            Quaternion targetRotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
-            float rotationBlend = 1f - Mathf.Exp(-facingSmoothSpeed * Time.unscaledDeltaTime);
-            menuCanvas.transform.rotation = Quaternion.Slerp(menuCanvas.transform.rotation, targetRotation, rotationBlend);
+            FaceCanvasToHeadset(menuCanvas.transform, headset, false);
+            if (headset != null)
+            {
+                Vector3 towardHeadset = (headset.position - menuCanvas.transform.position).normalized;
+                canvasFacingDot = Vector3.Dot(-menuCanvas.transform.forward, towardHeadset);
+            }
         }
 
         private Vector3 GetMenuTargetPosition(Vector3 handAnchor, Transform headset)
@@ -959,6 +1470,46 @@ namespace ThinkingSpace.UI
                 + towardHeadset * menuOffsetFromHand.z;
         }
 
+        private static Vector3 ConstrainMenuPosition(Vector3 worldPosition, Transform headset)
+        {
+            if (headset == null) return worldPosition;
+            Vector3 local = headset.InverseTransformPoint(worldPosition);
+            local.z = Mathf.Clamp(local.z, 0.35f, 0.85f);
+            local.x = Mathf.Clamp(local.x, -0.35f, 0.35f);
+            local.y = Mathf.Clamp(local.y, -0.28f, 0.28f);
+            return headset.TransformPoint(local);
+        }
+
+        private void ValidateMenuVisibility(Transform headset, string source)
+        {
+            if (menuCanvas == null || headset == null)
+            {
+                menuVisibilityDiagnostic = source + ": missing Canvas or headset";
+                return;
+            }
+            Vector3 cameraSpace = headset.InverseTransformPoint(menuCanvas.transform.position);
+            Vector3 towardHeadset = (headset.position - menuCanvas.transform.position).normalized;
+            canvasFacingDot = Vector3.Dot(-menuCanvas.transform.forward, towardHeadset);
+            bool screenContentActive = false;
+            Graphic[] graphics = menuCanvas.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i].gameObject.activeInHierarchy)
+                {
+                    screenContentActive = true;
+                    break;
+                }
+            }
+            menuVisibilityDiagnostic = source + ": canvas=" + menuCanvas.enabled
+                + " content=" + screenContentActive
+                + " cam=" + cameraSpace.ToString("F2")
+                + " facing=" + canvasFacingDot.ToString("0.00")
+                + " scale=" + menuCanvas.transform.lossyScale.ToString("F5");
+            RecordInteractionEvent("MAIN CANVAS VISIBLE="
+                + (menuCanvas.enabled && screenContentActive && cameraSpace.z > 0f), null,
+                menuCanvas.gameObject);
+        }
+
         public void CloseMenu()
         {
             CloseMenuInternal(menuOwner);
@@ -966,12 +1517,13 @@ namespace ThinkingSpace.UI
 
         private void CloseMenuInternal(OpeningHand releasingHand)
         {
+            OpeningHand ownerToRelease = menuOwner != OpeningHand.None ? menuOwner : releasingHand;
             if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
-            sequenceOwner = releasingHand;
+            menuHovered = menuSelected = menuPoseLocked = false;
+            menuVisibilityDiagnostic = "Menu closed";
             menuOwner = OpeningHand.None;
-            gestureHoldTimer = sequenceTimer = trackingLossTimer = fistReleaseTimer = closeFistTimer = 0f;
-            gestureState = releasingHand == OpeningHand.None
-                ? MenuGestureState.WaitingForFist : MenuGestureState.WaitingForRelease;
+            ResetPalmButton(true);
+            rearmOwner = ownerToRelease;
         }
 
         private void ShowScreen(MenuScreen screen)
@@ -1182,8 +1734,20 @@ namespace ThinkingSpace.UI
 
         private void OnDestroy()
         {
+            if (palmMenuButtonView != null)
+            {
+                palmMenuButtonView.UnityPointerDown -= HandleUnityPointerDown;
+                palmMenuButtonView.UnityPointerUp -= HandleUnityPointerUp;
+                palmMenuButtonView.UnityPointerClick -= HandleUnityPointerClick;
+            }
             if (progressBackgroundMaterial != null) Destroy(progressBackgroundMaterial);
             if (progressFillMaterial != null) Destroy(progressFillMaterial);
+            if (palmButtonCanvas != null) Destroy(palmButtonCanvas.gameObject);
+            if (menuCanvas != null && menuCanvas.transform.parent == null) Destroy(menuCanvas.gameObject);
+            if (diagnosticsBackgroundMaterial != null) Destroy(diagnosticsBackgroundMaterial);
+            if (diagnosticsRoot != null) Destroy(diagnosticsRoot);
+            if (leftNormalVisual != null && leftNormalVisual.root != null) Destroy(leftNormalVisual.root);
+            if (rightNormalVisual != null && rightNormalVisual.root != null) Destroy(rightNormalVisual.root);
         }
     }
 }

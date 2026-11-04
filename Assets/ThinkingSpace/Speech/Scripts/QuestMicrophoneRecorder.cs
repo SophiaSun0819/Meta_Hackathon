@@ -3,6 +3,27 @@ using UnityEngine;
 
 namespace ThinkingSpace.Speech
 {
+    public readonly struct PcmRingBufferWindow
+    {
+        public readonly long AbsoluteStartFrame;
+        public readonly int SourceStartFrame, FrameCount;
+        public PcmRingBufferWindow(long absoluteStart, int sourceStart, int frames)
+        { AbsoluteStartFrame = absoluteStart; SourceStartFrame = sourceStart; FrameCount = frames; }
+    }
+
+    public static class PcmRingBufferMath
+    {
+        public static PcmRingBufferWindow Calculate(long requestedStartFrame, long endFrame, int capacityFrames)
+        {
+            if (capacityFrames <= 0 || endFrame <= 0)
+                return new PcmRingBufferWindow(0, 0, 0);
+            long start = Math.Max(0L, Math.Min(requestedStartFrame, endFrame));
+            if (endFrame - start > capacityFrames) start = endFrame - capacityFrames;
+            int count = (int)Math.Min(capacityFrames, Math.Max(0L, endFrame - start));
+            return new PcmRingBufferWindow(start, (int)(start % capacityFrames), count);
+        }
+    }
+
     public enum MicrophoneRecordingState { Idle, RequestingPermission, Starting, Recording, Stopping, Error }
 
     public readonly struct CompletedMicrophoneRecording
@@ -59,7 +80,11 @@ namespace ThinkingSpace.Speech
         private float[] meterSamples;
         private float nextMeterUpdateTime;
         private int previousMicrophonePosition;
-        private int capturedSampleFrames;
+        private long totalCapturedSampleFrames;
+        private long logicalUtteranceStartFrame;
+        private bool logicalUtteranceActive;
+        private bool passiveMonitoringCapture;
+        private string pendingFinalizationReason = string.Empty;
         private AudioSource developmentPlaybackSource;
         private bool maximumDurationReached;
 
@@ -73,8 +98,13 @@ namespace ThinkingSpace.Speech
         public CompletedMicrophoneRecording? LastCompletedRecording { get; private set; }
         public int CurrentSampleRate => captureClip != null ? captureClip.frequency : 0;
         public int CurrentChannels => captureClip != null ? captureClip.channels : 0;
-        public int CurrentSampleFrames => IsCaptureActive ? capturedSampleFrames : 0;
+        public int CurrentSampleFrames => IsCaptureActive && captureClip != null
+            ? (int)Math.Min(totalCapturedSampleFrames, captureClip.samples) : 0;
         public float ElapsedSeconds => State == MicrophoneRecordingState.Recording ? Time.unscaledTime - stateEnteredAt : 0f;
+        public float LogicalUtteranceElapsedSeconds => logicalUtteranceActive && captureClip != null
+            ? (totalCapturedSampleFrames - logicalUtteranceStartFrame) / captureClip.frequency : 0f;
+        public bool LogicalUtteranceActive => logicalUtteranceActive;
+        public string LastFinalizationReason { get; private set; } = "None";
         public bool IsCaptureActive => State == MicrophoneRecordingState.Starting || State == MicrophoneRecordingState.Recording;
         public bool IsRecording => State == MicrophoneRecordingState.Recording;
         public string SelectedDeviceLabel => string.IsNullOrEmpty(selectedDevice) ? "System default" : selectedDevice;
@@ -99,12 +129,19 @@ namespace ThinkingSpace.Speech
             return true;
         }
 
-        public bool BeginRecording()
+        public bool BeginRecording() => BeginCapture(false);
+        public bool BeginMonitoring() => BeginCapture(true);
+
+        private bool BeginCapture(bool passiveMonitoring)
         {
             if (State != MicrophoneRecordingState.Idle && State != MicrophoneRecordingState.Error) return false;
+            passiveMonitoringCapture = passiveMonitoring;
             LastError = string.Empty;
             LastStatus = "Preparing microphone";
             maximumDurationReached = false;
+            logicalUtteranceActive = false;
+            logicalUtteranceStartFrame = 0;
+            pendingFinalizationReason = string.Empty;
             int requestVersion = ++operationVersion;
             if (!HasPermission())
             {
@@ -144,12 +181,13 @@ namespace ThinkingSpace.Speech
             {
                 string[] devices = Microphone.devices;
                 selectedDevice = devices != null && devices.Length > 0 ? devices[0] : null;
-                capturedSampleFrames = previousMicrophonePosition = 0;
+                totalCapturedSampleFrames = 0;
+                previousMicrophonePosition = 0;
                 LiveRms = LivePeak = 0f;
                 SetState(MicrophoneRecordingState.Starting);
                 LastStatus = "Starting microphone";
-                // Keep one extra second in the looping buffer so the 60-second safety stop
-                // occurs before capture data can overwrite its beginning.
+                // One looping clip serves both passive monitoring and logical utterance capture.
+                // Absolute frame counters preserve the current ring-buffer position across wraps.
                 captureClip = Microphone.Start(selectedDevice, true,
                     Mathf.CeilToInt(maximumDuration) + 1, requestedSampleRate);
                 if (captureClip == null) { Fail("Unity Microphone.Start returned no AudioClip."); return false; }
@@ -166,7 +204,7 @@ namespace ThinkingSpace.Speech
                 if (position > 0)
                 {
                     previousMicrophonePosition = position;
-                    capturedSampleFrames = position;
+                    totalCapturedSampleFrames = position;
                     EnsureMeterBuffer();
                     SetState(MicrophoneRecordingState.Recording);
                     LastStatus = "Recording started";
@@ -179,16 +217,28 @@ namespace ThinkingSpace.Speech
             {
                 UpdateCapturedFrameCount();
                 UpdateLiveMeter();
-                if (Time.unscaledTime - stateEnteredAt >= maximumDuration)
+                if (logicalUtteranceActive && LogicalUtteranceElapsedSeconds >= maximumDuration)
                 {
                     maximumDurationReached = true;
                     LastStatus = "Maximum recording duration reached";
-                    StopRecording();
+                    StopRecording("Maximum active utterance duration reached");
+                }
+                else if (!passiveMonitoringCapture && !logicalUtteranceActive
+                    && Time.unscaledTime - stateEnteredAt >= maximumDuration)
+                {
+                    maximumDurationReached = true;
+                    LastStatus = "Maximum manual recording duration reached";
+                    StopRecording("Maximum manual recording duration reached");
                 }
                 else if (!Microphone.IsRecording(selectedDevice))
                 {
-                    LastStatus = "Microphone stopped unexpectedly; finalizing available audio";
-                    StopRecording();
+                    if (passiveMonitoringCapture && !logicalUtteranceActive)
+                        Fail("Microphone stopped unexpectedly during passive monitoring.");
+                    else
+                    {
+                        LastStatus = "Microphone stopped unexpectedly; finalizing available utterance";
+                        StopRecording("Microphone device interruption");
+                    }
                 }
             }
         }
@@ -200,8 +250,20 @@ namespace ThinkingSpace.Speech
             int delta = position >= previousMicrophonePosition
                 ? position - previousMicrophonePosition
                 : captureClip.samples - previousMicrophonePosition + position;
-            if (delta > 0) capturedSampleFrames = Mathf.Min(captureClip.samples, capturedSampleFrames + delta);
+            if (delta > 0) totalCapturedSampleFrames += delta;
             previousMicrophonePosition = position;
+        }
+
+        public bool BeginLogicalUtterance(float secondsToRetainBeforeNow)
+        {
+            if (State != MicrophoneRecordingState.Recording || captureClip == null) return false;
+            long retainedFrames = (long)Math.Ceiling(Mathf.Max(0f, secondsToRetainBeforeNow)
+                * captureClip.frequency);
+            retainedFrames = Math.Min(retainedFrames, captureClip.samples - 1L);
+            logicalUtteranceStartFrame = Math.Max(0L, totalCapturedSampleFrames - retainedFrames);
+            logicalUtteranceActive = true;
+            pendingFinalizationReason = string.Empty;
+            return true;
         }
 
         private void EnsureMeterBuffer()
@@ -236,17 +298,24 @@ namespace ThinkingSpace.Speech
             LivePeak = Mathf.Max(peak, Mathf.Lerp(LivePeak, peak, blend * 0.45f));
         }
 
-        public void StopRecording()
+        public void StopRecording() => StopRecording(null);
+
+        public void StopRecording(string reason)
         {
             if (!IsCaptureActive) return;
             // A stopped device often reports position zero. Do not interpret that reset as
             // a circular-buffer wrap and accidentally finalize the entire backing clip.
             if (Microphone.IsRecording(selectedDevice)) UpdateCapturedFrameCount();
-            int frames = capturedSampleFrames;
+            long endFrame = totalCapturedSampleFrames;
             AudioClip source = captureClip;
-            if (frames <= 0 && State == MicrophoneRecordingState.Recording
-                && Time.unscaledTime - stateEnteredAt >= maximumDuration - 0.1f && source != null)
-                frames = source.samples;
+            long requestedStartFrame = logicalUtteranceActive ? logicalUtteranceStartFrame
+                : Math.Max(0L, endFrame - (source != null ? source.samples : 0));
+            PcmRingBufferWindow window = PcmRingBufferMath.Calculate(requestedStartFrame,
+                endFrame, source != null ? source.samples : 0);
+            long startFrame = window.AbsoluteStartFrame;
+            int frames = window.FrameCount;
+            pendingFinalizationReason = string.IsNullOrWhiteSpace(reason)
+                ? logicalUtteranceActive ? "Manual utterance stop" : "Manual recording stop" : reason;
             SetState(MicrophoneRecordingState.Stopping);
             if (Microphone.IsRecording(selectedDevice)) Microphone.End(selectedDevice);
             captureClip = null;
@@ -258,7 +327,9 @@ namespace ThinkingSpace.Speech
             if (duration < minimumDuration) { Destroy(source); Fail("Recording was too short to use."); return; }
 
             float[] samples = new float[frames * source.channels];
-            if (!source.GetData(samples, 0)) { Destroy(source); Fail("Could not read recorded microphone samples."); return; }
+            int sourceStartFrame = window.SourceStartFrame;
+            if (!source.GetData(samples, sourceStartFrame))
+            { Destroy(source); Fail("Could not read recorded microphone samples from the ring buffer."); return; }
             AudioClip trimmed = AudioClip.Create("Quest Microphone Recording", frames, source.channels, source.frequency, false);
             trimmed.SetData(samples, 0);
             double sum = 0d;
@@ -279,10 +350,14 @@ namespace ThinkingSpace.Speech
             var result = new CompletedMicrophoneRecording(trimmed, frames, trimmed.frequency,
                 trimmed.channels, duration, rms, peak, meaningful, sessionIdentifier);
             LastCompletedRecording = result;
+            LastFinalizationReason = pendingFinalizationReason;
+            logicalUtteranceActive = false;
+            passiveMonitoringCapture = false;
             string completionPrefix = maximumDurationReached
                 ? "Maximum recording duration reached; recording finalized"
                 : "Recording stopped successfully";
-            LastStatus = completionPrefix + (meaningful ? "; audio detected" : "; audio level was near silent");
+            LastStatus = completionPrefix + "; " + LastFinalizationReason
+                + (meaningful ? "; audio detected" : "; audio level was near silent");
             SetState(MicrophoneRecordingState.Idle);
             RecordingCompleted?.Invoke(result);
         }
@@ -294,6 +369,8 @@ namespace ThinkingSpace.Speech
             if (IsCaptureActive && Microphone.IsRecording(selectedDevice)) Microphone.End(selectedDevice);
             if (captureClip != null) Destroy(captureClip);
             captureClip = null;
+            logicalUtteranceActive = false;
+            passiveMonitoringCapture = false;
             LiveRms = LivePeak = 0f;
             LastError = reason ?? string.Empty;
             if (!string.IsNullOrEmpty(reason)) LastStatus = "Recording cancelled: " + reason;
@@ -355,6 +432,9 @@ namespace ThinkingSpace.Speech
                         + "   Audio: " + (LastCompletedRecording.Value.ContainsMeaningfulAudio ? "detected" : "near silent")
                     : "\nCOMPLETED: none")
                 + "\nStatus: " + LastStatus
+                + "\nLogical utterance: " + (logicalUtteranceActive ? "active" : "inactive")
+                + "   Utterance elapsed: " + LogicalUtteranceElapsedSeconds.ToString("0.0")
+                + "s   Finalization: " + LastFinalizationReason
                 + (string.IsNullOrEmpty(LastError) ? string.Empty : "\nMic error: " + LastError);
         }
 
