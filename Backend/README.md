@@ -512,3 +512,52 @@ Clear spatial commands such as resize and move skip the idea-manager endpoint an
 client's allowlisted action validator. Bubble changes must use client-owned scale increments and movement
 distances. The placeholder sphere and final model can consume the same client-side companion state
 interface without changing this backend contract.
+
+## Optional ElevenLabs voice synthesis
+
+`POST /api/voice/synthesize` converts approved companion text to a complete MP3 response. It is optional:
+missing ElevenLabs configuration does not affect `/health`, transcription, intent routing, or idea processing.
+The route requires the same `X-ThinkingSpace-Token` development authentication as the other protected APIs.
+
+Required server-side variables are `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`. Operational defaults are:
+
+- `ELEVENLABS_TTS_MODEL=eleven_flash_v2_5`
+- `ELEVENLABS_TIMEOUT_SECONDS=20`
+- `MAX_TTS_TEXT_CHARACTERS=2000`
+- `MAX_TTS_REQUEST_BYTES=16384`
+- `MAX_TTS_REQUESTS_PER_MINUTE=20`
+- `MAX_TTS_AUDIO_BYTES=5242880`
+
+Unity cannot provide a voice ID, model, provider URL, output format, or credential. Those values are selected
+only by server configuration. Output is fixed to ElevenLabs `mp3_44100_128`, returned as `audio/mpeg`; a future
+Unity client can decode it using `UnityWebRequestMultimedia.GetAudioClip` with `AudioType.MPEG`. The full MP3 is
+buffered before returning; streaming is not implemented.
+
+```json
+{
+  "request_id": "voice-request-001",
+  "session_id": "Session 1",
+  "text": "I combined those ideas into a solar learning workshop."
+}
+```
+
+A successful response is HTTP 200 with `Content-Type: audio/mpeg`, `Cache-Control: no-store`, safe request and
+URL-escaped session correlation headers, `X-ThinkingSpace-Audio-Format: mp3_44100_128`, and MP3 bytes. Errors
+return sanitized JSON. The backend does not log request text, credentials, or generated audio. Request bytes,
+text length, response bytes, timeout, rate, duplicate IDs, and overlapping session requests are bounded.
+
+### Controlled live ElevenLabs check
+
+Run this only after an approved deployment and after Render contains both ElevenLabs secrets. Keep the
+development token in an environment variable rather than writing it into the command:
+
+```powershell
+$body = @{ request_id = "voice-live-001"; session_id = "voice-smoke";
+  text = "Hello, I am Orby. Voice synthesis is ready." } | ConvertTo-Json
+Invoke-WebRequest -Method Post -Uri "https://YOUR-SERVICE.onrender.com/api/voice/synthesize" `
+  -Headers @{ "X-ThinkingSpace-Token" = $env:THINKING_SPACE_DEV_TOKEN } `
+  -ContentType "application/json" -Body $body -OutFile "$env:TEMP\thinking-space-orby-test.mp3"
+```
+
+Confirm the response MIME type, MP3 header, bounded file size, and exact spoken sentence. Begin with one request
+to limit cost. Never paste keys, tokens, private text, or generated audio into Render logs or Git.

@@ -8,7 +8,7 @@ import wave
 from collections import deque
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic import ValidationError
@@ -18,6 +18,10 @@ from idea_manager import (IdeaManager, IdeaManagerMalformedOutput, IdeaManagerPr
 from intent_router import (ClarificationStore, IntentRouteRequest, IntentRouter, IntentRouterMalformedOutput,
     IntentRouterProviderFailure, IntentRouterTimeout, OpenAIIntentProvider,
     error_response as intent_error_response)
+from voice_service import (ElevenLabsVoiceProvider, VoiceAudioTooLarge, VoiceConfigurationError,
+    VoiceInvalidAudio, VoiceProviderFailure, VoiceProviderTimeout, VoiceSynthesisRequest,
+    is_probable_mp3)
+from urllib.parse import quote
 
 load_dotenv()
 MAX_WAV_BYTES = int(os.getenv("MAX_WAV_BYTES", str(15 * 1024 * 1024)))
@@ -35,6 +39,12 @@ MAX_INTENT_REQUEST_BYTES = int(os.getenv("MAX_INTENT_REQUEST_BYTES", str(32 * 10
 MAX_INTENT_REQUESTS_PER_MINUTE = int(os.getenv("MAX_INTENT_REQUESTS_PER_MINUTE", "30"))
 CLARIFICATION_EXPIRATION_SECONDS = float(os.getenv("CLARIFICATION_EXPIRATION_SECONDS", "120"))
 MAX_PENDING_CLARIFICATIONS = int(os.getenv("MAX_PENDING_CLARIFICATIONS", "128"))
+ELEVENLABS_TTS_MODEL = os.getenv("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
+ELEVENLABS_TIMEOUT_SECONDS = float(os.getenv("ELEVENLABS_TIMEOUT_SECONDS", "20"))
+MAX_TTS_TEXT_CHARACTERS = int(os.getenv("MAX_TTS_TEXT_CHARACTERS", "2000"))
+MAX_TTS_REQUEST_BYTES = int(os.getenv("MAX_TTS_REQUEST_BYTES", str(16 * 1024)))
+MAX_TTS_REQUESTS_PER_MINUTE = int(os.getenv("MAX_TTS_REQUESTS_PER_MINUTE", "20"))
+MAX_TTS_AUDIO_BYTES = int(os.getenv("MAX_TTS_AUDIO_BYTES", str(5 * 1024 * 1024)))
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 app = FastAPI(title="Thinking Space Backend", version="1.3.0")
 request_times: deque[float] = deque()
@@ -43,8 +53,11 @@ idea_request_times: deque[float] = deque()
 idea_rate_limit_lock = asyncio.Lock()
 intent_request_times: deque[float] = deque()
 intent_rate_limit_lock = asyncio.Lock()
+voice_request_times: deque[float] = deque()
+voice_rate_limit_lock = asyncio.Lock()
 idea_request_registry = IdeaRequestRegistry()
 intent_request_registry = IdeaRequestRegistry()
+voice_request_registry = IdeaRequestRegistry()
 idea_manager = IdeaManager(
     OpenAIIdeaProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=IDEA_MODEL),
     timeout_seconds=IDEA_TIMEOUT_SECONDS,
@@ -56,6 +69,13 @@ intent_router = IntentRouter(
         expiration_seconds=CLARIFICATION_EXPIRATION_SECONDS,
         maximum_attempts=2,
         maximum_sessions=MAX_PENDING_CLARIFICATIONS),
+)
+voice_provider = ElevenLabsVoiceProvider(
+    api_key=os.getenv("ELEVENLABS_API_KEY", ""),
+    voice_id=os.getenv("ELEVENLABS_VOICE_ID", ""),
+    model=ELEVENLABS_TTS_MODEL,
+    timeout_seconds=ELEVENLABS_TIMEOUT_SECONDS,
+    maximum_audio_bytes=MAX_TTS_AUDIO_BYTES,
 )
 
 @app.get("/health")
@@ -71,6 +91,68 @@ async def health() -> JSONResponse:
             "missing_configuration": missing_configuration,
         })
     return JSONResponse({"status": "ok"})
+
+@app.post("/api/voice/synthesize")
+async def synthesize_voice(request: Request,
+                           x_thinkingspace_token: str = Header(default="", alias="X-ThinkingSpace-Token")) -> Response:
+    require_development_authentication(x_thinkingspace_token)
+    try:
+        await enforce_voice_rate_limit()
+    except HTTPException:
+        return make_voice_error(429, "Too many voice requests; retry later.")
+    if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+        return make_voice_error(415, "Content-Type must be application/json.")
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_TTS_REQUEST_BYTES:
+                return make_voice_error(413, "Voice request is too large.")
+        except ValueError:
+            return make_voice_error(400, "Content-Length is invalid.")
+    try:
+        body = await read_limited_body(request, MAX_TTS_REQUEST_BYTES, "Voice request is too large.")
+    except HTTPException:
+        return make_voice_error(413, "Voice request is too large.")
+    try:
+        voice_request = VoiceSynthesisRequest.model_validate_json(body)
+    except (ValidationError, ValueError):
+        return make_voice_error(422, "Voice request validation failed.")
+    if len(voice_request.text) > MAX_TTS_TEXT_CHARACTERS:
+        return make_voice_error(422, "Voice text exceeds the configured character limit.", voice_request)
+    conflict = await voice_request_registry.claim(voice_request.request_id, voice_request.session_id)
+    if conflict == "duplicate":
+        return make_voice_error(409, "Duplicate voice request.", voice_request)
+    if conflict == "overlap":
+        return make_voice_error(409, "Another voice request is already active for this session.", voice_request)
+    completed = False
+    try:
+        audio = await asyncio.wait_for(
+            voice_provider.synthesize(voice_request.text), timeout=ELEVENLABS_TIMEOUT_SECONDS)
+        if len(audio) > MAX_TTS_AUDIO_BYTES:
+            raise VoiceAudioTooLarge("Generated voice audio exceeded the configured limit.")
+        if not is_probable_mp3(audio):
+            raise VoiceInvalidAudio("Voice provider returned invalid audio.")
+        completed = True
+        return Response(content=audio, media_type="audio/mpeg", headers={
+            "Cache-Control": "no-store",
+            "X-ThinkingSpace-Request-ID": voice_request.request_id,
+            "X-ThinkingSpace-Session-ID": quote(voice_request.session_id, safe="._:-"),
+            "X-ThinkingSpace-Audio-Format": "mp3_44100_128",
+        })
+    except VoiceConfigurationError:
+        return make_voice_error(503, "Voice service is not configured.", voice_request)
+    except (VoiceProviderTimeout, asyncio.TimeoutError):
+        return make_voice_error(504, "Voice provider timed out.", voice_request)
+    except VoiceAudioTooLarge:
+        return make_voice_error(502, "Voice provider returned audio that is too large.", voice_request)
+    except VoiceInvalidAudio:
+        return make_voice_error(502, "Voice provider returned invalid audio.", voice_request)
+    except VoiceProviderFailure:
+        return make_voice_error(502, "Voice provider request failed.", voice_request)
+    except Exception:
+        return make_voice_error(500, "Voice synthesis failed.", voice_request)
+    finally:
+        await voice_request_registry.finish(voice_request.request_id, voice_request.session_id, completed)
 
 @app.post("/api/intents/route")
 async def route_intent(request: Request,
@@ -268,6 +350,18 @@ async def enforce_intent_rate_limit() -> None:
             raise HTTPException(status_code=429, detail="Too many intent-routing requests; retry later.")
         intent_request_times.append(now)
 
+async def enforce_voice_rate_limit() -> None:
+    if MAX_TTS_REQUESTS_PER_MINUTE <= 0:
+        return
+    now = time.monotonic()
+    cutoff = now - 60.0
+    async with voice_rate_limit_lock:
+        while voice_request_times and voice_request_times[0] <= cutoff:
+            voice_request_times.popleft()
+        if len(voice_request_times) >= MAX_TTS_REQUESTS_PER_MINUTE:
+            raise HTTPException(status_code=429, detail="Too many voice requests; retry later.")
+        voice_request_times.append(now)
+
 async def read_limited_body(request: Request, maximum_bytes: int = MAX_WAV_BYTES,
                             too_large_message: str = "WAV payload is too large.") -> bytes:
     body = bytearray()
@@ -286,6 +380,15 @@ def make_intent_error(status_code: int, message: str,
                       intent_request: IntentRouteRequest | None = None) -> JSONResponse:
     response = intent_error_response(message, intent_request)
     return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
+
+def make_voice_error(status_code: int, message: str,
+                     voice_request: VoiceSynthesisRequest | None = None) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={
+        "request_id": voice_request.request_id if voice_request else "",
+        "session_id": voice_request.session_id if voice_request else "",
+        "status": "error",
+        "error": message,
+    })
 
 def validate_wav(data: bytes) -> None:
     try:

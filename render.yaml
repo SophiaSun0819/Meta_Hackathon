@@ -42,3 +42,19 @@ services:
         value: "120"
       - key: MAX_PENDING_CLARIFICATIONS
         value: "128"
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: ELEVENLABS_TTS_MODEL
+        value: eleven_flash_v2_5
+      - key: ELEVENLABS_TIMEOUT_SECONDS
+        value: "20"
+      - key: MAX_TTS_TEXT_CHARACTERS
+        value: "2000"
+      - key: MAX_TTS_REQUEST_BYTES
+        value: "16384"
+      - key: MAX_TTS_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: MAX_TTS_AUDIO_BYTES
+        value: "5242880"
