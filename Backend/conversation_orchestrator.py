@@ -144,6 +144,7 @@ class ConversationModelOutput(BaseModel):
     response_mode: Literal["conversational_answer", "action_proposal", "clarification",
                            "completion_claim"] = "conversational_answer"
     response_style: Literal["brief", "standard", "detailed"] = "standard"
+    idea_relationship: Literal["none", "standalone", "derived_expansion", "combination"] = "none"
     spoken_response: str = Field(min_length=1, max_length=2000)
     suggested_emotion: CompanionEmotion
     requires_confirmation: bool = False
@@ -444,7 +445,11 @@ class OpenAIConversationProvider:
             "critique, possible fixes, drawbacks, implementation questions, and deeper follow-ups remain "
             "discourse_context=challenge and must use a conversational answer. An explicit request to create a "
             "separate saved idea may change intent. expand_idea creates a derived idea; it never overwrites the "
-            "original, and update_idea does not exist. Set response_mode=conversational_answer for discussion, "
+            "original, and update_idea does not exist. Set idea_relationship=standalone only for an independent "
+            "new idea with no source idea IDs. Set derived_expansion for an explicitly authorized variation, "
+            "extension, or addition based on exactly one saved idea, and combination for an explicitly authorized "
+            "result based on at least two saved ideas. Use none for discussion. Mentioning a saved idea does not "
+            "by itself authorize or imply an expansion. Set response_mode=conversational_answer for discussion, "
             "action_proposal for authorized actions awaiting Unity, clarification when a choice is required, and "
             "never completion_claim because this backend executes nothing. Keep acknowledgements around 5 to 15 "
             "words, clarifications 10 to 30, "
@@ -571,9 +576,41 @@ class ConversationOrchestrator:
             should_execute = False
             if output.intent_category == ConversationCategory.NEW_IDEA:
                 intent_category = ConversationCategory.AMBIGUOUS_IDEA
+        relationship = output.idea_relationship
+        authorized_modification = output.authorization == "authorized" and not challenge_output
+        wants_expansion = authorized_modification and (
+            relationship == "derived_expansion" or action == ConversationAction.EXPAND_IDEA)
+        wants_combination = authorized_modification and (
+            relationship == "combination" or action == ConversationAction.COMBINE_IDEAS)
+        if wants_expansion:
+            intent_category = ConversationCategory.IDEA_MODIFICATION
+            action = ConversationAction.EXPAND_IDEA
+            should_create = False
+            should_execute = False
+            candidate_idea_ids = list(dict.fromkeys(target_idea_ids + candidate_idea_ids))
+            requires_confirmation = len(target_idea_ids) != 1
+            if requires_confirmation:
+                clarification_question = clarification_question or "Which saved idea should I expand?"
+            else:
+                candidate_idea_ids = []
+                clarification_question = None
+        elif wants_combination:
+            intent_category = ConversationCategory.IDEA_MODIFICATION
+            action = ConversationAction.COMBINE_IDEAS
+            should_create = False
+            should_execute = False
+            candidate_idea_ids = list(dict.fromkeys(target_idea_ids + candidate_idea_ids))
+            requires_confirmation = len(target_idea_ids) < 2
+            if requires_confirmation:
+                clarification_question = clarification_question or "Which saved ideas should I combine?"
+            else:
+                candidate_idea_ids = []
+                clarification_question = None
         clear_idea_can_proceed = (
             output.intent_category == ConversationCategory.NEW_IDEA
             and output.authorization == "authorized"
+            and not target_idea_ids
+            and relationship in {"none", "standalone"}
             and (pending is None or pending.proposed_action == ConversationAction.CREATE_IDEA)
         )
         if clear_idea_can_proceed:
@@ -586,6 +623,19 @@ class ConversationOrchestrator:
             clarification_question = None
             candidate_idea_ids = []
             intent_category = ConversationCategory.NEW_IDEA
+        elif (output.intent_category == ConversationCategory.NEW_IDEA
+              and output.authorization == "authorized" and target_idea_ids
+              and not wants_expansion and not wants_combination):
+            # A referenced idea alone is not enough to infer expansion. Ask instead of silently creating a
+            # standalone record or converting an unrelated reference into a derived idea.
+            action = ConversationAction.CREATE_IDEA
+            intent_category = ConversationCategory.AMBIGUOUS_IDEA
+            requires_confirmation = True
+            should_create = False
+            should_execute = False
+            candidate_idea_ids = list(dict.fromkeys(target_idea_ids + candidate_idea_ids))
+            clarification_question = (clarification_question
+                or "Should this be a separate idea or an expansion of the referenced idea?")
         elif output.intent_category in {ConversationCategory.GENERAL, ConversationCategory.BRAINSTORM}:
             # Ordinary answers and requested suggestions are complete conversational turns, not save prompts.
             action = (ConversationAction.CONVERSE if output.intent_category == ConversationCategory.GENERAL
@@ -689,6 +739,11 @@ def _semantic_output_problem(output: ConversationModelOutput) -> str | None:
     action_like = (output.proposed_action in {
         ConversationAction.CREATE_IDEA, ConversationAction.EXPAND_IDEA,
         ConversationAction.COMBINE_IDEAS} or output.proposed_action in ConversationOrchestrator.executable_actions)
+    if (output.authorization == "authorized"
+            and output.intent_category == ConversationCategory.NEW_IDEA
+            and output.idea_relationship in {"none", "standalone"}
+            and output.target_idea_ids):
+        return "a standalone new idea must not contain source idea IDs"
     if output.authorization == "discussion":
         if output.response_mode != "conversational_answer":
             return "exploratory discussion requires conversational_answer"
@@ -742,6 +797,7 @@ def _output_schema() -> dict:
         "discourse_context": {"type": "string", "enum": ["general", "brainstorm", "challenge", "clarification"]},
         "response_mode": {"type": "string", "enum": ["conversational_answer", "action_proposal", "clarification", "completion_claim"]},
         "response_style": {"type": "string", "enum": ["brief", "standard", "detailed"]},
+        "idea_relationship": {"type": "string", "enum": ["none", "standalone", "derived_expansion", "combination"]},
         "spoken_response": {"type": "string", "minLength": 1, "maxLength": 2000},
         "suggested_emotion": {"type": "string", "enum": [v.value for v in CompanionEmotion]},
         "requires_confirmation": {"type": "boolean"},
@@ -749,6 +805,6 @@ def _output_schema() -> dict:
         "candidate_idea_ids": {"type": "array", "items": {"type": "string"}},
         "should_create_idea": {"type": "boolean"}, "should_execute_action": {"type": "boolean"},
     }, "required": ["intent_category", "proposed_action", "target_idea_ids", "parameters",
-        "authorization", "discourse_context", "response_mode", "response_style",
+        "authorization", "discourse_context", "response_mode", "response_style", "idea_relationship",
         "spoken_response", "suggested_emotion", "requires_confirmation", "clarification_question",
         "candidate_idea_ids", "should_create_idea", "should_execute_action"], "additionalProperties": False}

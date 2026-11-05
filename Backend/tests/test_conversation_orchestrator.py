@@ -26,12 +26,14 @@ class FixedConversationProvider:
                  response="Here is a helpful response.", create=False, execute=False,
                  confirmation=False, question=None, candidates=None, scale=None, direction=None,
                  response_style="standard", authorization="authorized",
-                 discourse_context="general", response_mode="conversational_answer"):
+                 discourse_context="general", response_mode="conversational_answer",
+                 idea_relationship="none"):
         self.values = dict(intent_category=category, proposed_action=action,
             target_idea_ids=targets or [], parameters={"scale": scale, "direction": direction,
                                                        "settings_section": None},
             authorization=authorization, discourse_context=discourse_context,
             response_mode=response_mode, response_style=response_style,
+            idea_relationship=idea_relationship,
             spoken_response=response, suggested_emotion="attentive",
             requires_confirmation=confirmation, clarification_question=question,
             candidate_idea_ids=candidates or [], should_create_idea=create,
@@ -228,6 +230,70 @@ class ConversationEndpointTests(unittest.TestCase):
             "Add short quizzes to the saved anatomy idea.")).json()
         self.assertEqual(data["intent_category"], "idea_modification")
         self.assertEqual(data["proposed_action"], "expand_idea")
+        self.assertFalse(data["should_execute_action"])
+
+    def test_clear_model_classification_is_normalized_to_derived_expansion(self):
+        self.use(FixedConversationProvider("clear_new_idea", "create_idea",
+            targets=["idea-one"], authorization="authorized", response_mode="action_proposal",
+            idea_relationship="derived_expansion",
+            response="I can create a derived expansion with short quizzes."))
+        data = self.post(self.payload("derived-expansion",
+            "Add short quizzes as a derived expansion of my saved anatomy idea.")).json()
+        self.assertEqual(data["intent_category"], "idea_modification")
+        self.assertEqual(data["proposed_action"], "expand_idea")
+        self.assertEqual(data["target_idea_ids"], ["idea-one"])
+        self.assertFalse(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
+        self.assertFalse(data["should_execute_action"])
+
+    def test_standalone_idea_with_no_source_still_creates(self):
+        self.use(FixedConversationProvider("clear_new_idea", "create_idea",
+            authorization="authorized", response_mode="action_proposal",
+            idea_relationship="standalone"))
+        data = self.post(self.payload("standalone", "Create a solar-powered study space.")).json()
+        self.assert_clear_idea_proposal(data)
+
+    def test_explicit_variation_uses_expand_path_and_preserves_source(self):
+        self.use(FixedConversationProvider("idea_modification", "expand_idea",
+            targets=["idea-one"], authorization="authorized", response_mode="action_proposal",
+            idea_relationship="derived_expansion"))
+        data = self.post(self.payload("derived-variation",
+            "Create a classroom variation based on my saved anatomy idea.")).json()
+        self.assertEqual(data["intent_category"], "idea_modification")
+        self.assertEqual(data["proposed_action"], "expand_idea")
+        self.assertEqual(data["target_idea_ids"], ["idea-one"])
+        self.assertFalse(data["should_create_idea"])
+        self.assertFalse(data["should_execute_action"])
+
+    def test_combination_relationship_normalizes_action_without_creating(self):
+        self.use(FixedConversationProvider("clear_new_idea", "create_idea",
+            targets=["idea-one", "idea-two"], authorization="authorized",
+            response_mode="action_proposal", idea_relationship="combination"))
+        payload = self.payload("combine-derived", "Combine my first and second ideas.")
+        data = self.post(payload).json()
+        self.assertEqual(data["intent_category"], "idea_modification")
+        self.assertEqual(data["proposed_action"], "combine_ideas")
+        self.assertEqual(data["target_idea_ids"], ["idea-one", "idea-two"])
+        self.assertFalse(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
+
+    def test_expansion_with_ambiguous_sources_requires_clarification(self):
+        self.use(FixedConversationProvider("idea_modification", "expand_idea",
+            targets=["idea-one", "idea-two"], authorization="authorized",
+            response_mode="action_proposal", idea_relationship="derived_expansion"))
+        payload = self.payload("ambiguous-expansion", "Expand that idea.")
+        data = self.post(payload).json()
+        self.assertTrue(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
+        self.assertCountEqual(data["candidate_idea_ids"], ["idea-one", "idea-two"])
+
+    def test_combination_with_one_source_requires_clarification(self):
+        self.use(FixedConversationProvider("idea_modification", "combine_ideas",
+            targets=["idea-one"], authorization="authorized", response_mode="action_proposal",
+            idea_relationship="combination"))
+        data = self.post(self.payload("incomplete-combination", "Combine this with the other one.")).json()
+        self.assertTrue(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
         self.assertFalse(data["should_execute_action"])
 
     def test_what_if_new_idea_can_request_clarification(self):
