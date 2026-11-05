@@ -148,15 +148,23 @@ async def process_conversation(request: Request,
         return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
     except ConversationTimeout:
         return make_conversation_error(504, "Conversation provider timed out.", conversation_request)
-    except ConversationMalformedOutput:
+    except ConversationMalformedOutput as exc:
+        logger.warning("conversation_output_invalid stage=%s status=502 field=%s category=%s",
+                       exc.stage, exc.field_path, exc.category)
         return make_conversation_error(502,
-            "Conversation provider returned an invalid structured response.", conversation_request)
+            "Conversation provider returned an invalid structured response.", conversation_request,
+            failure_stage=exc.stage, failure_field=exc.field_path,
+            failure_category=exc.category)
     except ConversationContextError:
         return make_conversation_error(409,
             "Conversation clarification is missing, expired, or belongs to another session.",
             conversation_request)
-    except ConversationProviderFailure:
-        return make_conversation_error(502, "Conversation provider request failed.", conversation_request)
+    except ConversationProviderFailure as exc:
+        logger.warning("conversation_provider_failed stage=%s status=502 field=%s category=%s",
+                       exc.stage, exc.field_path, exc.category)
+        return make_conversation_error(502, "Conversation provider request failed.", conversation_request,
+            failure_stage=exc.stage, failure_field=exc.field_path,
+            failure_category=exc.category)
     except Exception:
         return make_conversation_error(500, "Conversation processing failed.", conversation_request)
     finally:
@@ -490,7 +498,8 @@ def make_voice_error(status_code: int, message: str,
 def make_conversation_error(status_code: int, message: str,
         conversation_request: ConversationRequest | None = None,
         validation_stage: str | None = None, validation_field: str | None = None,
-        validation_category: str | None = None) -> JSONResponse:
+        validation_category: str | None = None, failure_stage: str | None = None,
+        failure_field: str | None = None, failure_category: str | None = None) -> JSONResponse:
     response = conversation_error_response(message, conversation_request)
     headers = None
     if validation_stage and validation_field and validation_category:
@@ -499,6 +508,13 @@ def make_conversation_error(status_code: int, message: str,
             "X-ThinkingSpace-Validation-Field": _safe_diagnostic_header(validation_field),
             "X-ThinkingSpace-Validation-Category": _safe_diagnostic_header(validation_category),
             "X-ThinkingSpace-Validation-Status": str(status_code),
+        }
+    elif failure_stage and failure_field and failure_category:
+        headers = {
+            "X-ThinkingSpace-Failure-Stage": _safe_diagnostic_header(failure_stage),
+            "X-ThinkingSpace-Failure-Field": _safe_diagnostic_header(failure_field),
+            "X-ThinkingSpace-Failure-Category": _safe_diagnostic_header(failure_category),
+            "X-ThinkingSpace-Failure-Status": str(status_code),
         }
     return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"),
                         headers=headers)

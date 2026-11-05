@@ -171,8 +171,21 @@ class ConversationResponse(BaseModel):
 
 class ConversationFailure(Exception): pass
 class ConversationTimeout(ConversationFailure): pass
-class ConversationMalformedOutput(ConversationFailure): pass
-class ConversationProviderFailure(ConversationFailure): pass
+class ConversationMalformedOutput(ConversationFailure):
+    def __init__(self, message: str, stage: str = "output_validation",
+                 field_path: str = "$", category: str = "malformed_output"):
+        super().__init__(message)
+        self.stage = stage
+        self.field_path = field_path
+        self.category = category
+
+class ConversationProviderFailure(ConversationFailure):
+    def __init__(self, message: str, stage: str = "provider_request",
+                 category: str = "provider_failure"):
+        super().__init__(message)
+        self.stage = stage
+        self.field_path = "$"
+        self.category = category
 class ConversationContextError(ConversationFailure): pass
 
 
@@ -271,12 +284,19 @@ class OpenAIConversationProvider:
             )
             output = getattr(response, "output_text", "")
             if not output:
-                raise ConversationMalformedOutput("Conversation provider returned no output.")
+                raise ConversationMalformedOutput("Conversation provider returned no output.",
+                    stage="response_receipt", category="empty_output")
             return ConversationModelOutput.model_validate_json(output)
         except ConversationMalformedOutput:
             raise
-        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-            raise ConversationMalformedOutput("Conversation output failed validation.") from exc
+        except ValidationError as exc:
+            field_path, category = _validation_issue(exc)
+            stage = "output_parsing" if category == "json_invalid" else "output_schema"
+            raise ConversationMalformedOutput("Conversation output failed validation.",
+                stage=stage, field_path=field_path, category=category) from exc
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ConversationMalformedOutput("Conversation output failed parsing.",
+                stage="output_parsing", category="json_invalid") from exc
         except Exception as exc:
             raise ConversationProviderFailure("Conversation provider request failed.") from exc
         finally:
@@ -334,19 +354,49 @@ class ConversationOrchestrator:
         except asyncio.TimeoutError as exc:
             raise ConversationTimeout("Conversation provider timed out.") from exc
         known = {idea.idea_id for idea in request.available_ideas}
-        referenced = set(output.target_idea_ids) | set(output.candidate_idea_ids)
-        if not referenced.issubset(known):
-            raise ConversationMalformedOutput("Conversation output referenced an unknown idea.")
+        target_idea_ids = list(output.target_idea_ids)
+        candidate_idea_ids = list(output.candidate_idea_ids)
+        challenge_output = (output.proposed_action == ConversationAction.CHALLENGE
+            or output.intent_category in {ConversationCategory.IDEA_CHALLENGE,
+                                          ConversationCategory.CONTEXTUAL_FOLLOW_UP})
+        unknown_targets = set(target_idea_ids) - known
+        sole_context_target = next(iter(known)) if len(known) == 1 else None
+        if challenge_output and sole_context_target is not None \
+                and request.context.most_recent_idea_id == sole_context_target \
+                and len(target_idea_ids) <= 1 and (not target_idea_ids or unknown_targets):
+            # The explicit most-recent pointer makes this session-owned target deterministic. Never use this
+            # repair for multiple ideas, candidates, other actions, or a sole idea lacking that context pointer.
+            target_idea_ids = [sole_context_target]
+            unknown_targets.clear()
+        if unknown_targets or not set(candidate_idea_ids).issubset(known):
+            field = "target_idea_ids" if unknown_targets else "candidate_idea_ids"
+            raise ConversationMalformedOutput("Conversation output referenced an unknown idea.",
+                stage="reference_validation", field_path=field, category="unknown_idea_reference")
 
         action = output.proposed_action
         if pending and action not in {pending.proposed_action, ConversationAction.CANCEL,
                                      ConversationAction.CLARIFY}:
-            raise ConversationMalformedOutput("Follow-up attempted to change the pending action.")
+            raise ConversationMalformedOutput("Follow-up attempted to change the pending action.",
+                stage="pending_validation", field_path="proposed_action",
+                category="pending_action_mismatch")
+        allowed_actions = {
+            ConversationCategory.IDEA_MODIFICATION: {
+                ConversationAction.EXPAND_IDEA, ConversationAction.COMBINE_IDEAS},
+            ConversationCategory.APPLICATION_COMMAND: self.executable_actions - {
+                ConversationAction.MOVE_BUBBLE, ConversationAction.RESIZE_BUBBLE,
+                ConversationAction.SHOW_BUBBLE, ConversationAction.HIDE_BUBBLE},
+            ConversationCategory.SPATIAL_COMMAND: {
+                ConversationAction.MOVE_BUBBLE, ConversationAction.RESIZE_BUBBLE,
+                ConversationAction.SHOW_BUBBLE, ConversationAction.HIDE_BUBBLE},
+        }
+        if output.intent_category in allowed_actions and action not in allowed_actions[output.intent_category]:
+            raise ConversationMalformedOutput("Conversation action does not match its category.",
+                stage="action_validation", field_path="proposed_action",
+                category="action_category_mismatch")
         requires_confirmation = output.requires_confirmation or action in self.destructive_actions
         should_create = output.should_create_idea
         should_execute = output.should_execute_action
         clarification_question = output.clarification_question
-        candidate_idea_ids = output.candidate_idea_ids
         clear_idea_can_proceed = (
             output.intent_category == ConversationCategory.NEW_IDEA
             and (pending is None or pending.proposed_action == ConversationAction.CREATE_IDEA)
@@ -369,8 +419,8 @@ class ConversationOrchestrator:
             should_execute = False
             clarification_question = None
             candidate_idea_ids = []
-        if action == ConversationAction.CHALLENGE or output.intent_category in {
-                ConversationCategory.IDEA_CHALLENGE, ConversationCategory.CONTEXTUAL_FOLLOW_UP}:
+        if challenge_output:
+            action = ConversationAction.CHALLENGE
             should_create = False
             should_execute = False
         if output.intent_category in {ConversationCategory.GENERAL, ConversationCategory.BRAINSTORM,
@@ -405,7 +455,7 @@ class ConversationOrchestrator:
         return ConversationResponse(
             request_id=request.request_id, session_id=request.session_id,
             intent_category=output.intent_category.value, proposed_action=action.value,
-            target_idea_ids=output.target_idea_ids, parameters=output.parameters,
+            target_idea_ids=target_idea_ids, parameters=output.parameters,
             spoken_response=text, subtitle_text=text, suggested_emotion=output.suggested_emotion,
             requires_confirmation=requires_confirmation, clarification_id=clarification_id,
             clarification_question=question, candidate_idea_ids=candidate_idea_ids,
@@ -425,6 +475,16 @@ def error_response(message: str, request: ConversationRequest | None = None) -> 
 
 def _sanitize(value: str) -> str:
     return "".join(c for c in value if c in "\n\t" or ord(c) >= 32).strip()
+
+
+def _validation_issue(exc: ValidationError) -> tuple[str, str]:
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    if not errors:
+        return "$", "validation_error"
+    first = errors[0]
+    location = first.get("loc", ())
+    field_path = ".".join(str(part) for part in location) if location else "$"
+    return field_path, str(first.get("type", "validation_error"))
 
 
 def _output_schema() -> dict:

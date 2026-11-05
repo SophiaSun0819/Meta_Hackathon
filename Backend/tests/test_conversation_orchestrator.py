@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ["OPENAI_API_KEY"] = "test-key-not-used"
 os.environ["THINKING_SPACE_DEV_TOKEN"] = "test-development-token"
@@ -13,7 +14,8 @@ from fastapi.testclient import TestClient
 
 import app as backend_app
 from conversation_orchestrator import (ConversationClarificationStore, ConversationMalformedOutput,
-    ConversationModelOutput, ConversationOrchestrator)
+    ConversationModelOutput, ConversationOrchestrator, ConversationRequest,
+    OpenAIConversationProvider)
 from idea_manager import IdeaRequestRegistry
 
 
@@ -42,7 +44,22 @@ class TimeoutProvider:
 
 class MalformedProvider:
     async def respond(self, request):
-        raise ConversationMalformedOutput("mock malformed")
+        raise ConversationMalformedOutput("mock malformed", stage="output_schema",
+            field_path="proposed_action", category="enum")
+
+
+class FakeOpenAIResponse:
+    def __init__(self, output_text): self.output_text = output_text
+
+
+class FakeOpenAIResponses:
+    def __init__(self, output_text): self.output_text = output_text
+    async def create(self, **_): return FakeOpenAIResponse(self.output_text)
+
+
+class FakeOpenAIClient:
+    def __init__(self, output_text): self.responses = FakeOpenAIResponses(output_text)
+    async def close(self): pass
 
 
 class ConversationEndpointTests(unittest.TestCase):
@@ -185,6 +202,93 @@ class ConversationEndpointTests(unittest.TestCase):
                                           targets=["invented"], execute=True))
         response = self.post(self.payload("unknown-reference"))
         self.assertEqual(response.status_code, 502)
+
+    def test_challenge_target_resolution_is_safe_and_deterministic(self):
+        payload = self.payload("challenge-targets", "Challenge my anatomy idea.")
+        payload["available_ideas"] = [
+            {"idea_id": "idea-anatomy", "title": "Anatomy Lab", "summary": "A VR anatomy lab."}]
+        payload["context"]["most_recent_idea_id"] = "idea-anatomy"
+        for index, targets in enumerate([["idea-anatomy"], [], ["invented-model-id"]]):
+            payload["request_id"] = f"challenge-targets-{index}"
+            self.use(FixedConversationProvider("conversational_idea_challenge",
+                "conversational_challenge", targets=targets, create=True))
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 200, response.text)
+            data = response.json()
+            self.assertEqual(data["target_idea_ids"], ["idea-anatomy"])
+            self.assertFalse(data["should_create_idea"])
+            self.assertEqual(data["proposed_action"], "conversational_challenge")
+
+    def test_unknown_challenge_target_with_multiple_ideas_remains_rejected(self):
+        self.use(FixedConversationProvider("conversational_idea_challenge",
+            "conversational_challenge", targets=["invented-model-id"]))
+        response = self.post(self.payload("ambiguous-invented-target"))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Stage"],
+                         "reference_validation")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"],
+                         "unknown_idea_reference")
+
+    def test_unknown_challenge_target_without_recent_pointer_remains_rejected(self):
+        payload = self.payload("unknown-without-recent", "Challenge an idea.")
+        payload["available_ideas"] = [
+            {"idea_id": "idea-anatomy", "title": "Anatomy Lab", "summary": "A VR anatomy lab."}]
+        payload["context"]["most_recent_idea_id"] = None
+        self.use(FixedConversationProvider("conversational_idea_challenge",
+            "conversational_challenge", targets=["invented-model-id"]))
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"],
+                         "unknown_idea_reference")
+
+    def test_invalid_action_category_combination_is_rejected(self):
+        self.use(FixedConversationProvider("idea_modification", "open_menu"))
+        response = self.post(self.payload("invalid-action-category"))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Stage"], "action_validation")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Field"], "proposed_action")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"],
+                         "action_category_mismatch")
+
+    def test_provider_parsing_schema_and_enum_diagnostics(self):
+        request = ConversationRequest.model_validate(self.payload("provider-diagnostics"))
+        valid_base = {
+            "intent_category": "conversational_idea_challenge",
+            "proposed_action": "conversational_challenge",
+            "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "spoken_response": "A useful criticism.", "suggested_emotion": "concerned",
+            "requires_confirmation": False, "clarification_question": None,
+            "candidate_idea_ids": [], "should_create_idea": False,
+            "should_execute_action": False,
+        }
+        cases = [
+            ("{not-json", "output_parsing", "$", "json_invalid"),
+            (json.dumps({key: value for key, value in valid_base.items()
+                         if key != "spoken_response"}), "output_schema", "spoken_response", "missing"),
+            (json.dumps({**valid_base, "proposed_action": "challenge_idea"}),
+             "output_schema", "proposed_action", "enum"),
+        ]
+        for output_text, stage, field, category in cases:
+            provider = OpenAIConversationProvider("unused-test-key", "unused-test-model")
+            with patch("conversation_orchestrator.AsyncOpenAI",
+                       return_value=FakeOpenAIClient(output_text)):
+                with self.assertRaises(ConversationMalformedOutput) as raised:
+                    asyncio.run(provider.respond(request))
+            self.assertEqual(raised.exception.stage, stage)
+            self.assertEqual(raised.exception.field_path, field)
+            self.assertEqual(raised.exception.category, category)
+
+    def test_malformed_provider_error_exposes_only_safe_metadata(self):
+        self.use(MalformedProvider())
+        response = self.post(self.payload("safe-output-diagnostics"))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"],
+                         "Conversation provider returned an invalid structured response.")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Stage"], "output_schema")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Field"], "proposed_action")
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"], "enum")
+        self.assertNotIn("mock malformed", response.text)
 
     def test_exact_challenge_json_validates_directly_and_at_endpoint(self):
         payload = self.payload("challenge-exact", "Challenge the Solar Hub idea.")
