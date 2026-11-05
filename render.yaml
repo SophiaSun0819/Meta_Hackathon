@@ -42,6 +42,14 @@ services:
         value: "120"
       - key: MAX_PENDING_CLARIFICATIONS
         value: "128"
+      - key: OPENAI_CONVERSATION_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_CONVERSATION_TIMEOUT_SECONDS
+        value: "35"
+      - key: MAX_CONVERSATION_REQUEST_BYTES
+        value: "49152"
+      - key: MAX_CONVERSATION_REQUESTS_PER_MINUTE
+        value: "30"
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_VOICE_ID

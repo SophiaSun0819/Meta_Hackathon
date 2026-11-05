@@ -561,3 +561,115 @@ Invoke-WebRequest -Method Post -Uri "https://YOUR-SERVICE.onrender.com/api/voice
 
 Confirm the response MIME type, MP3 header, bounded file size, and exact spoken sentence. Begin with one request
 to limit cost. Never paste keys, tokens, private text, or generated audio into Render logs or Git.
+
+## Saved idea summary contract
+
+Results that create saved idea content (`create_idea`, `expand_idea`, and `combine_ideas`) use a concise
+plain-text summary contract:
+
+- titles are preferably 3–7 words;
+- summaries normally target 40–65 words and may be shorter for simple ideas;
+- summaries have a hard maximum of 80 words;
+- summaries are one cohesive paragraph with no bullets or Markdown; and
+- summaries preserve the central concept, mechanism, purpose, and the user's original intent without
+  adding unsupported features.
+
+The server validates this deterministically before returning the result. An invalid model result receives
+at most one corrective generation attempt. If that attempt is still invalid, the endpoint returns the
+existing sanitized recoverable structured-output error; it never silently truncates or rewrites a summary.
+Legacy `challenge_idea` responses are unchanged, and conversational challenges never create saved ideas.
+
+Unity currently paginates idea details by character count. The 80-word limit should normally fit within two
+current pages, but word count alone cannot guarantee a character-space limit for unusually long tokens,
+titles, or categories. A later Unity milestone should paginate on rendered TMP layout (or enforce a separate
+display-character budget) while preserving the current readable font size.
+
+## Conversational Orby orchestration
+
+`POST /api/conversations/process` is the backward-compatible conversational layer. It does not replace
+`/api/intents/route` or `/api/ideas/process`; existing clients can continue using both unchanged. The route uses
+the same `X-ThinkingSpace-Token` authentication and accepts a bounded client-owned context containing at most
+12 recent turns, 32 saved ideas, the most recently discussed idea ID, and the current application mode.
+
+```json
+{
+  "request_id": "conversation-001",
+  "session_id": "Session 1",
+  "raw_transcript": "What are the weaknesses in my anatomy idea?",
+  "cleaned_transcript": null,
+  "transcript_source": "raw",
+  "available_ideas": [
+    {"idea_id": "idea-anatomy", "title": "VR Anatomy Lab", "summary": "An immersive anatomy lesson."}
+  ],
+  "context": {
+    "recent_turns": [],
+    "most_recent_idea_id": "idea-anatomy",
+    "current_mode": "conversational"
+  },
+  "clarification_id": null
+}
+```
+
+The versioned response is data for Unity to validate, never an instruction executed by the server:
+
+```json
+{
+  "contract_version": "1.0",
+  "request_id": "conversation-001",
+  "session_id": "Session 1",
+  "intent_category": "conversational_idea_challenge",
+  "proposed_action": "conversational_challenge",
+  "target_idea_ids": ["idea-anatomy"],
+  "parameters": {"scale": null, "direction": null, "settings_section": null},
+  "spoken_response": "A key risk is cognitive overload if too many structures appear at once.",
+  "subtitle_text": "A key risk is cognitive overload if too many structures appear at once.",
+  "suggested_emotion": "concerned",
+  "requires_confirmation": false,
+  "clarification_id": null,
+  "clarification_question": null,
+  "candidate_idea_ids": [],
+  "should_create_idea": false,
+  "should_execute_action": false,
+  "status": "completed",
+  "error": null
+}
+```
+
+Classification policy:
+
+- General questions, casual discussion, and requested brainstorming suggestions never create bubbles.
+- A clearly stated user-owned new idea or an explicit save request may return `should_create_idea: true`.
+- A possible but ambiguous idea returns a clarification and cannot be saved before confirmation.
+- Challenge, critique, weakness, risk, and subsequent discussion always use `conversational_challenge` and
+  never return a new idea ID or request bubble creation. The legacy idea-manager challenge action remains intact.
+- Expand and combine remain idea mutations, but Unity still decides whether and when to call `/api/ideas/process`.
+- Spatial and application commands contain only allowlisted semantic parameters. Unity must authorize and execute
+  them, then provide any completion acknowledgement itself.
+- End-session and future delete actions always require confirmation and return `should_execute_action: false`
+  until a confirmed follow-up is validated.
+
+Clarifications are session-scoped, expire using `CLARIFICATION_EXPIRATION_SECONDS`, and stop after two unresolved
+attempts. Only this small pending state is held in memory; recent conversation and saved ideas remain client-owned.
+Render restarts lose pending clarifications, and multiple worker instances would require a shared TTL store such as
+Redis. Raw transcript text and conversation turns are not logged by the application.
+
+Operational settings:
+
+- `OPENAI_CONVERSATION_MODEL=gpt-5-mini`
+- `OPENAI_CONVERSATION_TIMEOUT_SECONDS=35`
+- `MAX_CONVERSATION_REQUEST_BYTES=49152`
+- `MAX_CONVERSATION_REQUESTS_PER_MINUTE=30`
+
+### Conversational deployment checklist
+
+1. Run the complete mocked suite under Python 3.12.
+2. Add the four operational variables above in Render; keep existing secrets unchanged.
+3. Deploy the backend-only commit to the existing Starter service.
+4. Verify `/health`, transcription, intent routing, idea processing, and voice regression first.
+5. Send one authenticated general-conversation request and confirm no idea creation is proposed.
+6. Send one authenticated challenge request and confirm `should_create_idea` and `should_execute_action` are false.
+7. Review Render latency, 4xx/5xx rates, OpenAI usage limits, and spend alerts before distributing a new APK.
+
+For one controlled paid smoke test, use synthetic content and a unique request ID. Send “What is virtual reality?”
+with an empty idea inventory, then verify a successful `general_conversation` response with matching spoken/subtitle
+text and both action booleans false. Do not include private transcripts or run this test without explicit approval.

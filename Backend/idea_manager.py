@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SESSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:-]{0,127}$")
+SUMMARY_TARGET_MIN_WORDS = 40
+SUMMARY_TARGET_MAX_WORDS = 65
+SUMMARY_HARD_MAX_WORDS = 80
+IDEA_CREATING_ACTIONS = frozenset({"create_idea", "expand_idea", "combine_ideas"})
 
 
 class IdeaAction(str, Enum):
@@ -153,13 +157,29 @@ class OpenAIIdeaProvider:
         self.model = model
 
     async def generate(self, request: IdeaProcessRequest) -> IdeaModelOutput:
+        return await self._generate(request)
+
+    async def correct_summary(self, request: IdeaProcessRequest, invalid_output: IdeaModelOutput,
+                              reason: str) -> IdeaModelOutput:
+        return await self._generate(request, invalid_output, reason)
+
+    async def _generate(self, request: IdeaProcessRequest,
+                        invalid_output: IdeaModelOutput | None = None,
+                        correction_reason: str | None = None) -> IdeaModelOutput:
         client = AsyncOpenAI(api_key=self.api_key)
         try:
+            user_prompt = self._user_prompt(request)
+            if invalid_output is not None:
+                user_prompt += (
+                    "\nCorrect the following invalid structured result exactly once. Preserve its meaning, "
+                    "but return a complete replacement result satisfying the summary contract. "
+                    f"Validation problem: {correction_reason}\nInvalid result:\n"
+                    + json.dumps(invalid_output.model_dump(mode="json")))
             response = await client.responses.create(
                 model=self.model,
                 input=[
                     {"role": "system", "content": self._system_prompt(request.action)},
-                    {"role": "user", "content": self._user_prompt(request)},
+                    {"role": "user", "content": user_prompt},
                 ],
                 text={"format": {
                     "type": "json_schema",
@@ -203,6 +223,11 @@ class OpenAIIdeaProvider:
         return (
             "You are the Thinking Space brainstorming manager. " + action_guidance
             + " Preserve the user's intended meaning and technical terminology. Do not invent claimed facts. "
+              "For create_idea, expand_idea, and combine_ideas, use a title of preferably 3 to 7 words. "
+              "Write summary as one cohesive plain-text paragraph, normally 40 to 65 words and never more "
+              "than 80 words. State the central concept, mechanism, and purpose precisely. A simple idea may "
+              "be shorter. Do not use bullets, markdown, unnecessary examples, speculative features, or "
+              "repetitive introductory language. "
               "Return only the requested structured result. spoken_response must be concise, natural speech "
               "that can also be displayed verbatim as subtitles. Never issue commands to Unity or describe "
               "scene-object mutations."
@@ -232,6 +257,19 @@ class IdeaManager:
                 self.provider.generate(request), timeout=self.timeout_seconds)
         except asyncio.TimeoutError as exc:
             raise IdeaManagerTimeout("Idea provider timed out.") from exc
+        if request.action.value in IDEA_CREATING_ACTIONS:
+            problem = validate_saved_idea_summary(model_output.summary)
+            if problem:
+                correction = getattr(self.provider, "correct_summary", None)
+                if correction is None:
+                    raise IdeaManagerMalformedOutput("Idea summary failed validation.")
+                try:
+                    model_output = await asyncio.wait_for(
+                        correction(request, model_output, problem), timeout=self.timeout_seconds)
+                except asyncio.TimeoutError as exc:
+                    raise IdeaManagerTimeout("Idea provider correction timed out.") from exc
+                if validate_saved_idea_summary(model_output.summary):
+                    raise IdeaManagerMalformedOutput("Corrected idea summary failed validation.")
         result_id = "idea_" + uuid.uuid4().hex
         related_ids = list(request.related_idea_ids)
         if request.idea_id and request.idea_id not in related_ids:
@@ -309,3 +347,21 @@ def error_response(status_code: int, message: str, request: IdeaProcessRequest |
 
 def _sanitize_text(value: str) -> str:
     return "".join(character for character in value if character in "\n\t" or ord(character) >= 32).strip()
+
+
+def count_summary_words(value: str) -> int:
+    return len(re.findall(r"\b[\w’'-]+\b", value, flags=re.UNICODE))
+
+
+def validate_saved_idea_summary(value: str) -> str | None:
+    summary = _sanitize_text(value)
+    if not summary or count_summary_words(summary) == 0:
+        return "Summary is empty or malformed."
+    if "\n" in summary or "\r" in summary:
+        return "Summary must be one paragraph."
+    if count_summary_words(summary) > SUMMARY_HARD_MAX_WORDS:
+        return f"Summary exceeds the {SUMMARY_HARD_MAX_WORDS}-word limit."
+    if ("**" in summary or "__" in summary or "`" in summary or "•" in summary
+            or re.match(r"^\s{0,3}(?:[-*+]\s|#{1,6}\s|>\s)", summary)):
+        return "Summary must be plain prose without markdown or bullets."
+    return None

@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 
 import app as backend_app
 from idea_manager import (IdeaManager, IdeaManagerMalformedOutput, IdeaModelOutput,
-                          IdeaRequestRegistry)
+                          IdeaRequestRegistry, count_summary_words,
+                          validate_saved_idea_summary)
 
 
 class MockIdeaProvider:
@@ -38,6 +39,23 @@ class MockIdeaProvider:
             category="General",
             spoken_response="Here is the brainstorming result.",
         )
+
+
+class SummaryProvider(MockIdeaProvider):
+    def __init__(self, summary: str, corrected_summary: str | None = None):
+        super().__init__()
+        self.summary = summary
+        self.corrected_summary = corrected_summary
+        self.correction_calls = 0
+
+    async def generate(self, request):
+        output = await super().generate(request)
+        return output.model_copy(update={"summary": self.summary})
+
+    async def correct_summary(self, request, invalid_output, reason):
+        self.correction_calls += 1
+        value = self.corrected_summary if self.corrected_summary is not None else self.summary
+        return invalid_output.model_copy(update={"summary": value})
 
 
 class IdeaManagerEndpointTests(unittest.TestCase):
@@ -145,6 +163,68 @@ class IdeaManagerEndpointTests(unittest.TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 409)
         self.assertEqual(second.json()["error"], "Duplicate idea request.")
+
+    def test_short_valid_summary(self):
+        self.assertIsNone(validate_saved_idea_summary("A shared solar workspace for students."))
+
+    def test_target_length_summary(self):
+        summary = " ".join(f"word{i}" for i in range(52))
+        self.assertEqual(count_summary_words(summary), 52)
+        self.assertIsNone(validate_saved_idea_summary(summary))
+
+    def test_exactly_eighty_words_is_valid(self):
+        summary = " ".join(f"word{i}" for i in range(80))
+        self.assertEqual(count_summary_words(summary), 80)
+        self.assertIsNone(validate_saved_idea_summary(summary))
+
+    def test_more_than_eighty_words_gets_one_correction(self):
+        invalid = " ".join(f"word{i}" for i in range(81))
+        corrected = " ".join(f"word{i}" for i in range(50))
+        provider = SummaryProvider(invalid, corrected)
+        backend_app.idea_manager = IdeaManager(provider, timeout_seconds=1.0)
+        response = self.post(self.payload("create_idea", "request-corrected"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(provider.correction_calls, 1)
+        self.assertEqual(count_summary_words(response.json()["summary"]), 50)
+
+    def test_invalid_correction_returns_recoverable_error(self):
+        invalid = " ".join(f"word{i}" for i in range(81))
+        provider = SummaryProvider(invalid, invalid)
+        backend_app.idea_manager = IdeaManager(provider, timeout_seconds=1.0)
+        response = self.post(self.payload("combine_ideas", "request-bad-correction",
+            related_idea_ids=["idea-one", "idea-two"]))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(provider.correction_calls, 1)
+        self.assertEqual(response.json()["error"],
+                         "AI manager returned an invalid structured response.")
+
+    def test_single_paragraph_and_plain_text_validation(self):
+        self.assertIsNotNone(validate_saved_idea_summary("First paragraph.\nSecond paragraph."))
+        self.assertIsNotNone(validate_saved_idea_summary("- First bullet in a list."))
+        self.assertIsNotNone(validate_saved_idea_summary("A **formatted** summary."))
+
+    def test_expand_and_combine_apply_summary_contract(self):
+        invalid = " ".join(f"word{i}" for i in range(81))
+        valid = "A focused expansion that preserves the original idea while adding a practical mechanism."
+        for index, (action, overrides) in enumerate([
+                ("expand_idea", {"idea_id": "idea-original"}),
+                ("combine_ideas", {"related_idea_ids": ["idea-one", "idea-two"]})]):
+            provider = SummaryProvider(invalid, valid)
+            backend_app.idea_manager = IdeaManager(provider, timeout_seconds=1.0)
+            response = self.post(self.payload(action, f"request-summary-{index}", **overrides))
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(provider.correction_calls, 1)
+
+    def test_legacy_challenge_contract_is_unchanged(self):
+        long_summary = " ".join(f"word{i}" for i in range(81))
+        provider = SummaryProvider(long_summary)
+        backend_app.idea_manager = IdeaManager(provider, timeout_seconds=1.0)
+        response = self.post(self.payload(
+            "challenge_idea", "request-legacy-challenge", idea_id="idea-original"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["contract_version"], "1.0")
+        self.assertEqual(provider.correction_calls, 0)
 
 
 if __name__ == "__main__":

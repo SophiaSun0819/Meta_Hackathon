@@ -21,6 +21,10 @@ from intent_router import (ClarificationStore, IntentRouteRequest, IntentRouter,
 from voice_service import (ElevenLabsVoiceProvider, VoiceAudioTooLarge, VoiceConfigurationError,
     VoiceInvalidAudio, VoiceProviderFailure, VoiceProviderTimeout, VoiceSynthesisRequest,
     is_probable_mp3)
+from conversation_orchestrator import (ConversationClarificationStore, ConversationContextError,
+    ConversationMalformedOutput, ConversationOrchestrator,
+    ConversationProviderFailure, ConversationRequest, ConversationTimeout,
+    OpenAIConversationProvider, error_response as conversation_error_response)
 from urllib.parse import quote
 
 load_dotenv()
@@ -45,8 +49,12 @@ MAX_TTS_TEXT_CHARACTERS = int(os.getenv("MAX_TTS_TEXT_CHARACTERS", "2000"))
 MAX_TTS_REQUEST_BYTES = int(os.getenv("MAX_TTS_REQUEST_BYTES", str(16 * 1024)))
 MAX_TTS_REQUESTS_PER_MINUTE = int(os.getenv("MAX_TTS_REQUESTS_PER_MINUTE", "20"))
 MAX_TTS_AUDIO_BYTES = int(os.getenv("MAX_TTS_AUDIO_BYTES", str(5 * 1024 * 1024)))
+CONVERSATION_MODEL = os.getenv("OPENAI_CONVERSATION_MODEL", INTENT_MODEL)
+CONVERSATION_TIMEOUT_SECONDS = float(os.getenv("OPENAI_CONVERSATION_TIMEOUT_SECONDS", "35"))
+MAX_CONVERSATION_REQUEST_BYTES = int(os.getenv("MAX_CONVERSATION_REQUEST_BYTES", str(48 * 1024)))
+MAX_CONVERSATION_REQUESTS_PER_MINUTE = int(os.getenv("MAX_CONVERSATION_REQUESTS_PER_MINUTE", "30"))
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-app = FastAPI(title="Thinking Space Backend", version="1.3.0")
+app = FastAPI(title="Thinking Space Backend", version="1.4.0")
 request_times: deque[float] = deque()
 rate_limit_lock = asyncio.Lock()
 idea_request_times: deque[float] = deque()
@@ -55,9 +63,12 @@ intent_request_times: deque[float] = deque()
 intent_rate_limit_lock = asyncio.Lock()
 voice_request_times: deque[float] = deque()
 voice_rate_limit_lock = asyncio.Lock()
+conversation_request_times: deque[float] = deque()
+conversation_rate_limit_lock = asyncio.Lock()
 idea_request_registry = IdeaRequestRegistry()
 intent_request_registry = IdeaRequestRegistry()
 voice_request_registry = IdeaRequestRegistry()
+conversation_request_registry = IdeaRequestRegistry()
 idea_manager = IdeaManager(
     OpenAIIdeaProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=IDEA_MODEL),
     timeout_seconds=IDEA_TIMEOUT_SECONDS,
@@ -77,6 +88,67 @@ voice_provider = ElevenLabsVoiceProvider(
     timeout_seconds=ELEVENLABS_TIMEOUT_SECONDS,
     maximum_audio_bytes=MAX_TTS_AUDIO_BYTES,
 )
+conversation_orchestrator = ConversationOrchestrator(
+    OpenAIConversationProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=CONVERSATION_MODEL),
+    timeout_seconds=CONVERSATION_TIMEOUT_SECONDS,
+    clarification_store=ConversationClarificationStore(
+        expiration_seconds=CLARIFICATION_EXPIRATION_SECONDS, maximum_attempts=2,
+        maximum_sessions=MAX_PENDING_CLARIFICATIONS),
+)
+
+@app.post("/api/conversations/process")
+async def process_conversation(request: Request,
+        x_thinkingspace_token: str = Header(default="", alias="X-ThinkingSpace-Token")) -> JSONResponse:
+    require_development_authentication(x_thinkingspace_token)
+    try:
+        await enforce_conversation_rate_limit()
+    except HTTPException:
+        return make_conversation_error(429, "Too many conversation requests; retry later.")
+    if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+        return make_conversation_error(415, "Content-Type must be application/json.")
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_CONVERSATION_REQUEST_BYTES:
+                return make_conversation_error(413, "Conversation request is too large.")
+        except ValueError:
+            return make_conversation_error(400, "Content-Length is invalid.")
+    try:
+        body = await read_limited_body(request, MAX_CONVERSATION_REQUEST_BYTES,
+                                       "Conversation request is too large.")
+        conversation_request = ConversationRequest.model_validate_json(body)
+    except HTTPException:
+        return make_conversation_error(413, "Conversation request is too large.")
+    except (ValidationError, ValueError):
+        return make_conversation_error(422, "Conversation request validation failed.")
+    conflict = await conversation_request_registry.claim(
+        conversation_request.request_id, conversation_request.session_id)
+    if conflict == "duplicate":
+        return make_conversation_error(409, "Duplicate conversation request.", conversation_request)
+    if conflict == "overlap":
+        return make_conversation_error(409,
+            "Another conversation request is already active for this session.", conversation_request)
+    completed = False
+    try:
+        result = await conversation_orchestrator.process(conversation_request)
+        completed = True
+        return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
+    except ConversationTimeout:
+        return make_conversation_error(504, "Conversation provider timed out.", conversation_request)
+    except ConversationMalformedOutput:
+        return make_conversation_error(502,
+            "Conversation provider returned an invalid structured response.", conversation_request)
+    except ConversationContextError:
+        return make_conversation_error(409,
+            "Conversation clarification is missing, expired, or belongs to another session.",
+            conversation_request)
+    except ConversationProviderFailure:
+        return make_conversation_error(502, "Conversation provider request failed.", conversation_request)
+    except Exception:
+        return make_conversation_error(500, "Conversation processing failed.", conversation_request)
+    finally:
+        await conversation_request_registry.finish(
+            conversation_request.request_id, conversation_request.session_id, completed)
 
 @app.get("/health")
 async def health() -> JSONResponse:
@@ -362,6 +434,18 @@ async def enforce_voice_rate_limit() -> None:
             raise HTTPException(status_code=429, detail="Too many voice requests; retry later.")
         voice_request_times.append(now)
 
+async def enforce_conversation_rate_limit() -> None:
+    if MAX_CONVERSATION_REQUESTS_PER_MINUTE <= 0:
+        return
+    now = time.monotonic()
+    cutoff = now - 60.0
+    async with conversation_rate_limit_lock:
+        while conversation_request_times and conversation_request_times[0] <= cutoff:
+            conversation_request_times.popleft()
+        if len(conversation_request_times) >= MAX_CONVERSATION_REQUESTS_PER_MINUTE:
+            raise HTTPException(status_code=429, detail="Too many conversation requests; retry later.")
+        conversation_request_times.append(now)
+
 async def read_limited_body(request: Request, maximum_bytes: int = MAX_WAV_BYTES,
                             too_large_message: str = "WAV payload is too large.") -> bytes:
     body = bytearray()
@@ -389,6 +473,11 @@ def make_voice_error(status_code: int, message: str,
         "status": "error",
         "error": message,
     })
+
+def make_conversation_error(status_code: int, message: str,
+        conversation_request: ConversationRequest | None = None) -> JSONResponse:
+    response = conversation_error_response(message, conversation_request)
+    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
 
 def validate_wav(data: bytes) -> None:
     try:
