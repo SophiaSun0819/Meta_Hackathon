@@ -1,128 +1,244 @@
 # Thinking Space
 
-A mixed reality app for Meta Quest, built with Unity and the Meta XR SDK. The base scene shows the real room through passthrough and tracks your hands.
+Thinking Space is a mixed-reality brainstorming application for **Meta Quest 3**, built in Unity with Meta XR. A user speaks naturally to Orby, an AI companion; the app records and transcribes speech, routes conversational intent through a shared backend, generates or discusses ideas, speaks responses, and represents saved ideas as persistent spatial bubbles.
 
-## Tech stack
+> Development status: active prototype. The microphone, transcription, conversational backend, generated voice, local sessions, and placeholder bubbles have all worked in physical Quest tests. Several interaction and recovery paths are still being tested. This is not a production release.
 
-| Item | Version |
+## Supported project configuration
+
+| Component | Current configuration |
 | --- | --- |
-| Unity | 6000.3.27f1 |
+| Unity | **6000.3.27f1** (use this exact editor) |
+| Target | Meta Quest 3, Android |
+| Main scene | `Assets/Scenes/Sandbox.unity` |
+| Android application ID | `com.meta.hackathon.thinkingspace` |
+| Android architecture/backend | ARM64, IL2CPP |
+| Android API levels | Minimum 32, target 34 |
 | Render pipeline | URP 17.3.0 |
 | Meta XR All-in-One SDK | 207.0.1 |
-| OpenXR plugin | 1.19.0 (Meta XR feature group enabled) |
+| OpenXR | 1.19.0 with Meta XR features |
 | Input System | 1.20.1 |
-| Newtonsoft Json | 3.2.1 |
-| Android package name | `com.meta.hackathon.thinkingspace` |
 
-## Environment setup
+Do not upgrade Unity, Meta XR, OpenXR, or other packages as part of ordinary feature work. Coordinate package changes with the whole team.
 
-Do these steps once per computer, in order.
+## What is implemented
 
-### 1. Install Git LFS
+- Quest 3 mixed-reality passthrough and the existing Meta XR camera/hand-tracking rig.
+- Hand-tracked palm menu with Meta poke and ray/pinch interaction.
+- Thumbs-up/down recording controls, selected recording hand, and microphone/VAD-based conversational capture.
+- Manual recording review, playback, WAV diagnostics, automatic transcription, and recoverable error paths.
+- Hosted FastAPI backend for OpenAI transcription, conversational intent routing, clarification, and idea processing.
+- Conversational Orby responses for general questions, idea creation, expansion, combination, and constructive challenges.
+- ElevenLabs speech synthesis through the backend; provider credentials remain server-side.
+- Dynamic subtitles and a centralized Orby voice queue/cache.
+- Versioned local session persistence, restored session numbering, conversation records, idea records, relationships, and bubble transforms.
+- Placeholder category-colored idea bubbles, saved/restored per session, with selectable paginated detail panels.
+- Local onboarding/preferences and development-only diagnostics/reset tooling.
 
-Images, models, audio, video, fonts and APKs are stored with [Git LFS](https://git-lfs.com). If LFS isn't set up before you clone, those files come down as small text pointers and the project won't look right.
+Implemented does not mean every edge case has completed physical validation. In particular, see **Current milestone status** below.
+
+## Planned or unfinished
+
+- Voice-controlled menus and complete session-command execution.
+- Final bubble hand gestures and voice-controlled bubble movement/resizing.
+- Visual relationship connectors between related ideas.
+- A tutorial practice session.
+- Replacement of placeholder Orby/bubble visuals with final authored assets.
+- UI, accessibility, thermal, memory, network-recovery, and Quest performance polish.
+- Production authentication. The current shared development token is suitable only for controlled testing.
+- Multi-instance durable clarification state; the backend currently keeps bounded clarification state in process memory.
+
+## Repository setup
+
+### Prerequisites
+
+Install:
+
+1. [Git](https://git-scm.com/) and [Git LFS](https://git-lfs.com/).
+2. Unity Hub and **Unity 6000.3.27f1**.
+3. Unity Android Build Support for that editor, including **OpenJDK** and **Android SDK & NDK Tools**.
+4. Meta Quest Developer Hub or Android platform tools if you want a convenient `adb` installation.
+
+Initialize LFS before cloning:
 
 ```bash
-brew install git-lfs
 git lfs install
 ```
 
-(`conda install git-lfs` works too, but it's only on your PATH when conda is active, so Unity and Git GUI apps may not find it.)
-
-### 2. Install Unity
-
-1. Install **Unity 6000.3.27f1** from Unity Hub. Use this exact version so project files don't get upgraded by accident.
-2. Add the **Android Build Support** module, including **OpenJDK** and **Android SDK & NDK Tools**.
-
-### 3. Clone and open the project
+### Clone and create a branch
 
 ```bash
 git clone https://github.com/SophiaSun0819/Meta_Hackathon.git
 cd Meta_Hackathon
-git checkout development
+git lfs pull
+git switch development
+git pull --ff-only
+git switch -c feature/short-description
 ```
 
-Open the folder in Unity Hub. The first import takes a while because Unity downloads the Meta SDK packages. If Package Manager shows `ECONNRESET` errors, your network dropped the download: retry, or switch to another network or a phone hotspot.
+If your work is based on a different agreed integration branch, substitute that branch. Do not build a new feature directly on another teammate's active branch.
 
-When the project is open:
+### Open the project
 
-- Check that **File → Build Profiles** shows **Android** as the active platform. If it doesn't, select Android and click **Switch Platform**.
-- Open **Edit → Project Settings → Meta XR**. The Android tab should show no Required issues. If it does, click **Fix All**.
+Add the repository root in Unity Hub and open it with **6000.3.27f1**. The first import may take several minutes. Open `Assets/Scenes/Sandbox.unity`; it is the only enabled build scene.
 
-### 4. Set up your Quest
+Do not click broad repair or “Fix All” actions without reviewing each proposed change. Some Meta/OpenXR settings are intentional, and setup tools can serialize project-wide changes.
 
-1. Turn on Developer Mode for the headset in the Meta Horizon mobile app.
-2. Connect the Quest over USB, put it on, and allow USB debugging.
-3. In **File → Build Profiles**, choose your Quest under **Run Device**.
+## Build and install a Development APK
 
-## Building to Quest
+1. In Unity, open **File → Build Profiles** and select Android.
+2. Switch platform only if Android is not already active.
+3. Confirm `Assets/Scenes/Sandbox.unity` is enabled.
+4. Enable **Development Build** for diagnostics; do not enable it for a release candidate.
+5. Connect the Quest and select it under **Run Device**, then use **Build And Run**; or choose **Build** and install with ADB.
 
-1. Open `Assets/Scenes/Sandbox.unity`. It's first in the build scene list.
-2. In **File → Build Profiles**, click **Build And Run**.
-3. In the headset you should see your real room and your own hands. The hands look blue, and turn pale yellow when your palm faces you; that's the system menu gesture.
+Command-line installation:
 
-Don't commit build output. `*.apk` files and the `*_BurstDebugInformation_DoNotShip/` folder are ignored.
+```bash
+adb devices
+adb install -r path/to/ThinkingSpace.apk
+```
+
+Use `-r` to update while retaining app data. A clean reinstall removes the package first and therefore removes sessions, preferences, cache, and the device development-token file:
+
+```bash
+adb uninstall com.meta.hackathon.thinkingspace
+adb install path/to/ThinkingSpace.apk
+```
+
+Do not uninstall when you need to preserve device sessions.
+
+## Quest developer mode and ADB
+
+1. Add the Meta account to an organization and enable Developer Mode in the Meta Horizon mobile app.
+2. Connect the headset by USB, put it on, and accept the data/USB debugging prompt. Select “Always allow” only on a trusted development computer.
+3. Verify exactly one authorized device with `adb devices`.
+
+### Windows
+
+Install Android platform tools through Meta Quest Developer Hub, Android Studio, or Google's platform-tools archive. Add the directory containing `adb.exe` to `PATH`, then open a new PowerShell window.
+
+### macOS
+
+Install through Homebrew or Google's platform tools:
+
+```bash
+brew install android-platform-tools
+adb version
+```
+
+If a device is `unauthorized`, reconnect it and accept the prompt inside the headset. If multiple devices are connected, disconnect the others or use `adb -s SERIAL`; the supplied provisioning scripts intentionally stop rather than guessing.
+
+## Shared backend and development authentication
+
+The team uses one existing Render-hosted FastAPI service. OpenAI and ElevenLabs credentials are stored only in Render. Teammates do **not** need their own OpenAI or ElevenLabs subscriptions for normal Quest testing.
+
+Protected endpoints require `X-ThinkingSpace-Token`. Development APKs load the shared development token from:
+
+```text
+Application.persistentDataPath/ThinkingSpace/dev-token.txt
+```
+
+For this Android package, Unity's persistent-data directory is normally:
+
+```text
+/storage/emulated/0/Android/data/com.meta.hackathon.thinkingspace/files
+```
+
+Therefore the token file is:
+
+```text
+/storage/emulated/0/Android/data/com.meta.hackathon.thinkingspace/files/ThinkingSpace/dev-token.txt
+```
+
+Obtain the token privately from the project owner. Never paste it into a Unity asset, prefab, scene, source file, screenshot, issue, pull request, shell script, or Git commit. The token is a temporary shared development credential embedded in neither the APK nor this repository. Anyone who receives it can call the protected shared backend until it is rotated, so it is not a production authentication design.
+
+Safe helper scripts are provided:
+
+- Windows: `Tools/Development/Provision-QuestDevToken.ps1`
+- macOS/Linux: `Tools/Development/provision-quest-dev-token.sh`
+
+They prompt without echoing, use a permission-restricted temporary file, validate one connected/authorized Quest and the installed package, push only `dev-token.txt`, verify that it is nonempty, and remove the temporary file. They never contain or print a real token.
+
+```powershell
+.\Tools\Development\Provision-QuestDevToken.ps1
+```
+
+```bash
+chmod +x Tools/Development/provision-quest-dev-token.sh
+./Tools/Development/provision-quest-dev-token.sh
+```
+
+After provisioning, restart the app. Uninstalling the package or clearing app data removes device-local state; reprovision if diagnostics report that the token is missing. The current development reset code is intended to preserve unrelated credentials, but always verify the reported token source after destructive testing.
+
+Editor development can instead read `THINKING_SPACE_DEV_TOKEN` from the editor process environment. Do not store it in project settings.
+
+## Current milestone status
+
+| Milestone | Status |
+| --- | --- |
+| 5C.2A — Unity conversational integration | Implemented and physically validated for transcription and multiple conversational/idea paths. |
+| 5C.2B — Automatic conversational processing | Implemented; general questions and idea creation have worked on Quest. Recovery and longer multi-idea conversations remain under test. |
+| 5C.2B.1 — Error classification and diagnostics | Implemented locally; captures safe request stage, HTTP category, WAV/request ownership, and recovery information. |
+| 5C.2B.2 — Clarification recovery and enhanced diagnostics | Backend and Unity corrections implemented locally; Python 3.12 backend suite passed 96 tests and Unity assemblies compiled. **Latest backend recovery changes are not deployed and require further Quest testing.** |
+
+The 5C.2B.2 change clears a failed session-owned clarification so one malformed provider response cannot leave Unity and the backend with divergent clarification state. Development builds also read safe structured-failure metadata. Do not represent this path as verified until the updated backend and APK complete physical testing.
+
+## Team Git workflow
+
+1. Start from the agreed integration branch and create your own `feature/*` or `fix/*` branch.
+2. Coordinate ownership before editing another developer's active feature.
+3. Keep commits focused and stage explicit paths—never use `git add .` in a dirty shared worktree.
+4. Push your branch and open a pull request into the agreed integration branch.
+5. Review the file list and diff before merging.
+
+Example:
+
+```bash
+git status --short
+git add path/to/intended-file path/to/its-file.meta
+git diff --cached --check
+git diff --cached --name-status
+git commit -m "Document teammate Quest setup"
+git push -u origin feature/team-handoff
+```
+
+Additional rules:
+
+- Preserve every Unity `.meta` file. Add or move the asset and its `.meta` together.
+- Do not commit `Library`, `Temp`, `Logs`, `UserSettings`, IDE files, APK/AAB output, recordings, `.env`, token files, API keys, or local caches.
+- Use Git LFS for binary models, images, audio, video, fonts, and other types listed in `.gitattributes`. Run `git lfs pull` after cloning.
+- Coordinate edits to `Assets/Scenes/Sandbox.unity`. Only one person should own a scene integration change at a time; prefer isolated prefabs/scripts where possible.
+- Do not discard unrelated working-tree changes. If a file contains multiple developers' work, stage it interactively and review carefully.
 
 ## Project structure
 
-| Path | Contents |
+| Path | Purpose |
 | --- | --- |
-| `Assets/Scenes/Sandbox.unity` | Base MR scene: Camera Rig, Hand Tracking, Passthrough |
-| `Assets/XR/` | XR Plug-in Management and OpenXR settings |
-| `Assets/Oculus/` | Meta project config (hand tracking, passthrough, scene support) |
-| `Assets/Resources/` | Meta SDK runtime settings |
-| `Assets/Plugins/Android/` | Generated `AndroidManifest.xml` |
+| `Assets/Scenes/Sandbox.unity` | Main Quest MR scene and integration point |
+| `Assets/ThinkingSpace/Speech/` | Recording, transcription, conversation workflow, bubbles, and review UI |
+| `Assets/ThinkingSpace/UI/` | Palm menu, session store, preferences, and menu views |
+| `Assets/ThinkingSpace/Companion/` | Orby state, voice, subtitles, onboarding, diagnostics, and placeholder view |
+| `Assets/ThinkingSpace/Tests/Editor/` | Unity EditMode regression coverage |
+| `Backend/` | FastAPI transcription, conversation, intent, idea, and voice services plus mocked tests |
+| `Tools/Development/` | Credential-free development provisioning helpers |
+| `render.yaml` | Existing Render service configuration; contains no secret values |
 
-## Branches and merge rules
+## Persistence and privacy
 
-| Branch | Purpose | Rules |
-| --- | --- | --- |
-| `main` | Stable versions for demos and submission | Updated only by merging `development` through a PR |
-| `development` | Integration branch for the team | **Protected:** no direct pushes (admins included), no force pushes, can't be deleted |
-| `feature/*`, `fix/*` | Your own work | Branch from `development` and open a PR back into it |
+Session JSON, preferences, voice cache, optional exported development WAV files, and the development token live below the Quest app's persistent-data directory. Raw audio is not stored in sessions by default. Do not retrieve or share recordings without the speaker's consent.
 
-### Workflow
-
-```bash
-git checkout development
-git pull
-git checkout -b feature/short-description
-# ...make changes, commit...
-git push -u origin feature/short-description
-```
-
-Then open a pull request into `development` on GitHub. Merging doesn't need a review, but tell the team in chat before you merge.
-
-Guidelines:
-
-- Keep each PR small and about one thing.
-- Pull `development` often, and merge it into your branch before opening a PR.
-- **Avoid editing the same scene or prefab as someone else at the same time.** Unity scene merges are painful. Agree on who owns a scene, or put your work in a prefab or a scene of your own.
-- Write commit messages in the imperative mood, for example `Add pinch-to-grab interaction`.
-
-## Git LFS tracked files
-
-These types are stored in LFS (see `.gitattributes`):
-
-- Models: `.fbx` `.obj` `.blend` `.glb`
-- Images: `.png` `.jpg` `.jpeg` `.psd` `.tga` `.exr` `.hdr`
-- Audio and video: `.wav` `.mp3` `.ogg` `.mp4`
-- Fonts and builds: `.ttf` `.otf` `.apk`
-
-Unity text assets (`.unity`, `.prefab`, `.asset`, `.meta`, `.mat`, `.anim`, `.controller`) stay in regular Git with LF line endings.
-
-To add another large binary type, run `git lfs track "*.ext"` and commit the updated `.gitattributes`.
+Application data may be removed by uninstalling the APK or clearing package data. Development reset tools create backups for the data they manage, but are not a cloud backup system.
 
 ## Troubleshooting
 
-| Problem | Fix |
+| Symptom | Check |
 | --- | --- |
-| Images or models are missing or look broken after cloning | LFS wasn't set up. Run `git lfs install`, then `git lfs pull`. |
-| Package Manager shows `ECONNRESET` | The network dropped the download. Retry, or switch to another network or a phone hotspot. |
-| The Quest doesn't show up under Run Device | Check that Developer Mode is on, reconnect the cable, and accept the USB debugging prompt in the headset. |
-| A push to `development` is rejected with `protected branch` | Expected. Push a feature branch and open a PR. |
-| Meta XR Project Setup Tool shows warnings | Click **Fix All**. The remaining Recommended items about the Platform SDK and the XR Simulator can be ignored. |
+| Missing models/audio after clone | Run `git lfs install` and `git lfs pull`; verify files are not LFS pointer text. |
+| Quest absent from Unity/ADB | Developer Mode, cable, in-headset authorization, then `adb devices`. |
+| “Development authentication token is not configured” | Provision `dev-token.txt`, restart the app, and check development diagnostics for token source without exposing its value. |
+| HTTP 401 from protected backend endpoint | Token is missing, stale, or mismatched with Render; obtain the current value privately. |
+| Conversation structured-response failure | Record only safe diagnostics: HTTP status, failure stage/field/category, completion reason, request ID, and session ID. Do not share transcripts or tokens. |
+| Package Manager network errors | Retry on a stable network; do not change package versions as a workaround. |
 
-## Optional tools
-
-The project includes [MCP for Unity](https://github.com/CoplayDev/unity-mcp) (`com.coplaydev.unity-mcp`), which lets AI coding assistants control the Unity Editor. You don't have to use it.
+Backend setup, endpoint contracts, deployment variables, and mocked test commands are documented separately in `Backend/README.md`.

@@ -23,6 +23,13 @@
 /[Uu]ser[Ss]ettings/
 *.log
 
+# Local credentials and environment overrides (never commit real values)
+.env
+.env.*
+!.env.example
+dev-token.txt
+*-token.txt
+
 # By default unity supports Blender asset imports, *.blend1 blender files do not need to be commited to version control.
 *.blend1
 *.blend1.meta
