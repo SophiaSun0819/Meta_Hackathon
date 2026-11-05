@@ -25,11 +25,14 @@ class FixedConversationProvider:
     def __init__(self, category="general_conversation", action="converse", targets=None,
                  response="Here is a helpful response.", create=False, execute=False,
                  confirmation=False, question=None, candidates=None, scale=None, direction=None,
-                 response_style="standard"):
+                 response_style="standard", authorization="authorized",
+                 discourse_context="general", response_mode="conversational_answer"):
         self.values = dict(intent_category=category, proposed_action=action,
             target_idea_ids=targets or [], parameters={"scale": scale, "direction": direction,
                                                        "settings_section": None},
-            response_style=response_style, spoken_response=response, suggested_emotion="attentive",
+            authorization=authorization, discourse_context=discourse_context,
+            response_mode=response_mode, response_style=response_style,
+            spoken_response=response, suggested_emotion="attentive",
             requires_confirmation=confirmation, clarification_question=question,
             candidate_idea_ids=candidates or [], should_create_idea=create,
             should_execute_action=execute)
@@ -194,6 +197,137 @@ class ConversationEndpointTests(unittest.TestCase):
         second = self.post(follow).json()
         self.assertFalse(second["should_create_idea"])
         self.assertEqual(second["proposed_action"], "conversational_challenge")
+
+    def test_exploratory_modification_during_challenge_is_normalized_to_discussion(self):
+        self.use(FixedConversationProvider("idea_modification", "expand_idea",
+            targets=["idea-one"], authorization="discussion", discourse_context="challenge",
+            response_mode="conversational_answer",
+            response="Short quizzes could improve recall, but they may interrupt immersion if overused."))
+        payload = self.payload("exploratory-challenge",
+            "What if we added short quizzes to address the learning issue?")
+        payload["context"]["recent_turns"] = [
+            {"role": "user", "text": "Challenge my VR anatomy idea.",
+             "related_idea_ids": ["idea-one"]},
+            {"role": "orby", "text": "The experience may overload learners.",
+             "related_idea_ids": ["idea-one"]},
+        ]
+        data = self.post(payload).json()
+        self.assertEqual(data["intent_category"], "contextual_follow_up")
+        self.assertEqual(data["proposed_action"], "conversational_challenge")
+        self.assertEqual(data["target_idea_ids"], ["idea-one"])
+        self.assertFalse(data["should_create_idea"])
+        self.assertFalse(data["should_execute_action"])
+        self.assertFalse(data["requires_confirmation"])
+
+    def test_explicit_expansion_after_discussion_remains_supported_proposal(self):
+        self.use(FixedConversationProvider("idea_modification", "expand_idea",
+            targets=["idea-one"], authorization="authorized", discourse_context="challenge",
+            response_mode="action_proposal",
+            response="I can create a derived expansion that adds short quizzes."))
+        data = self.post(self.payload("explicit-expansion",
+            "Add short quizzes to the saved anatomy idea.")).json()
+        self.assertEqual(data["intent_category"], "idea_modification")
+        self.assertEqual(data["proposed_action"], "expand_idea")
+        self.assertFalse(data["should_execute_action"])
+
+    def test_what_if_new_idea_can_request_clarification(self):
+        self.use(FixedConversationProvider("ambiguous_potential_idea", "create_idea",
+            authorization="proposed", discourse_context="brainstorm",
+            response_mode="clarification", confirmation=True,
+            question="Would you like to save that as a separate idea?"))
+        data = self.post(self.payload("what-if-new", "What if we made a game involving dogs?")).json()
+        self.assertEqual(data["intent_category"], "ambiguous_potential_idea")
+        self.assertTrue(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
+
+    def test_clear_category_without_authorization_does_not_auto_create(self):
+        self.use(FixedConversationProvider("clear_new_idea", "create_idea",
+            authorization="proposed", discourse_context="brainstorm",
+            response_mode="clarification", confirmation=True,
+            question="Should I save that as a separate idea?"))
+        data = self.post(self.payload("uncertain-clear",
+            "Could we make a VR anatomy game?")).json()
+        self.assertEqual(data["intent_category"], "ambiguous_potential_idea")
+        self.assertTrue(data["requires_confirmation"])
+        self.assertFalse(data["should_create_idea"])
+
+    def test_action_verbs_inside_questions_do_not_authorize_actions(self):
+        cases = ["Would adding quizzes solve that?", "How would we implement that?",
+                 "Could moving it closer make the relationship clearer?"]
+        for index, transcript in enumerate(cases):
+            self.use(FixedConversationProvider("idea_modification", "expand_idea",
+                targets=["idea-one"], authorization="discussion", discourse_context="challenge",
+                response_mode="conversational_answer", response="It could help, with some tradeoffs."))
+            data = self.post(self.payload(f"question-verb-{index}", transcript)).json()
+            self.assertEqual(data["proposed_action"], "conversational_challenge")
+            self.assertFalse(data["should_create_idea"])
+            self.assertFalse(data["should_execute_action"])
+
+    def test_false_action_promise_is_rejected(self):
+        self.use(FixedConversationProvider("idea_modification", "expand_idea",
+            targets=["idea-one"], authorization="discussion", discourse_context="challenge",
+            response_mode="conversational_answer", response="I'll expand the anatomy idea now."))
+        response = self.post(self.payload("false-promise", "What if we added quizzes?"))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"],
+                         "false_completion_claim")
+
+    def test_semantic_misclassification_gets_one_contextual_correction(self):
+        request = ConversationRequest.model_validate(self.payload("semantic-correction",
+            "What if we added short quizzes to address the learning issue?"))
+        base = {
+            "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard", "suggested_emotion": "attentive",
+            "requires_confirmation": False, "clarification_question": None,
+            "candidate_idea_ids": [], "should_create_idea": False,
+            "should_execute_action": False,
+        }
+        incorrect = {**base, "intent_category": "idea_modification",
+            "proposed_action": "expand_idea", "authorization": "discussion",
+            "discourse_context": "challenge", "response_mode": "action_proposal",
+            "spoken_response": "I can expand the saved idea with quizzes."}
+        corrected = {**base, "intent_category": "contextual_follow_up",
+            "proposed_action": "conversational_challenge", "authorization": "discussion",
+            "discourse_context": "challenge", "response_mode": "conversational_answer",
+            "spoken_response": "Short quizzes could reinforce recall, though frequent interruptions may reduce immersion."}
+        client = FakeOpenAIClient([json.dumps(incorrect), json.dumps(corrected)])
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            result = asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(result.intent_category.value, "contextual_follow_up")
+        self.assertEqual(result.proposed_action.value, "conversational_challenge")
+
+    def test_challenge_discussion_then_explicit_separate_save_changes_intent(self):
+        provider = FixedConversationProvider("conversational_idea_challenge",
+            "conversational_challenge", targets=["idea-one"], authorization="discussion",
+            discourse_context="challenge", response_mode="conversational_answer",
+            response="The main risk is cognitive overload.")
+        self.use(provider)
+        first = self.post(self.payload("sequence-challenge", "Challenge my anatomy idea.")).json()
+        self.assertFalse(first["should_create_idea"])
+        provider.values.update(intent_category="idea_modification", proposed_action="expand_idea",
+            authorization="discussion", discourse_context="challenge",
+            response_mode="conversational_answer",
+            spoken_response="Short quizzes might help recall, but they could interrupt immersion.")
+        second_payload = self.payload("sequence-discussion", "Would short quizzes solve that?")
+        second_payload["context"]["recent_turns"] = [
+            {"role": "user", "text": "Challenge my anatomy idea.",
+             "related_idea_ids": ["idea-one"]},
+            {"role": "orby", "text": first["spoken_response"],
+             "related_idea_ids": ["idea-one"]},
+        ]
+        second = self.post(second_payload).json()
+        self.assertEqual(second["proposed_action"], "conversational_challenge")
+        self.assertFalse(second["should_create_idea"])
+        provider.values.update(intent_category="clear_new_idea", proposed_action="create_idea",
+            authorization="authorized", discourse_context="challenge", response_mode="action_proposal",
+            target_idea_ids=[], should_create_idea=True,
+            spoken_response="I can propose that quiz solution as a separate saved idea.")
+        third = self.post(self.payload("sequence-save",
+            "Create a separate idea based on that quiz solution.")).json()
+        self.assertEqual(third["proposed_action"], "create_idea")
+        self.assertTrue(third["should_create_idea"])
 
     def test_expand_combine_spatial_and_session_commands_are_semantic(self):
         cases = [
@@ -544,7 +678,8 @@ class ConversationEndpointTests(unittest.TestCase):
         started = self.post(self.payload("confirm-start", "Maybe we could add quizzes.")).json()
         provider.values.update(intent_category="clear_new_idea", proposed_action="create_idea",
             requires_confirmation=False, clarification_question=None, should_create_idea=True,
-            spoken_response="Yes, I'll save the quiz idea.")
+            response_mode="action_proposal", authorization="authorized",
+            spoken_response="The quiz concept is ready for Unity to save as a separate idea.")
         follow = self.payload("confirm-answer", "Yes")
         follow["clarification_id"] = started["clarification_id"]
         result = self.post(follow).json()
