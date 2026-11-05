@@ -175,11 +175,20 @@ class ConversationFailure(Exception): pass
 class ConversationTimeout(ConversationFailure): pass
 class ConversationMalformedOutput(ConversationFailure):
     def __init__(self, message: str, stage: str = "output_validation",
-                 field_path: str = "$", category: str = "malformed_output"):
+                 field_path: str = "$", category: str = "malformed_output",
+                 completion_status: str = "unknown", incomplete_reason: str = "none",
+                 output_tokens: int | None = None, reasoning_tokens: int | None = None,
+                 output_characters: int = 0, structured_parse_attempted: bool = False):
         super().__init__(message)
         self.stage = stage
         self.field_path = field_path
         self.category = category
+        self.completion_status = completion_status
+        self.incomplete_reason = incomplete_reason
+        self.output_tokens = output_tokens
+        self.reasoning_tokens = reasoning_tokens
+        self.output_characters = output_characters
+        self.structured_parse_attempted = structured_parse_attempted
 
 class ConversationProviderFailure(ConversationFailure):
     def __init__(self, message: str, stage: str = "provider_request",
@@ -199,6 +208,16 @@ class PendingConversationClarification:
     candidate_idea_ids: list[str]
     attempts: int
     expires_at: float
+
+
+@dataclass
+class ProviderCompletionMetadata:
+    status: str = "unknown"
+    incomplete_reason: str = "none"
+    output_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    output_characters: int = 0
+    structured_parse_attempted: bool = False
 
 
 class ConversationClarificationStore:
@@ -277,19 +296,50 @@ class OpenAIConversationProvider:
     async def respond(self, request: ConversationRequest) -> ConversationModelOutput:
         client = AsyncOpenAI(api_key=self.api_key)
         try:
-            output = await self._request_output(client, request)
-            model_output, raw_values, problem = self._validate_output(output)
+            output, metadata = await self._request_output(client, request, max_output_tokens=1200)
+            retry_used = False
+            if metadata.status == "incomplete":
+                if metadata.incomplete_reason != "max_output_tokens":
+                    raise _malformed_from_metadata("Conversation response was incomplete.", metadata,
+                        stage="response_completion",
+                        category="incomplete_" + metadata.incomplete_reason)
+                output, metadata = await self._request_output(client, request,
+                    completion_retry=True, max_output_tokens=2400)
+                retry_used = True
+                if metadata.status != "completed":
+                    raise _malformed_from_metadata("Conversation completion retry was incomplete.", metadata,
+                        stage="response_completion", category="completion_retry_incomplete")
+            elif metadata.status != "completed":
+                raise _malformed_from_metadata("Conversation response did not complete.", metadata,
+                    stage="response_completion", category="response_not_completed")
+            if not output:
+                raise _malformed_from_metadata("Conversation provider returned no output.", metadata,
+                    stage="response_receipt", category="empty_output")
+            model_output, raw_values, problem = self._validate_output(output, metadata)
             if not problem:
                 return model_output
-            corrected = await self._request_output(client, request, output, problem)
+            if retry_used:
+                raise _malformed_from_metadata("Conversation output exceeded its length after retry.", metadata,
+                    stage="output_correction", field_path="spoken_response",
+                    category="retry_budget_exhausted")
+            corrected, corrected_metadata = await self._request_output(client, request, output, problem,
+                max_output_tokens=2400)
+            if corrected_metadata.status != "completed":
+                raise _malformed_from_metadata("Conversation correction did not complete.", corrected_metadata,
+                    stage="output_correction", category="correction_incomplete")
+            if not corrected:
+                raise _malformed_from_metadata("Conversation correction returned no output.",
+                    corrected_metadata, stage="output_correction", category="empty_output")
             corrected_output, corrected_values, corrected_problem = self._validate_output(
-                corrected, correction=True)
+                corrected, corrected_metadata, correction=True)
             if corrected_problem:
-                raise ConversationMalformedOutput("Corrected conversation output failed validation.",
+                raise _malformed_from_metadata("Corrected conversation output failed validation.",
+                    corrected_metadata,
                     stage="output_correction", field_path="spoken_response",
                     category=corrected_problem)
             if _response_metadata(raw_values) != _response_metadata(corrected_values):
-                raise ConversationMalformedOutput("Conversation correction changed protected metadata.",
+                raise _malformed_from_metadata("Conversation correction changed protected metadata.",
+                    corrected_metadata,
                     stage="output_correction", field_path="proposed_action",
                     category="correction_changed_metadata")
             return corrected_output
@@ -302,9 +352,17 @@ class OpenAIConversationProvider:
 
     async def _request_output(self, client: AsyncOpenAI, request: ConversationRequest,
                               prior_output: str | None = None,
-                              correction_problem: str | None = None) -> str:
+                              correction_problem: str | None = None,
+                              completion_retry: bool = False,
+                              max_output_tokens: int = 1200) -> tuple[str, ProviderCompletionMetadata]:
         user_prompt = self._user_prompt(request)
-        if prior_output is not None:
+        if completion_retry:
+            user_prompt += (
+                "\nThe prior response was explicitly incomplete because its output-token budget was exhausted. "
+                "Return one complete concise structured result now. Do not add detail and do not continue partial "
+                "text from the prior response. Preserve the requested action and supplied idea references."
+            )
+        elif prior_output is not None:
             user_prompt += (
                 "\nThe previous structured result exceeded the permitted conversational response length. "
                 "Return one complete corrected result. Shorten spoken_response into a complete natural answer "
@@ -317,22 +375,22 @@ class OpenAIConversationProvider:
                    {"role": "user", "content": user_prompt}],
             text={"format": {"type": "json_schema", "name": "thinking_space_conversation",
                               "strict": True, "schema": _output_schema()}},
-            max_output_tokens=1200,
+            reasoning={"effort": "low"},
+            max_output_tokens=max_output_tokens,
         )
         output = getattr(response, "output_text", "")
-        if not output:
-            raise ConversationMalformedOutput("Conversation provider returned no output.",
-                stage="response_receipt" if prior_output is None else "output_correction",
-                category="empty_output")
-        return output
+        metadata = _completion_metadata(response, output)
+        return output, metadata
 
     @staticmethod
-    def _validate_output(output: str, correction: bool = False) \
+    def _validate_output(output: str, metadata: ProviderCompletionMetadata,
+                         correction: bool = False) \
             -> tuple[ConversationModelOutput | None, dict, str | None]:
+        metadata.structured_parse_attempted = True
         try:
             raw_values = json.loads(output)
         except (ValueError, json.JSONDecodeError) as exc:
-            raise ConversationMalformedOutput("Conversation output failed parsing.",
+            raise _malformed_from_metadata("Conversation output failed parsing.", metadata,
                 stage="output_correction" if correction else "output_parsing",
                 category="json_invalid") from exc
         try:
@@ -345,7 +403,7 @@ class OpenAIConversationProvider:
                                                       include_input=False))
             if length_only and not correction:
                 return None, raw_values, "spoken_response must not exceed 2000 characters"
-            raise ConversationMalformedOutput("Conversation output failed validation.",
+            raise _malformed_from_metadata("Conversation output failed validation.", metadata,
                 stage="output_correction" if correction else "output_schema",
                 field_path=field_path, category=category) from exc
         word_limit = {"brief": 40, "standard": 100, "detailed": 150}[model_output.response_style]
@@ -549,6 +607,29 @@ def _validation_issue(exc: ValidationError) -> tuple[str, str]:
 
 def _response_metadata(values: dict) -> dict:
     return {key: value for key, value in values.items() if key != "spoken_response"}
+
+
+def _completion_metadata(response, output: str) -> ProviderCompletionMetadata:
+    incomplete = getattr(response, "incomplete_details", None)
+    usage = getattr(response, "usage", None)
+    output_details = getattr(usage, "output_tokens_details", None) if usage is not None else None
+    return ProviderCompletionMetadata(
+        status=str(getattr(response, "status", None) or "unknown"),
+        incomplete_reason=str(getattr(incomplete, "reason", None) or "none"),
+        output_tokens=getattr(usage, "output_tokens", None) if usage is not None else None,
+        reasoning_tokens=(getattr(output_details, "reasoning_tokens", None)
+                          if output_details is not None else None),
+        output_characters=len(output or ""),
+    )
+
+
+def _malformed_from_metadata(message: str, metadata: ProviderCompletionMetadata, **kwargs) \
+        -> ConversationMalformedOutput:
+    return ConversationMalformedOutput(message,
+        completion_status=metadata.status, incomplete_reason=metadata.incomplete_reason,
+        output_tokens=metadata.output_tokens, reasoning_tokens=metadata.reasoning_tokens,
+        output_characters=metadata.output_characters,
+        structured_parse_attempted=metadata.structured_parse_attempted, **kwargs)
 
 
 def _output_schema() -> dict:

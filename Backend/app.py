@@ -149,12 +149,19 @@ async def process_conversation(request: Request,
     except ConversationTimeout:
         return make_conversation_error(504, "Conversation provider timed out.", conversation_request)
     except ConversationMalformedOutput as exc:
-        logger.warning("conversation_output_invalid stage=%s status=502 field=%s category=%s",
-                       exc.stage, exc.field_path, exc.category)
+        logger.warning("conversation_output_invalid stage=%s status=502 field=%s category=%s "
+                       "completion=%s incomplete_reason=%s output_tokens=%s reasoning_tokens=%s "
+                       "output_characters=%s parse_attempted=%s",
+                       exc.stage, exc.field_path, exc.category, exc.completion_status,
+                       exc.incomplete_reason, exc.output_tokens, exc.reasoning_tokens,
+                       exc.output_characters, exc.structured_parse_attempted)
         return make_conversation_error(502,
             "Conversation provider returned an invalid structured response.", conversation_request,
             failure_stage=exc.stage, failure_field=exc.field_path,
-            failure_category=exc.category)
+            failure_category=exc.category, completion_status=exc.completion_status,
+            incomplete_reason=exc.incomplete_reason, output_tokens=exc.output_tokens,
+            reasoning_tokens=exc.reasoning_tokens, output_characters=exc.output_characters,
+            structured_parse_attempted=exc.structured_parse_attempted)
     except ConversationContextError:
         return make_conversation_error(409,
             "Conversation clarification is missing, expired, or belongs to another session.",
@@ -499,7 +506,11 @@ def make_conversation_error(status_code: int, message: str,
         conversation_request: ConversationRequest | None = None,
         validation_stage: str | None = None, validation_field: str | None = None,
         validation_category: str | None = None, failure_stage: str | None = None,
-        failure_field: str | None = None, failure_category: str | None = None) -> JSONResponse:
+        failure_field: str | None = None, failure_category: str | None = None,
+        completion_status: str | None = None, incomplete_reason: str | None = None,
+        output_tokens: int | None = None, reasoning_tokens: int | None = None,
+        output_characters: int | None = None,
+        structured_parse_attempted: bool | None = None) -> JSONResponse:
     response = conversation_error_response(message, conversation_request)
     headers = None
     if validation_stage and validation_field and validation_category:
@@ -516,6 +527,19 @@ def make_conversation_error(status_code: int, message: str,
             "X-ThinkingSpace-Failure-Category": _safe_diagnostic_header(failure_category),
             "X-ThinkingSpace-Failure-Status": str(status_code),
         }
+        if completion_status is not None:
+            headers["X-ThinkingSpace-Completion-Status"] = _safe_diagnostic_header(completion_status)
+        if incomplete_reason is not None:
+            headers["X-ThinkingSpace-Incomplete-Reason"] = _safe_diagnostic_header(incomplete_reason)
+        if output_tokens is not None:
+            headers["X-ThinkingSpace-Output-Tokens"] = str(max(0, output_tokens))
+        if reasoning_tokens is not None:
+            headers["X-ThinkingSpace-Reasoning-Tokens"] = str(max(0, reasoning_tokens))
+        if output_characters is not None:
+            headers["X-ThinkingSpace-Output-Characters"] = str(max(0, output_characters))
+        if structured_parse_attempted is not None:
+            headers["X-ThinkingSpace-Structured-Parse-Attempted"] = (
+                "true" if structured_parse_attempted else "false")
     return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"),
                         headers=headers)
 

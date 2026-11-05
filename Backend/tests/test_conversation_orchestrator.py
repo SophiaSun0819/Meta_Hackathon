@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ["OPENAI_API_KEY"] = "test-key-not-used"
@@ -47,21 +48,32 @@ class TimeoutProvider:
 class MalformedProvider:
     async def respond(self, request):
         raise ConversationMalformedOutput("mock malformed", stage="output_schema",
-            field_path="proposed_action", category="enum")
+            field_path="proposed_action", category="enum", completion_status="completed",
+            incomplete_reason="none", output_tokens=240, reasoning_tokens=30,
+            output_characters=640, structured_parse_attempted=True)
 
 
 class FakeOpenAIResponse:
-    def __init__(self, output_text): self.output_text = output_text
+    def __init__(self, output_text, status="completed", incomplete_reason=None,
+                 output_tokens=200, reasoning_tokens=20):
+        self.output_text = output_text
+        self.status = status
+        self.incomplete_details = (SimpleNamespace(reason=incomplete_reason)
+                                   if incomplete_reason is not None else None)
+        self.usage = SimpleNamespace(output_tokens=output_tokens,
+            output_tokens_details=SimpleNamespace(reasoning_tokens=reasoning_tokens))
 
 
 class FakeOpenAIResponses:
     def __init__(self, output_text):
         self.outputs = list(output_text) if isinstance(output_text, list) else [output_text]
         self.calls = 0
-    async def create(self, **_):
+        self.requests = []
+    async def create(self, **kwargs):
+        self.requests.append(kwargs)
         value = self.outputs[min(self.calls, len(self.outputs) - 1)]
         self.calls += 1
-        return FakeOpenAIResponse(value)
+        return value if isinstance(value, FakeOpenAIResponse) else FakeOpenAIResponse(value)
 
 
 class FakeOpenAIClient:
@@ -287,6 +299,72 @@ class ConversationEndpointTests(unittest.TestCase):
             self.assertEqual(raised.exception.field_path, field)
             self.assertEqual(raised.exception.category, category)
 
+    def test_incomplete_max_output_tokens_gets_one_bounded_retry(self):
+        request = ConversationRequest.model_validate(self.payload("completion-retry"))
+        valid = {
+            "intent_category": "conversational_idea_challenge",
+            "proposed_action": "conversational_challenge", "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard", "spoken_response": "A concise complete challenge.",
+            "suggested_emotion": "concerned", "requires_confirmation": False,
+            "clarification_question": None, "candidate_idea_ids": [],
+            "should_create_idea": False, "should_execute_action": False,
+        }
+        incomplete = FakeOpenAIResponse('{"intent_category":"conversational_idea_challenge",',
+            status="incomplete", incomplete_reason="max_output_tokens",
+            output_tokens=1200, reasoning_tokens=980)
+        client = FakeOpenAIClient([incomplete, FakeOpenAIResponse(json.dumps(valid),
+            output_tokens=420, reasoning_tokens=90)])
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            result = asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(result.proposed_action.value, "conversational_challenge")
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(client.responses.requests[0]["max_output_tokens"], 1200)
+        self.assertEqual(client.responses.requests[1]["max_output_tokens"], 2400)
+        self.assertEqual(client.responses.requests[0]["reasoning"], {"effort": "low"})
+
+    def test_second_incomplete_response_is_rejected_without_more_retries(self):
+        request = ConversationRequest.model_validate(self.payload("completion-exhausted"))
+        responses = [FakeOpenAIResponse("{", status="incomplete",
+            incomplete_reason="max_output_tokens", output_tokens=1200, reasoning_tokens=1100),
+            FakeOpenAIResponse("{", status="incomplete",
+            incomplete_reason="max_output_tokens", output_tokens=2400, reasoning_tokens=2200)]
+        client = FakeOpenAIClient(responses)
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            with self.assertRaises(ConversationMalformedOutput) as raised:
+                asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(raised.exception.stage, "response_completion")
+        self.assertEqual(raised.exception.category, "completion_retry_incomplete")
+        self.assertEqual(raised.exception.output_tokens, 2400)
+        self.assertFalse(raised.exception.structured_parse_attempted)
+
+    def test_completed_truncated_json_is_not_retried(self):
+        request = ConversationRequest.model_validate(self.payload("completed-invalid-json"))
+        response = FakeOpenAIResponse('{"intent_category":', status="completed",
+            output_tokens=80, reasoning_tokens=10)
+        client = FakeOpenAIClient(response)
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            with self.assertRaises(ConversationMalformedOutput) as raised:
+                asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 1)
+        self.assertEqual(raised.exception.stage, "output_parsing")
+        self.assertEqual(raised.exception.category, "json_invalid")
+        self.assertTrue(raised.exception.structured_parse_attempted)
+        self.assertEqual(raised.exception.output_characters, len(response.output_text))
+
+    def test_completed_empty_output_is_not_parsed_or_retried(self):
+        request = ConversationRequest.model_validate(self.payload("completed-empty"))
+        client = FakeOpenAIClient(FakeOpenAIResponse("", status="completed",
+            output_tokens=0, reasoning_tokens=0))
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            with self.assertRaises(ConversationMalformedOutput) as raised:
+                asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 1)
+        self.assertEqual(raised.exception.stage, "response_receipt")
+        self.assertEqual(raised.exception.category, "empty_output")
+        self.assertFalse(raised.exception.structured_parse_attempted)
+
     def test_adaptive_response_styles_accept_valid_lengths_without_retry(self):
         request = ConversationRequest.model_validate(self.payload("adaptive-valid"))
         cases = [
@@ -394,6 +472,12 @@ class ConversationEndpointTests(unittest.TestCase):
         self.assertEqual(response.headers["X-ThinkingSpace-Failure-Stage"], "output_schema")
         self.assertEqual(response.headers["X-ThinkingSpace-Failure-Field"], "proposed_action")
         self.assertEqual(response.headers["X-ThinkingSpace-Failure-Category"], "enum")
+        self.assertEqual(response.headers["X-ThinkingSpace-Completion-Status"], "completed")
+        self.assertEqual(response.headers["X-ThinkingSpace-Incomplete-Reason"], "none")
+        self.assertEqual(response.headers["X-ThinkingSpace-Output-Tokens"], "240")
+        self.assertEqual(response.headers["X-ThinkingSpace-Reasoning-Tokens"], "30")
+        self.assertEqual(response.headers["X-ThinkingSpace-Output-Characters"], "640")
+        self.assertEqual(response.headers["X-ThinkingSpace-Structured-Parse-Attempted"], "true")
         self.assertNotIn("mock malformed", response.text)
 
     def test_exact_challenge_json_validates_directly_and_at_endpoint(self):
