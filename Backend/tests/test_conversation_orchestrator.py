@@ -82,12 +82,37 @@ class ConversationEndpointTests(unittest.TestCase):
             self.assertFalse(data["should_create_idea"])
             self.assertEqual(data["spoken_response"], data["subtitle_text"])
 
-    def test_clear_new_idea_may_be_created(self):
-        self.use(FixedConversationProvider("clear_new_idea", "create_idea", create=True,
-                                          response="I'll save that as a new idea."))
-        data = self.post(self.payload("clear-idea", "I want to create a VR anatomy learning game.")).json()
+    def assert_clear_idea_proposal(self, data):
+        self.assertEqual(data["contract_version"], "1.0")
+        self.assertEqual(data["intent_category"], "clear_new_idea")
+        self.assertEqual(data["proposed_action"], "create_idea")
+        self.assertFalse(data["requires_confirmation"])
         self.assertTrue(data["should_create_idea"])
         self.assertFalse(data["should_execute_action"])
+        self.assertIsNone(data["clarification_id"])
+        self.assertIsNone(data["clarification_question"])
+
+    def test_clear_new_idea_creates_without_confirmation(self):
+        self.use(FixedConversationProvider("clear_new_idea", "clarification_required",
+            create=False, confirmation=True, question="What age group is this for?",
+            response="Would you like me to save that?"))
+        data = self.post(self.payload(
+            "clear-idea", "I want to create a VR game that teaches students about human anatomy.")).json()
+        self.assert_clear_idea_proposal(data)
+
+    def test_clear_idea_with_missing_optional_details_still_creates(self):
+        self.use(FixedConversationProvider("clear_new_idea", "clarification_required",
+            confirmation=True, question="What learning objectives should it include?"))
+        data = self.post(self.payload(
+            "clear-without-options", "Let's make a card game about mythical creatures.")).json()
+        self.assert_clear_idea_proposal(data)
+
+    def test_explicit_save_request_creates_without_confirmation(self):
+        self.use(FixedConversationProvider("clear_new_idea", "create_idea",
+            create=False, confirmation=True, question="Should I save it?"))
+        data = self.post(self.payload(
+            "explicit-save", "Save my idea for a solar-powered community study space.")).json()
+        self.assert_clear_idea_proposal(data)
 
     def test_ambiguous_potential_idea_requires_confirmation(self):
         self.use(FixedConversationProvider("ambiguous_potential_idea", "create_idea",
@@ -96,6 +121,20 @@ class ConversationEndpointTests(unittest.TestCase):
         self.assertTrue(data["requires_confirmation"])
         self.assertFalse(data["should_create_idea"])
         self.assertTrue(data["clarification_id"].startswith("clar_"))
+
+    def test_brainstorming_and_general_questions_remain_conversational(self):
+        cases = [
+            ("brainstorming_suggestions", "brainstorm_suggestions",
+             "Give me ideas for an educational game."),
+            ("general_conversation", "converse", "Hey Orby, what is virtual reality?"),
+        ]
+        for index, (category, action, transcript) in enumerate(cases):
+            self.use(FixedConversationProvider(category, action, create=True, confirmation=True))
+            data = self.post(self.payload(f"non-idea-{index}", transcript)).json()
+            self.assertEqual(data["proposed_action"], action)
+            self.assertFalse(data["should_create_idea"])
+            self.assertFalse(data["requires_confirmation"])
+            self.assertIsNone(data["clarification_id"])
 
     def test_challenge_and_multiturn_follow_up_never_create_bubbles(self):
         provider = FixedConversationProvider("conversational_idea_challenge",

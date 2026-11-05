@@ -288,7 +288,10 @@ class OpenAIConversationProvider:
             "You are Orby's conversational orchestration layer for Thinking Space. Classify natural language "
             "semantically, never by rigid keyword matching. General questions and requests for suggestions are "
             "conversation and must not create ideas. A clearly stated user-owned idea or explicit save request may "
-            "create an idea. Ambiguous potential ideas require clarification. Critique, challenge, weakness, risk, "
+            "create an idea immediately without asking for optional details such as a title, audience, age range, "
+            "or objectives; the idea manager will derive a concise title and summary from available information. "
+            "For clear_new_idea, return create_idea with no confirmation and should_create_idea true. Ambiguous "
+            "potential ideas require clarification. Critique, challenge, weakness, risk, "
             "and follow-up discussion are always conversational_challenge: never create an idea or bubble. Preserve "
             "the discussed idea as context. Only use supplied idea IDs; never invent IDs. Commands are proposals for "
             "Unity to validate and execute. Never claim a spatial or application command succeeded. Destructive "
@@ -342,6 +345,30 @@ class ConversationOrchestrator:
         requires_confirmation = output.requires_confirmation or action in self.destructive_actions
         should_create = output.should_create_idea
         should_execute = output.should_execute_action
+        clarification_question = output.clarification_question
+        candidate_idea_ids = output.candidate_idea_ids
+        clear_idea_can_proceed = (
+            output.intent_category == ConversationCategory.NEW_IDEA
+            and (pending is None or pending.proposed_action == ConversationAction.CREATE_IDEA)
+        )
+        if clear_idea_can_proceed:
+            # Classification is authoritative here, but execution is not: Unity still validates this proposal
+            # and calls the separate idea-manager endpoint. Optional details must not block a self-contained idea.
+            action = ConversationAction.CREATE_IDEA
+            requires_confirmation = False
+            should_create = True
+            should_execute = False
+            clarification_question = None
+            candidate_idea_ids = []
+        elif output.intent_category in {ConversationCategory.GENERAL, ConversationCategory.BRAINSTORM}:
+            # Ordinary answers and requested suggestions are complete conversational turns, not save prompts.
+            action = (ConversationAction.CONVERSE if output.intent_category == ConversationCategory.GENERAL
+                      else ConversationAction.BRAINSTORM)
+            requires_confirmation = False
+            should_create = False
+            should_execute = False
+            clarification_question = None
+            candidate_idea_ids = []
         if action == ConversationAction.CHALLENGE or output.intent_category in {
                 ConversationCategory.IDEA_CHALLENGE, ConversationCategory.CONTEXTUAL_FOLLOW_UP}:
             should_create = False
@@ -369,9 +396,9 @@ class ConversationOrchestrator:
                 await self.clarifications.complete(pending.clarification_id)
         elif requires_confirmation:
             pending = await self.clarifications.create(request.session_id, action,
-                                                       output.candidate_idea_ids)
+                                                       candidate_idea_ids)
             clarification_id = pending.clarification_id
-        question = output.clarification_question
+        question = clarification_question
         if requires_confirmation and not question:
             question = "Would you like me to proceed with that?"
         text = _sanitize(output.spoken_response)
@@ -381,7 +408,7 @@ class ConversationOrchestrator:
             target_idea_ids=output.target_idea_ids, parameters=output.parameters,
             spoken_response=text, subtitle_text=text, suggested_emotion=output.suggested_emotion,
             requires_confirmation=requires_confirmation, clarification_id=clarification_id,
-            clarification_question=question, candidate_idea_ids=output.candidate_idea_ids,
+            clarification_question=question, candidate_idea_ids=candidate_idea_ids,
             should_create_idea=should_create, should_execute_action=should_execute,
             status="completed", error=None)
 
