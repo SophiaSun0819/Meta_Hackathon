@@ -692,6 +692,22 @@ class ConversationOrchestrator:
             should_create_idea=should_create, should_execute_action=should_execute,
             status="completed", error=None)
 
+    async def clear_failed_clarification(self, request: ConversationRequest) -> bool:
+        """Fail closed when a follow-up cannot produce a validated response.
+
+        The caller already returns a recoverable error. Removing only the clarification named
+        by this session-owned request prevents client/server state divergence without touching
+        unrelated sessions or allowing an unvalidated action to execute.
+        """
+        if not request.clarification_id:
+            return False
+        try:
+            pending = await self.clarifications.get(request.clarification_id, request.session_id)
+        except ConversationContextError:
+            return False
+        await self.clarifications.complete(pending.clarification_id)
+        return True
+
 
 def error_response(message: str, request: ConversationRequest | None = None) -> ConversationResponse:
     return ConversationResponse(request_id=request.request_id if request else "",

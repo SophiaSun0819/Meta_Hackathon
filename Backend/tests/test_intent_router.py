@@ -314,6 +314,53 @@ class IntentRouterEndpointTests(unittest.TestCase):
         self.assertEqual(data["intent"], "clarification_required")
         self.assertTrue(data["requires_confirmation"])
 
+    def test_combine_result_can_be_challenged_as_most_recent_combined_idea(self):
+        combine = self.route_with(FixedIntentProvider("combine_ideas", ["idea-one", "idea-two"]),
+                                  "combine-before-challenge", "Combine these ideas.")
+        self.assertEqual(combine.json()["action"], "combine_ideas")
+        payload = self.payload("challenge-combined", "Challenge the combined idea.")
+        payload["available_ideas"].append({"idea_id": "idea-combined", "title": "Solar Workshop",
+            "summary": "Most recently created idea. Combined idea derived from multiple ideas."})
+        backend_app.intent_router = IntentRouter(
+            FixedIntentProvider("challenge_idea", ["idea-combined"]), 1.0, ClarificationStore())
+        data = self.post(payload).json()
+        self.assertEqual(data["action"], "challenge_idea")
+        self.assertEqual(data["target_idea_ids"], ["idea-combined"])
+
+    def test_ambiguous_challenge_resolves_with_named_idea(self):
+        provider = FixedIntentProvider("clarification_required", ["idea-one", "idea-two"],
+            response="Which idea should I challenge?", pending_action="challenge_idea",
+            follow_up={"resolution":"select", "selected_idea_ids":["idea-one"],
+                       "response_text":"I'll challenge Solar Hub.", "emotion":"attentive"})
+        start = self.begin_clarification(provider, "challenge-ambiguous").json()
+        payload = self.payload("challenge-named", "The Solar Hub")
+        payload["clarification_id"] = start["clarification_id"]
+        data = self.post(payload).json()
+        self.assertEqual(data["action"], "challenge_idea")
+        self.assertEqual(data["target_idea_ids"], ["idea-one"])
+
+    def test_cancel_then_fresh_command_is_not_treated_as_follow_up(self):
+        provider = FixedIntentProvider("clarification_required", ["idea-one"],
+            pending_action="challenge_idea", response="Do you mean Solar Hub?",
+            follow_up={"resolution":"cancel", "selected_idea_ids":[],
+                       "response_text":"Cancelled.", "emotion":"neutral"})
+        start = self.begin_clarification(provider, "cancel-restart-start").json()
+        cancel = self.payload("cancel-restart-cancel", "Cancel")
+        cancel["clarification_id"] = start["clarification_id"]
+        self.assertEqual(self.post(cancel).json()["action"], "cancel")
+        backend_app.intent_router.provider = FixedIntentProvider("create_idea")
+        fresh = self.post(self.payload("cancel-restart-fresh", "A new community garden idea.")).json()
+        self.assertEqual(fresh["action"], "create_idea")
+
+    def test_expired_clarification_does_not_block_new_request(self):
+        store = ClarificationStore(expiration_seconds=0)
+        backend_app.intent_router = IntentRouter(FixedIntentProvider("clarification_required", ["idea-one"],
+            pending_action="challenge_idea", response="Which idea?"), 1.0, store)
+        self.post(self.payload("expired-then-fresh-start"))
+        backend_app.intent_router.provider = FixedIntentProvider("create_idea")
+        data = self.post(self.payload("expired-then-fresh-new", "A fresh idea.")).json()
+        self.assertEqual(data["action"], "create_idea")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -147,8 +147,10 @@ async def process_conversation(request: Request,
         completed = True
         return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
     except ConversationTimeout:
+        await conversation_orchestrator.clear_failed_clarification(conversation_request)
         return make_conversation_error(504, "Conversation provider timed out.", conversation_request)
     except ConversationMalformedOutput as exc:
+        await conversation_orchestrator.clear_failed_clarification(conversation_request)
         logger.warning("conversation_output_invalid stage=%s status=502 field=%s category=%s "
                        "completion=%s incomplete_reason=%s output_tokens=%s reasoning_tokens=%s "
                        "output_characters=%s parse_attempted=%s",
@@ -167,12 +169,14 @@ async def process_conversation(request: Request,
             "Conversation clarification is missing, expired, or belongs to another session.",
             conversation_request)
     except ConversationProviderFailure as exc:
+        await conversation_orchestrator.clear_failed_clarification(conversation_request)
         logger.warning("conversation_provider_failed stage=%s status=502 field=%s category=%s",
                        exc.stage, exc.field_path, exc.category)
         return make_conversation_error(502, "Conversation provider request failed.", conversation_request,
             failure_stage=exc.stage, failure_field=exc.field_path,
             failure_category=exc.category)
     except Exception:
+        await conversation_orchestrator.clear_failed_clarification(conversation_request)
         return make_conversation_error(500, "Conversation processing failed.", conversation_request)
     finally:
         await conversation_request_registry.finish(

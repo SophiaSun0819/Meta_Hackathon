@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 import app as backend_app
 from conversation_orchestrator import (ConversationClarificationStore, ConversationMalformedOutput,
-    ConversationModelOutput, ConversationOrchestrator, ConversationRequest,
+    ConversationContextError, ConversationModelOutput, ConversationOrchestrator, ConversationRequest,
     OpenAIConversationProvider)
 from idea_manager import IdeaRequestRegistry
 
@@ -752,6 +752,49 @@ class ConversationEndpointTests(unittest.TestCase):
         self.assertTrue(result["should_create_idea"])
         self.assertFalse(result["requires_confirmation"])
         self.assertIsNone(result["clarification_id"])
+
+    def test_failed_combination_follow_up_clears_pending_and_releases_session(self):
+        provider = FixedConversationProvider("idea_modification", "combine_ideas",
+            targets=["idea-one"], authorization="authorized", response_mode="action_proposal",
+            idea_relationship="combination")
+        store = ConversationClarificationStore(expiration_seconds=120, maximum_attempts=2)
+        backend_app.conversation_orchestrator = ConversationOrchestrator(provider, 1, store)
+        started = self.post(self.payload("combine-clarification-start",
+            "Combine this with another idea.")).json()
+        clarification_id = started["clarification_id"]
+        self.assertIsNotNone(clarification_id)
+
+        backend_app.conversation_orchestrator.provider = MalformedProvider()
+        follow = self.payload("combine-clarification-malformed", "The first and second ideas.")
+        follow["clarification_id"] = clarification_id
+        failed = self.post(follow)
+        self.assertEqual(failed.status_code, 502)
+        with self.assertRaises(ConversationContextError):
+            asyncio.run(store.get(clarification_id, "Session 1"))
+
+        backend_app.conversation_orchestrator.provider = FixedConversationProvider()
+        recovered = self.post(self.payload("conversation-after-failed-combination",
+            "What is virtual reality?"))
+        self.assertEqual(recovered.status_code, 200, recovered.text)
+        self.assertEqual(recovered.json()["proposed_action"], "converse")
+
+    def test_valid_combination_follow_up_preserves_two_sources(self):
+        provider = FixedConversationProvider("idea_modification", "combine_ideas",
+            targets=["idea-one"], authorization="authorized", response_mode="action_proposal",
+            idea_relationship="combination")
+        self.use(provider)
+        started = self.post(self.payload("valid-combine-start",
+            "Combine this idea with another one.")).json()
+        provider.values.update(target_idea_ids=["idea-one", "idea-two"],
+            candidate_idea_ids=[], requires_confirmation=False, clarification_question=None,
+            spoken_response="I can combine the anatomy lab and quiz garden into one new concept.")
+        follow = self.payload("valid-combine-follow", "The anatomy lab and quiz garden.")
+        follow["clarification_id"] = started["clarification_id"]
+        result = self.post(follow)
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["proposed_action"], "combine_ideas")
+        self.assertCountEqual(result.json()["target_idea_ids"], ["idea-one", "idea-two"])
+        self.assertFalse(result.json()["requires_confirmation"])
 
     def test_expired_conversation_clarification_cannot_execute(self):
         provider = FixedConversationProvider("ambiguous_potential_idea", "create_idea",
