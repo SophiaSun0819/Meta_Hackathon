@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: thinking-space-transcription
+    runtime: python
+    plan: starter
+    rootDir: Backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: THINKING_SPACE_DEV_TOKEN
+        sync: false
+      - key: OPENAI_TRANSCRIPTION_MODEL
+        value: gpt-4o-mini-transcribe
+      - key: OPENAI_TIMEOUT_SECONDS
+        value: "40"
+      - key: MAX_WAV_BYTES
+        value: "15728640"
+      - key: MAX_REQUESTS_PER_MINUTE
+        value: "10"
+      - key: OPENAI_IDEA_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_IDEA_TIMEOUT_SECONDS
+        value: "45"
+      - key: MAX_IDEA_REQUEST_BYTES
+        value: "32768"
+      - key: MAX_IDEA_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: OPENAI_INTENT_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_INTENT_TIMEOUT_SECONDS
+        value: "30"
+      - key: MAX_INTENT_REQUEST_BYTES
+        value: "32768"
+      - key: MAX_INTENT_REQUESTS_PER_MINUTE
+        value: "30"
+      - key: CLARIFICATION_EXPIRATION_SECONDS
+        value: "120"
+      - key: MAX_PENDING_CLARIFICATIONS
+        value: "128"
+      - key: OPENAI_CONVERSATION_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_CONVERSATION_TIMEOUT_SECONDS
+        value: "35"
+      - key: MAX_CONVERSATION_REQUEST_BYTES
+        value: "49152"
+      - key: MAX_CONVERSATION_REQUESTS_PER_MINUTE
+        value: "30"
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+      - key: ELEVENLABS_TTS_MODEL
+        value: eleven_flash_v2_5
+      - key: ELEVENLABS_TIMEOUT_SECONDS
+        value: "20"
+      - key: MAX_TTS_TEXT_CHARACTERS
+        value: "2000"
+      - key: MAX_TTS_REQUEST_BYTES
+        value: "16384"
+      - key: MAX_TTS_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: MAX_TTS_AUDIO_BYTES
+        value: "5242880"
