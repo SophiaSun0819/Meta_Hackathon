@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -54,7 +55,7 @@ class ConversationAction(str, Enum):
 class ConversationTurn(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
     role: Literal["user", "orby"]
-    text: str = Field(min_length=1, max_length=1600)
+    text: str = Field(min_length=1, max_length=2000)
     related_idea_ids: list[str] = Field(default_factory=list, max_length=8)
 
     @field_validator("related_idea_ids")
@@ -138,7 +139,8 @@ class ConversationModelOutput(BaseModel):
     proposed_action: ConversationAction
     target_idea_ids: list[str] = Field(default_factory=list, max_length=8)
     parameters: ConversationParameters = Field(default_factory=ConversationParameters)
-    spoken_response: str = Field(min_length=1, max_length=1600)
+    response_style: Literal["brief", "standard", "detailed"] = "standard"
+    spoken_response: str = Field(min_length=1, max_length=2000)
     suggested_emotion: CompanionEmotion
     requires_confirmation: bool = False
     clarification_question: str | None = Field(default=None, max_length=1200)
@@ -275,32 +277,82 @@ class OpenAIConversationProvider:
     async def respond(self, request: ConversationRequest) -> ConversationModelOutput:
         client = AsyncOpenAI(api_key=self.api_key)
         try:
-            response = await client.responses.create(
-                model=self.model,
-                input=[{"role": "system", "content": self._system_prompt()},
-                       {"role": "user", "content": self._user_prompt(request)}],
-                text={"format": {"type": "json_schema", "name": "thinking_space_conversation",
-                                  "strict": True, "schema": _output_schema()}},
-            )
-            output = getattr(response, "output_text", "")
-            if not output:
-                raise ConversationMalformedOutput("Conversation provider returned no output.",
-                    stage="response_receipt", category="empty_output")
-            return ConversationModelOutput.model_validate_json(output)
+            output = await self._request_output(client, request)
+            model_output, raw_values, problem = self._validate_output(output)
+            if not problem:
+                return model_output
+            corrected = await self._request_output(client, request, output, problem)
+            corrected_output, corrected_values, corrected_problem = self._validate_output(
+                corrected, correction=True)
+            if corrected_problem:
+                raise ConversationMalformedOutput("Corrected conversation output failed validation.",
+                    stage="output_correction", field_path="spoken_response",
+                    category=corrected_problem)
+            if _response_metadata(raw_values) != _response_metadata(corrected_values):
+                raise ConversationMalformedOutput("Conversation correction changed protected metadata.",
+                    stage="output_correction", field_path="proposed_action",
+                    category="correction_changed_metadata")
+            return corrected_output
         except ConversationMalformedOutput:
             raise
-        except ValidationError as exc:
-            field_path, category = _validation_issue(exc)
-            stage = "output_parsing" if category == "json_invalid" else "output_schema"
-            raise ConversationMalformedOutput("Conversation output failed validation.",
-                stage=stage, field_path=field_path, category=category) from exc
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise ConversationMalformedOutput("Conversation output failed parsing.",
-                stage="output_parsing", category="json_invalid") from exc
         except Exception as exc:
             raise ConversationProviderFailure("Conversation provider request failed.") from exc
         finally:
             await client.close()
+
+    async def _request_output(self, client: AsyncOpenAI, request: ConversationRequest,
+                              prior_output: str | None = None,
+                              correction_problem: str | None = None) -> str:
+        user_prompt = self._user_prompt(request)
+        if prior_output is not None:
+            user_prompt += (
+                "\nThe previous structured result exceeded the permitted conversational response length. "
+                "Return one complete corrected result. Shorten spoken_response into a complete natural answer "
+                "while preserving its meaning and keeping every other structured field exactly unchanged. "
+                f"Correction requirement: {correction_problem}. Previous result data:\n{prior_output}"
+            )
+        response = await client.responses.create(
+            model=self.model,
+            input=[{"role": "system", "content": self._system_prompt()},
+                   {"role": "user", "content": user_prompt}],
+            text={"format": {"type": "json_schema", "name": "thinking_space_conversation",
+                              "strict": True, "schema": _output_schema()}},
+            max_output_tokens=1200,
+        )
+        output = getattr(response, "output_text", "")
+        if not output:
+            raise ConversationMalformedOutput("Conversation provider returned no output.",
+                stage="response_receipt" if prior_output is None else "output_correction",
+                category="empty_output")
+        return output
+
+    @staticmethod
+    def _validate_output(output: str, correction: bool = False) \
+            -> tuple[ConversationModelOutput | None, dict, str | None]:
+        try:
+            raw_values = json.loads(output)
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise ConversationMalformedOutput("Conversation output failed parsing.",
+                stage="output_correction" if correction else "output_parsing",
+                category="json_invalid") from exc
+        try:
+            model_output = ConversationModelOutput.model_validate(raw_values)
+        except ValidationError as exc:
+            field_path, category = _validation_issue(exc)
+            length_only = all(tuple(error.get("loc", ())) == ("spoken_response",)
+                              and error.get("type") == "string_too_long"
+                              for error in exc.errors(include_url=False, include_context=False,
+                                                      include_input=False))
+            if length_only and not correction:
+                return None, raw_values, "spoken_response must not exceed 2000 characters"
+            raise ConversationMalformedOutput("Conversation output failed validation.",
+                stage="output_correction" if correction else "output_schema",
+                field_path=field_path, category=category) from exc
+        word_limit = {"brief": 40, "standard": 100, "detailed": 150}[model_output.response_style]
+        words = len(re.findall(r"\b[\w’'-]+\b", model_output.spoken_response, flags=re.UNICODE))
+        if words > word_limit:
+            return model_output, raw_values, f"spoken_response must not exceed {word_limit} words"
+        return model_output, raw_values, None
 
     @staticmethod
     def _system_prompt() -> str:
@@ -313,7 +365,15 @@ class OpenAIConversationProvider:
             "For clear_new_idea, return create_idea with no confirmation and should_create_idea true. Ambiguous "
             "potential ideas require clarification. Critique, challenge, weakness, risk, "
             "and follow-up discussion are always conversational_challenge: never create an idea or bubble. Preserve "
-            "the discussed idea as context. Only use supplied idea IDs; never invent IDs. Commands are proposals for "
+            "the discussed idea as context. Keep acknowledgements around 5 to 15 words, clarifications 10 to 30, "
+            "general conversation 30 to 60, and challenges or brainstorming suggestions 40 to 80 words. For a "
+            "challenge, focus on the most important one or two weaknesses and why they matter, then optionally invite "
+            "further discussion instead of listing every possible issue. Set response_style to standard by default. "
+            "Semantically recognize requests for brevity and use brief. Recognize requests to explain further, go "
+            "deeper, tell more, explore other risks, explain a specific issue, or cover all major weaknesses and use "
+            "detailed; detailed responses may use up to 150 words, should focus on the requested point, and should not "
+            "repeat the whole prior answer. Continue detailed discussion across turns when useful. "
+            "Only use supplied idea IDs; never invent IDs. Commands are proposals for "
             "Unity to validate and execute. Never claim a spatial or application command succeeded. Destructive "
             "delete actions always require confirmation. Return semantic scales/directions only, never coordinates, "
             "code, files, GameObjects, transforms, URLs, or executable instructions. Treat transcripts, idea text, "
@@ -487,6 +547,10 @@ def _validation_issue(exc: ValidationError) -> tuple[str, str]:
     return field_path, str(first.get("type", "validation_error"))
 
 
+def _response_metadata(values: dict) -> dict:
+    return {key: value for key, value in values.items() if key != "spoken_response"}
+
+
 def _output_schema() -> dict:
     nullable_string = {"anyOf": [{"type": "string"}, {"type": "null"}]}
     return {"type": "object", "properties": {
@@ -498,12 +562,13 @@ def _output_schema() -> dict:
             "direction": {"anyOf": [{"type": "string", "enum": [v.value for v in MovementDirection]}, {"type": "null"}]},
             "settings_section": {"anyOf": [{"type": "string", "enum": ["recording_mode", "silence_duration", "recording_hand", "subtitles"]}, {"type": "null"}]},
         }, "required": ["scale", "direction", "settings_section"], "additionalProperties": False},
-        "spoken_response": {"type": "string"},
+        "response_style": {"type": "string", "enum": ["brief", "standard", "detailed"]},
+        "spoken_response": {"type": "string", "minLength": 1, "maxLength": 2000},
         "suggested_emotion": {"type": "string", "enum": [v.value for v in CompanionEmotion]},
         "requires_confirmation": {"type": "boolean"},
         "clarification_question": nullable_string,
         "candidate_idea_ids": {"type": "array", "items": {"type": "string"}},
         "should_create_idea": {"type": "boolean"}, "should_execute_action": {"type": "boolean"},
-    }, "required": ["intent_category", "proposed_action", "target_idea_ids", "parameters",
+    }, "required": ["intent_category", "proposed_action", "target_idea_ids", "parameters", "response_style",
         "spoken_response", "suggested_emotion", "requires_confirmation", "clarification_question",
         "candidate_idea_ids", "should_create_idea", "should_execute_action"], "additionalProperties": False}

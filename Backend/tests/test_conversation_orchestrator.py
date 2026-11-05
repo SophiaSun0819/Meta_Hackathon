@@ -11,6 +11,7 @@ os.environ["THINKING_SPACE_DEV_TOKEN"] = "test-development-token"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import app as backend_app
 from conversation_orchestrator import (ConversationClarificationStore, ConversationMalformedOutput,
@@ -22,11 +23,12 @@ from idea_manager import IdeaRequestRegistry
 class FixedConversationProvider:
     def __init__(self, category="general_conversation", action="converse", targets=None,
                  response="Here is a helpful response.", create=False, execute=False,
-                 confirmation=False, question=None, candidates=None, scale=None, direction=None):
+                 confirmation=False, question=None, candidates=None, scale=None, direction=None,
+                 response_style="standard"):
         self.values = dict(intent_category=category, proposed_action=action,
             target_idea_ids=targets or [], parameters={"scale": scale, "direction": direction,
                                                        "settings_section": None},
-            spoken_response=response, suggested_emotion="attentive",
+            response_style=response_style, spoken_response=response, suggested_emotion="attentive",
             requires_confirmation=confirmation, clarification_question=question,
             candidate_idea_ids=candidates or [], should_create_idea=create,
             should_execute_action=execute)
@@ -53,8 +55,13 @@ class FakeOpenAIResponse:
 
 
 class FakeOpenAIResponses:
-    def __init__(self, output_text): self.output_text = output_text
-    async def create(self, **_): return FakeOpenAIResponse(self.output_text)
+    def __init__(self, output_text):
+        self.outputs = list(output_text) if isinstance(output_text, list) else [output_text]
+        self.calls = 0
+    async def create(self, **_):
+        value = self.outputs[min(self.calls, len(self.outputs) - 1)]
+        self.calls += 1
+        return FakeOpenAIResponse(value)
 
 
 class FakeOpenAIClient:
@@ -257,6 +264,7 @@ class ConversationEndpointTests(unittest.TestCase):
             "proposed_action": "conversational_challenge",
             "target_idea_ids": ["idea-one"],
             "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard",
             "spoken_response": "A useful criticism.", "suggested_emotion": "concerned",
             "requires_confirmation": False, "clarification_question": None,
             "candidate_idea_ids": [], "should_create_idea": False,
@@ -278,6 +286,104 @@ class ConversationEndpointTests(unittest.TestCase):
             self.assertEqual(raised.exception.stage, stage)
             self.assertEqual(raised.exception.field_path, field)
             self.assertEqual(raised.exception.category, category)
+
+    def test_adaptive_response_styles_accept_valid_lengths_without_retry(self):
+        request = ConversationRequest.model_validate(self.payload("adaptive-valid"))
+        cases = [
+            ("standard", 50, "general_conversation", "converse"),
+            ("standard", 70, "conversational_idea_challenge", "conversational_challenge"),
+            ("detailed", 140, "contextual_follow_up", "conversational_challenge"),
+            ("brief", 18, "general_conversation", "converse"),
+        ]
+        for style, count, category, action in cases:
+            values = {
+                "intent_category": category, "proposed_action": action,
+                "target_idea_ids": ["idea-one"] if "challenge" in action else [],
+                "parameters": {"scale": None, "direction": None, "settings_section": None},
+                "response_style": style,
+                "spoken_response": " ".join(f"word{i}" for i in range(count)),
+                "suggested_emotion": "attentive", "requires_confirmation": False,
+                "clarification_question": None, "candidate_idea_ids": [],
+                "should_create_idea": False, "should_execute_action": False,
+            }
+            client = FakeOpenAIClient(json.dumps(values))
+            with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+                result = asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+            self.assertEqual(result.response_style, style)
+            self.assertEqual(client.responses.calls, 1)
+
+    def test_detailed_response_fits_follow_up_context_contract(self):
+        payload = self.payload("detailed-context", "What else could go wrong?")
+        payload["context"]["recent_turns"] = [
+            {"role": "user", "text": "Challenge my anatomy idea.",
+             "related_idea_ids": ["idea-one"]},
+            {"role": "orby", "text": "x" * 2000, "related_idea_ids": ["idea-one"]},
+        ]
+        validated = ConversationRequest.model_validate(payload)
+        self.assertEqual(len(validated.context.recent_turns[1].text), 2000)
+        payload["context"]["recent_turns"][1]["text"] += "x"
+        with self.assertRaises(ValidationError):
+            ConversationRequest.model_validate(payload)
+
+    def test_overlength_output_gets_exactly_one_correction(self):
+        request = ConversationRequest.model_validate(self.payload("length-correction"))
+        base = {
+            "intent_category": "conversational_idea_challenge",
+            "proposed_action": "conversational_challenge", "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard", "suggested_emotion": "concerned",
+            "requires_confirmation": False, "clarification_question": None,
+            "candidate_idea_ids": [], "should_create_idea": False,
+            "should_execute_action": False,
+        }
+        initial = {**base, "spoken_response": "x" * 2001}
+        corrected = {**base, "spoken_response": " ".join(f"issue{i}" for i in range(75))}
+        client = FakeOpenAIClient([json.dumps(initial), json.dumps(corrected)])
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            result = asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(len(result.spoken_response.split()), 75)
+
+    def test_invalid_length_correction_is_rejected_after_one_retry(self):
+        request = ConversationRequest.model_validate(self.payload("bad-length-correction"))
+        values = {
+            "intent_category": "conversational_idea_challenge",
+            "proposed_action": "conversational_challenge", "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard",
+            "spoken_response": " ".join(f"issue{i}" for i in range(101)),
+            "suggested_emotion": "concerned", "requires_confirmation": False,
+            "clarification_question": None, "candidate_idea_ids": [],
+            "should_create_idea": False, "should_execute_action": False,
+        }
+        client = FakeOpenAIClient([json.dumps(values), json.dumps(values)])
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            with self.assertRaises(ConversationMalformedOutput) as raised:
+                asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(raised.exception.stage, "output_correction")
+        self.assertIn("100 words", raised.exception.category)
+
+    def test_length_correction_cannot_change_action_or_target(self):
+        request = ConversationRequest.model_validate(self.payload("changed-correction"))
+        base = {
+            "intent_category": "conversational_idea_challenge",
+            "proposed_action": "conversational_challenge", "target_idea_ids": ["idea-one"],
+            "parameters": {"scale": None, "direction": None, "settings_section": None},
+            "response_style": "standard", "suggested_emotion": "concerned",
+            "requires_confirmation": False, "clarification_question": None,
+            "candidate_idea_ids": [], "should_create_idea": False,
+            "should_execute_action": False,
+        }
+        initial = {**base, "spoken_response": "x" * 2001}
+        corrected = {**base, "target_idea_ids": ["idea-two"],
+                     "spoken_response": "A concise but improperly retargeted response."}
+        client = FakeOpenAIClient([json.dumps(initial), json.dumps(corrected)])
+        with patch("conversation_orchestrator.AsyncOpenAI", return_value=client):
+            with self.assertRaises(ConversationMalformedOutput) as raised:
+                asyncio.run(OpenAIConversationProvider("unused", "unused").respond(request))
+        self.assertEqual(client.responses.calls, 2)
+        self.assertEqual(raised.exception.category, "correction_changed_metadata")
 
     def test_malformed_provider_error_exposes_only_safe_metadata(self):
         self.use(MalformedProvider())
