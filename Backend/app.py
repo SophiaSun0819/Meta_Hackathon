@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import io
+import logging
 import os
 import re
 import time
@@ -28,6 +29,7 @@ from conversation_orchestrator import (ConversationClarificationStore, Conversat
 from urllib.parse import quote
 
 load_dotenv()
+logger = logging.getLogger("thinking_space.backend")
 MAX_WAV_BYTES = int(os.getenv("MAX_WAV_BYTES", str(15 * 1024 * 1024)))
 OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "40"))
 TRANSCRIPTION_MODEL = os.getenv("OPENAI_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe")
@@ -119,8 +121,19 @@ async def process_conversation(request: Request,
         conversation_request = ConversationRequest.model_validate_json(body)
     except HTTPException:
         return make_conversation_error(413, "Conversation request is too large.")
-    except (ValidationError, ValueError):
-        return make_conversation_error(422, "Conversation request validation failed.")
+    except ValidationError as exc:
+        field_path, category = safe_validation_issue(exc)
+        logger.warning("conversation_request_validation_failed stage=request_schema status=422 "
+                       "field=%s category=%s", field_path, category)
+        return make_conversation_error(422, "Conversation request validation failed.",
+            validation_stage="request_schema", validation_field=field_path,
+            validation_category=category)
+    except ValueError:
+        logger.warning("conversation_request_validation_failed stage=request_json status=422 "
+                       "field=$ category=value_error")
+        return make_conversation_error(422, "Conversation request validation failed.",
+            validation_stage="request_json", validation_field="$",
+            validation_category="value_error")
     conflict = await conversation_request_registry.claim(
         conversation_request.request_id, conversation_request.session_id)
     if conflict == "duplicate":
@@ -475,9 +488,34 @@ def make_voice_error(status_code: int, message: str,
     })
 
 def make_conversation_error(status_code: int, message: str,
-        conversation_request: ConversationRequest | None = None) -> JSONResponse:
+        conversation_request: ConversationRequest | None = None,
+        validation_stage: str | None = None, validation_field: str | None = None,
+        validation_category: str | None = None) -> JSONResponse:
     response = conversation_error_response(message, conversation_request)
-    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
+    headers = None
+    if validation_stage and validation_field and validation_category:
+        headers = {
+            "X-ThinkingSpace-Validation-Stage": _safe_diagnostic_header(validation_stage),
+            "X-ThinkingSpace-Validation-Field": _safe_diagnostic_header(validation_field),
+            "X-ThinkingSpace-Validation-Category": _safe_diagnostic_header(validation_category),
+            "X-ThinkingSpace-Validation-Status": str(status_code),
+        }
+    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"),
+                        headers=headers)
+
+def safe_validation_issue(exc: ValidationError) -> tuple[str, str]:
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    if not errors:
+        return "$", "validation_error"
+    first = errors[0]
+    location = first.get("loc", ())
+    field_path = ".".join(str(part) for part in location) if location else "$"
+    category = str(first.get("type", "validation_error"))
+    return _safe_diagnostic_header(field_path), _safe_diagnostic_header(category)
+
+def _safe_diagnostic_header(value: str) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9_.$\[\]-]", "_", value)
+    return sanitized[:160] or "unknown"
 
 def validate_wav(data: bytes) -> None:
     try:

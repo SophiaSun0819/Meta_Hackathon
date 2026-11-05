@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 import unittest
@@ -68,6 +69,11 @@ class ConversationEndpointTests(unittest.TestCase):
     def post(self, payload, token=None):
         return self.client.post("/api/conversations/process", json=payload,
             headers={"X-ThinkingSpace-Token": self.token if token is None else token})
+
+    def post_exact_json(self, body, token=None):
+        return self.client.post("/api/conversations/process", content=body.encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-ThinkingSpace-Token": self.token if token is None else token})
 
     def use(self, provider, timeout=1):
         backend_app.conversation_orchestrator = ConversationOrchestrator(provider, timeout,
@@ -179,6 +185,55 @@ class ConversationEndpointTests(unittest.TestCase):
                                           targets=["invented"], execute=True))
         response = self.post(self.payload("unknown-reference"))
         self.assertEqual(response.status_code, 502)
+
+    def test_exact_challenge_json_validates_directly_and_at_endpoint(self):
+        payload = self.payload("challenge-exact", "Challenge the Solar Hub idea.")
+        payload["available_ideas"] = [
+            {"idea_id": "idea-solar", "title": "Solar Hub",
+             "summary": "A solar-powered community study space."}]
+        payload["context"]["most_recent_idea_id"] = "idea-solar"
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        direct = backend_app.ConversationRequest.model_validate_json(body)
+        self.assertEqual(direct.available_ideas[0].idea_id, "idea-solar")
+        self.use(FixedConversationProvider("conversational_idea_challenge",
+            "conversational_challenge", targets=["idea-solar"]))
+        response = self.post_exact_json(body)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["proposed_action"], "conversational_challenge")
+
+    def test_idea_inventory_shapes_and_optional_most_recent_id(self):
+        cases = [
+            ("empty", [], None),
+            ("one", [{"idea_id": "idea-one", "title": "One", "summary": "First idea."}],
+             "idea-one"),
+            ("multiple", [
+                {"idea_id": "idea-one", "title": "One", "summary": "First idea."},
+                {"idea_id": "idea-two", "title": "Two", "summary": "Second idea."}], None),
+        ]
+        for suffix, ideas, recent in cases:
+            payload = self.payload(f"inventory-{suffix}", "Challenge this idea.")
+            payload["available_ideas"] = ideas
+            payload["context"]["most_recent_idea_id"] = recent
+            targets = [recent] if recent else []
+            self.use(FixedConversationProvider("conversational_idea_challenge",
+                "conversational_challenge", targets=targets))
+            response = self.post_exact_json(json.dumps(payload))
+            self.assertEqual(response.status_code, 200, response.text)
+
+    def test_invalid_extra_idea_field_reports_safe_validation_metadata(self):
+        payload = self.payload("extra-field", "Challenge the Solar Hub idea.")
+        payload["available_ideas"] = [{"idea_id": "idea-solar", "title": "Solar Hub",
+            "summary": "A study space.", "category": "Education"}]
+        payload["context"]["most_recent_idea_id"] = "idea-solar"
+        response = self.post_exact_json(json.dumps(payload))
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"], "Conversation request validation failed.")
+        self.assertEqual(response.headers["X-ThinkingSpace-Validation-Stage"], "request_schema")
+        self.assertEqual(response.headers["X-ThinkingSpace-Validation-Field"],
+                         "available_ideas.0.category")
+        self.assertEqual(response.headers["X-ThinkingSpace-Validation-Category"],
+                         "extra_forbidden")
+        self.assertEqual(response.headers["X-ThinkingSpace-Validation-Status"], "422")
 
     def test_session_isolation_for_pending_confirmation(self):
         self.use(FixedConversationProvider("ambiguous_potential_idea", "create_idea",
