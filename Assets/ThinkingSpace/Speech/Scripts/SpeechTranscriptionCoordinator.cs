@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using UnityEngine;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -31,19 +32,30 @@ namespace ThinkingSpace.Speech
         private string pendingTranscript;
         private AudioSource playbackSource;
         private Coroutine activeRequest;
+        private int lastErrorVoiceGeneration = -1;
         private int requestGeneration, recordingSequence;
         private bool sessionActive;
+        private bool voicePlaybackBlocked, tutorialRecordingBlocked;
+        private bool automaticConversationTurn;
         private float playbackCommandTime;
         private bool playbackStartedObserved;
         private string playbackError = "None";
         private string lastExportPath = "None";
         private string lastExportValidation = "Not exported";
+        private string lastTranscriptionMode = "None";
+        private string lastWavValidation = "Not validated";
+        private string lastRequestCompletion = "No request completed";
+        private int lastStartedRequestGeneration;
         private AudioClip outputTestTone;
         private const float PlaybackStartupGrace = 0.75f;
 
         public RecordingWorkflowState State { get; private set; } = RecordingWorkflowState.Ready;
         public bool CanBeginRecording => sessionActive && State == RecordingWorkflowState.Ready
+            && !voicePlaybackBlocked && !tutorialRecordingBlocked
             && (aiWorkflow == null || !aiWorkflow.IsBlockingRecording);
+        public bool IsSessionActive => sessionActive;
+        public void SetVoicePlaybackBlocked(bool value) => voicePlaybackBlocked = value;
+        public void SetTutorialRecordingBlocked(bool value) => tutorialRecordingBlocked = value;
         public string DiagnosticText { get; private set; } = "WORKFLOW: Ready";
 
         private void Awake()
@@ -64,6 +76,8 @@ namespace ThinkingSpace.Speech
             transcriptPanel.SetHeadset(headset);
             reviewPanel.SetHeadset(headset);
             aiWorkflow.Configure(transcriptionService, headset);
+            aiWorkflow.AutomaticTurnCompleted -= HandleAutomaticTurnCompleted;
+            aiWorkflow.AutomaticTurnCompleted += HandleAutomaticTurnCompleted;
             // BrainstormMenuController can restore a session before this component's Awake
             // creates the runtime AI workflow. Replay the coordinator's current gate so the
             // dynamically added workflow cannot remain incorrectly inactive.
@@ -107,6 +121,7 @@ namespace ThinkingSpace.Speech
                 microphoneRecorder.RecordingCompleted -= HandleRecordingCompleted;
                 microphoneRecorder.RecordingFailed -= HandleRecordingFailed;
             }
+            if (aiWorkflow != null) aiWorkflow.AutomaticTurnCompleted -= HandleAutomaticTurnCompleted;
             CancelActiveRequest();
             StopPlayback();
             if (outputTestTone != null) Destroy(outputTestTone);
@@ -172,18 +187,43 @@ namespace ThinkingSpace.Speech
         private void HandleRecordingCompleted(CompletedMicrophoneRecording recording)
         {
             if (!sessionActive || recording.Clip == null) return;
+            bool conversationalOwner = conversationalListening != null && conversationalListening.OwnsCapture;
+            bool automatic = ShouldAutomaticallyProcess(conversationalOwner,
+                gestureController != null ? gestureController.CurrentRecordingMode
+                    : ThumbRecordingGestureController.RecordingMode.Manual);
             conversationalListening?.NotifyRecordingCompleted();
             StopPlayback();
             pendingRecording = recording;
             pendingWav = null;
             pendingTranscript = null;
             pendingRecordingIdentifier = CreateRecordingIdentifier();
+            automaticConversationTurn = automatic;
+            if (automatic)
+            {
+                reviewPanel.Hide();
+                transcriptPanel.Hide();
+                State = RecordingWorkflowState.Transcribing;
+                aiWorkflow?.SetAutomaticConversationMode(true);
+                BeginRequest(false, true);
+                UpdateDiagnostic("Conversational recording finalized; automatic transcription started");
+                return;
+            }
             State = RecordingWorkflowState.Reviewing;
             aiWorkflow?.NotifyReviewing();
             transcriptPanel.Hide();
             reviewPanel.Show(recording.Clip.length, TogglePlayback, SendToAI, Discard, Rerecord);
+            BrainstormMenuController menu=FindFirstObjectByType<BrainstormMenuController>();
+            ThinkingSpacePreferencesStore preferences=menu?.PreferencesStore;
+            bool firstReview=preferences!=null&&!preferences.Data.FirstReviewOptionsCompleted;
+            bool accepted=ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded(SelectReviewVoiceKey(firstReview))??false;
+            if(firstReview&&accepted)preferences.SetFirstReviewOptionsCompleted(true);
             UpdateDiagnostic("Reviewing completed recording");
         }
+        public static bool ShouldAutomaticallyProcess(bool conversationalCaptureOwner,
+            ThumbRecordingGestureController.RecordingMode mode)
+            => conversationalCaptureOwner
+                && mode == ThumbRecordingGestureController.RecordingMode.Conversational;
+        public static string SelectReviewVoiceKey(bool firstReview)=>firstReview?"first_review_options":"review_options";
 
         private void HandleRecordingFailed(string message)
         {
@@ -268,13 +308,16 @@ namespace ThinkingSpace.Speech
             BeginRequest(true);
         }
 
-        private void BeginRequest(bool reuseWav)
+        private void BeginRequest(bool reuseWav, bool automatic = false)
         {
             if (!reuseWav) pendingWav = null;
             State = RecordingWorkflowState.Transcribing;
             aiWorkflow?.NotifyThinking();
-            transcriptPanel.ShowTranscribing(pendingRecordingIdentifier, BackToRecording);
+            if (!automatic) transcriptPanel.ShowTranscribing(pendingRecordingIdentifier, BackToRecording);
             int generation = ++requestGeneration;
+            lastStartedRequestGeneration = generation;
+            lastTranscriptionMode = automatic ? "Automatic Conversational" : "Manual Review";
+            lastRequestCompletion = "Request started";
             activeRequest = StartCoroutine(EncodeAndTranscribe(generation));
             UpdateDiagnostic(reuseWav ? "Retrying transcription" : "Encoding recording");
         }
@@ -282,6 +325,12 @@ namespace ThinkingSpace.Speech
         private IEnumerator EncodeAndTranscribe(int generation)
         {
             yield return null;
+            if (!pendingRecording.HasValue)
+            {
+                activeRequest = null;
+                lastRequestCompletion = "Cancelled because pending recording ownership was lost";
+                yield break;
+            }
             CompletedMicrophoneRecording recording = pendingRecording.Value;
             try { if (pendingWav == null) pendingWav = WavEncoder.Encode16BitPcm(recording); }
             catch (Exception ex)
@@ -290,17 +339,24 @@ namespace ThinkingSpace.Speech
                 HandleRequestFailure(generation, "WAV encoding failed: " + ex.Message, 0, 0f);
                 yield break;
             }
+            WavValidationResult wavValidation = WavEncoder.Validate16BitPcm(pendingWav, recording);
+            lastWavValidation = wavValidation.ToDiagnosticString();
+            if (!wavValidation.IsValid || !wavValidation.MetadataMatchesRecording)
+            {
+                activeRequest = null;
+                lastRequestCompletion = "Rejected before upload by local WAV validation";
+                HandleRequestFailure(generation,
+                    "WAV validation failed before upload: " + wavValidation.Error, 0, 0f);
+                yield break;
+            }
             UpdateDiagnostic("Uploading WAV");
             SpeechTranscriptionResult result = null;
-            var request = new SpeechTranscriptionRequest
-            {
-                WavData = pendingWav, RecordingIdentifier = pendingRecordingIdentifier,
-                SessionIdentifier = recording.SessionIdentifier, RecordingDuration = recording.DurationSeconds,
-                SampleRate = recording.SampleRate
-            };
+            SpeechTranscriptionRequest request = CreateTranscriptionRequest(recording, pendingWav,
+                pendingRecordingIdentifier);
             yield return transcriptionService.Transcribe(request, value => result = value);
             activeRequest = null;
-            if (generation != requestGeneration || !sessionActive) yield break;
+            lastRequestCompletion = transcriptionService.LastCompletionReason;
+            if (!IsCurrentRequest(generation, requestGeneration, sessionActive)) yield break;
             if (result == null || !result.Success)
             {
                 HandleRequestFailure(generation, result != null ? result.Error : "Transcription ended without a result.",
@@ -308,22 +364,177 @@ namespace ThinkingSpace.Speech
                 yield break;
             }
             State = RecordingWorkflowState.TranscriptReady;
-            aiWorkflow?.NotifyReviewing();
             pendingTranscript = result.Transcript;
             DiagnosticText = BuildDiagnostic(recording, pendingWav.Length, "Transcript ready", result.HttpStatus,
                 result.RequestDurationSeconds, result.Transcript != null ? result.Transcript.Length : 0, null);
+            if (automaticConversationTurn)
+            {
+                State = RecordingWorkflowState.Transcribing;
+                aiWorkflow?.NotifyThinking();
+                if (aiWorkflow == null || !aiWorkflow.SubmitApprovedTranscript(result.Transcript))
+                {
+                    string reason = aiWorkflow != null ? aiWorkflow.LastSubmissionRejection
+                        : "The AI workflow component is unavailable.";
+                    HandleAutomaticSubmissionFailure(reason);
+                }
+                else UpdateDiagnostic("Transcript validated; conversational request submitted automatically");
+                yield break;
+            }
+            aiWorkflow?.NotifyReviewing();
             transcriptPanel.ShowTranscript(result.Transcript, ConfirmTranscript, BackToRecording);
         }
 
+        public static SpeechTranscriptionRequest CreateTranscriptionRequest(
+            CompletedMicrophoneRecording recording, byte[] wav, string recordingIdentifier)
+            => new SpeechTranscriptionRequest
+            {
+                WavData = wav,
+                RecordingIdentifier = recordingIdentifier,
+                SessionIdentifier = recording.SessionIdentifier,
+                RecordingDuration = recording.DurationSeconds,
+                SampleRate = recording.SampleRate
+            };
+
+        public static bool IsCurrentRequest(int generation, int currentGeneration, bool sessionActive)
+            => sessionActive && generation == currentGeneration;
+
         private void HandleRequestFailure(int generation, string error, long status, float seconds)
         {
-            if (generation != requestGeneration || !sessionActive) return;
+            if (!IsCurrentRequest(generation, requestGeneration, sessionActive)) return;
+            bool wasAutomatic = automaticConversationTurn;
+            if (wasAutomatic)
+            {
+                automaticConversationTurn = false;
+                aiWorkflow?.SetAutomaticConversationMode(false);
+            }
             State = RecordingWorkflowState.TranscriptionFailed;
             aiWorkflow?.NotifyError(error);
             CompletedMicrophoneRecording recording = pendingRecording.Value;
             DiagnosticText = BuildDiagnostic(recording, pendingWav != null ? pendingWav.Length : 0,
-                "Transcription failed", status, seconds, 0, error);
-            transcriptPanel.ShowError(error, RetryLastFailed, BackToRecording);
+                "Transcription failed", status, seconds, 0, error)
+                + BuildSafeTranscriptionTransportDiagnostic();
+            transcriptPanel.ShowError(error + BuildDevelopmentTranscriptionDiagnostic(),
+                wasAutomatic ? RetryAutomaticTurn : RetryLastFailed,
+                wasAutomatic ? Discard : BackToRecording);
+            RequestTranscriptionErrorVoice(generation, error, status);
+        }
+
+        private void HandleAutomaticSubmissionFailure(string error)
+        {
+            automaticConversationTurn = false;
+            aiWorkflow?.SetAutomaticConversationMode(false);
+            State = RecordingWorkflowState.TranscriptionFailed;
+            aiWorkflow?.NotifyError(error);
+            transcriptPanel.ShowWorkflowError("Conversation Submission Failed", error,
+                RetryAutomaticTurn, Discard);
+            UpdateDiagnostic("Automatic conversation submission failed; completed recording retained");
+        }
+
+        private void RetryAutomaticTurn()
+        {
+            if (!pendingRecording.HasValue || activeRequest != null || transcriptionService.IsBusy) return;
+            automaticConversationTurn = true;
+            aiWorkflow?.SetAutomaticConversationMode(true);
+            transcriptPanel.Hide();
+            BeginRequest(pendingWav != null, true);
+        }
+
+        private void HandleAutomaticTurnCompleted(bool workflowSucceeded)
+        {
+            if (!automaticConversationTurn) return;
+            automaticConversationTurn = false;
+            aiWorkflow?.SetAutomaticConversationMode(false);
+            if (!sessionActive) return;
+            if (!workflowSucceeded)
+            {
+                State = RecordingWorkflowState.TranscriptionFailed;
+                string error = aiWorkflow != null && !string.IsNullOrWhiteSpace(aiWorkflow.LastAutomaticError)
+                    ? aiWorkflow.LastAutomaticError : "Orby could not complete that request.";
+                transcriptPanel.ShowWorkflowError("Conversation Processing Failed", error,
+                    RetryAutomaticConversationRequest, Discard);
+                UpdateDiagnostic("Automatic conversational processing failed; recording retained");
+                return;
+            }
+            reviewPanel.Hide();
+            transcriptPanel.Hide();
+            ClearPendingRecording();
+            State = RecordingWorkflowState.Ready;
+            gestureController?.RequireFreshRecordingGesture();
+            if (conversationalListening != null && conversationalListening.ListeningEnabled)
+                aiWorkflow?.NotifyListening();
+            else aiWorkflow?.NotifyIdle();
+            UpdateDiagnostic("Automatic conversational turn completed; ready to listen");
+        }
+
+        private void RetryAutomaticConversationRequest()
+        {
+            if (!sessionActive || string.IsNullOrWhiteSpace(pendingTranscript)
+                || aiWorkflow == null || aiWorkflow.IsBlockingRecording) return;
+            automaticConversationTurn = true;
+            aiWorkflow.SetAutomaticConversationMode(true);
+            transcriptPanel.Hide();
+            State = RecordingWorkflowState.Transcribing;
+            if (!aiWorkflow.SubmitApprovedTranscript(pendingTranscript))
+                HandleAutomaticSubmissionFailure(aiWorkflow.LastSubmissionRejection);
+            else UpdateDiagnostic("Retrying retained transcript through conversational processing");
+        }
+
+        private string BuildSafeTranscriptionTransportDiagnostic()
+        {
+            if (transcriptionService == null) return "\nTransport diagnostics: service unavailable";
+            return "\nEndpoint: " + transcriptionService.BackendUrl
+                + "\nRequest stage/category: " + transcriptionService.LastRequestStage
+                + " / " + transcriptionService.LastErrorCategory
+                + "\nHTTP: " + transcriptionService.LastHttpStatus
+                + "   Valid completed recording submitted: "
+                + (transcriptionService.LastSubmittedValidRecording ? "YES" : "no")
+                + "\nCompletion: " + transcriptionService.LastCompletionReason;
+        }
+
+        private string BuildDevelopmentTranscriptionDiagnostic()
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            CompletedMicrophoneRecording recording = pendingRecording.HasValue
+                ? pendingRecording.Value : default;
+            return "\n\nDiagnostics"
+                + "\nMode: " + lastTranscriptionMode
+                + "\nEndpoint: " + (transcriptionService != null
+                    ? transcriptionService.BackendUrl : "Unavailable")
+                + "\nStage: " + (transcriptionService != null
+                    ? transcriptionService.LastRequestStage : "Unavailable")
+                + "\nHTTP/category: " + (transcriptionService != null
+                    ? transcriptionService.LastHttpStatus + " / " + transcriptionService.LastErrorCategory
+                    : "0 / unavailable")
+                + "\nWAV bytes/duration: " + (pendingWav != null ? pendingWav.Length : 0)
+                + " / " + recording.DurationSeconds.ToString("0.00") + "s"
+                + "\nRequest generation: " + lastStartedRequestGeneration + " / " + requestGeneration
+                + "\nCompletion: " + lastRequestCompletion
+                + "\nWAV validation: " + lastWavValidation;
+#else
+            return string.Empty;
+#endif
+        }
+
+        private void RequestTranscriptionErrorVoice(int generation, string error, long status)
+        {
+            if (lastErrorVoiceGeneration == generation) return;
+            lastErrorVoiceGeneration = generation;
+            BrainstormSession active = FindFirstObjectByType<BrainstormMenuController>()?.SessionStore?.ActiveSession;
+            string sessionId = active != null ? active.SessionId
+                : pendingRecording.HasValue ? pendingRecording.Value.SessionIdentifier : null;
+            string key = SelectTranscriptionErrorVoiceKey(error, status);
+            bool accepted = ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded(
+                key, sessionId, null, false) ?? false;
+            UpdateDiagnostic("Transcription error voice " + key + (accepted ? " accepted" : " rejected"));
+        }
+
+        public static string SelectTranscriptionErrorVoiceKey(string error, long status)
+        {
+            bool network = status >= 500 || (!string.IsNullOrEmpty(error)
+                && (error.IndexOf("network", StringComparison.OrdinalIgnoreCase) >= 0
+                    || error.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+                    || error.IndexOf("connection", StringComparison.OrdinalIgnoreCase) >= 0));
+            return network ? "error_network" : "error_general";
         }
 
         private void ConfirmTranscript()
@@ -497,9 +708,15 @@ namespace ThinkingSpace.Speech
         private void CancelActiveRequest()
         {
             requestGeneration++;
+            lastRequestCompletion = "Cancelled by workflow; generation invalidated";
             transcriptionService?.Cancel();
             if (activeRequest != null) StopCoroutine(activeRequest);
             activeRequest = null;
+            if (automaticConversationTurn)
+            {
+                automaticConversationTurn = false;
+                aiWorkflow?.SetAutomaticConversationMode(false);
+            }
         }
 
         private void ClearPendingRecording()
@@ -527,6 +744,7 @@ namespace ThinkingSpace.Speech
         private void UpdateDiagnostic(string message)
         {
             DiagnosticText = "WORKFLOW: " + State + "   Session: " + (sessionActive ? "active" : "inactive")
+                + "   Automatic conversation: " + (automaticConversationTurn ? "YES" : "no")
                 + "\nPending audio: " + (pendingRecording.HasValue ? "YES" : "no")
                 + "   WAV: " + (pendingWav != null ? pendingWav.Length : 0) + " bytes"
                 + GetPlaybackDiagnostic()

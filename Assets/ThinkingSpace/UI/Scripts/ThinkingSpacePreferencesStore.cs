@@ -15,11 +15,18 @@ namespace ThinkingSpace.UI
         public ThumbRecordingGestureController.RecordingMode RecordingMode =
             ThumbRecordingGestureController.RecordingMode.Conversational;
         public StartupBehavior StartupBehavior = StartupBehavior.PreserveCurrentBehavior;
+        public bool SubtitlesEnabled = true;
+        public string PreferredName = string.Empty;
+        public bool WelcomeCompleted;
+        public bool MenuTutorialCompleted;
+        public bool FirstSessionTutorialCompleted;
+        public bool FirstReviewOptionsCompleted;
+        public bool PersonalizedGreetingCompleted;
     }
 
     public sealed class ThinkingSpacePreferencesStore
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 3;
         public const string FileName = "preferences-v1.json";
         public const float MinimumSilenceSeconds = 1f, MaximumSilenceSeconds = 10f, StepSeconds = 0.5f;
         private readonly string directory, path, backupPath;
@@ -59,6 +66,32 @@ namespace ThinkingSpace.UI
             if (Save()) return true;
             Data.RecordingMode = previous;
             return false;
+        }
+
+        public bool SetSubtitlesEnabled(bool value) => Mutate(() => Data.SubtitlesEnabled = value);
+        public bool SetPreferredName(string value)
+        {
+            string sanitized = (value ?? string.Empty).Trim();
+            if (sanitized.Length > 32) return false;
+            for (int i=0;i<sanitized.Length;i++)
+                if (!(char.IsLetterOrDigit(sanitized[i]) || sanitized[i]==' ' || sanitized[i]=='-' || sanitized[i]=='\''))
+                    return false;
+            return Mutate(() => Data.PreferredName = sanitized);
+        }
+        public bool SetOnboardingProgress(bool welcome, bool menu, bool firstSession) => Mutate(() =>
+        { Data.WelcomeCompleted=welcome; Data.MenuTutorialCompleted=menu; Data.FirstSessionTutorialCompleted=firstSession; });
+        public bool SetFirstReviewOptionsCompleted(bool value)=>Mutate(()=>Data.FirstReviewOptionsCompleted=value);
+        public bool SetPersonalizedGreetingCompleted(bool value)=>Mutate(()=>Data.PersonalizedGreetingCompleted=value);
+        public bool ResetOnboardingForDevelopment() => Mutate(() =>
+        { Data.PreferredName=string.Empty;Data.WelcomeCompleted=false;Data.MenuTutorialCompleted=false;Data.FirstSessionTutorialCompleted=false;Data.PersonalizedGreetingCompleted=false; });
+        public bool ResetAllForDevelopment()
+        {ThinkingSpacePreferencesData previous=Data;Data=new ThinkingSpacePreferencesData();if(Save())return true;Data=previous;return false;}
+
+        private bool Mutate(Action change)
+        {
+            string snapshot=JsonUtility.ToJson(Data); change();
+            if(Save())return true;
+            Data=JsonUtility.FromJson<ThinkingSpacePreferencesData>(snapshot); return false;
         }
 
         public bool Save()
@@ -102,7 +135,11 @@ namespace ThinkingSpace.UI
                 loaded.SilenceDurationSeconds = ClampSilence(loaded.SilenceDurationSeconds);
                 if (!Enum.IsDefined(typeof(ThumbRecordingGestureController.RecordingMode), loaded.RecordingMode))
                     loaded.RecordingMode = ThumbRecordingGestureController.RecordingMode.Conversational;
+                // Version 1 predates subtitle preferences. Preserve the intended opt-out
+                // behavior instead of treating the absent JSON field as false.
+                if (loaded.SchemaVersion == 1) loaded.SubtitlesEnabled = true;
                 loaded.StartupBehavior = StartupBehavior.PreserveCurrentBehavior;
+                loaded.SchemaVersion = CurrentSchemaVersion;
                 Data = loaded;
                 LastError = string.Empty;
                 return true;

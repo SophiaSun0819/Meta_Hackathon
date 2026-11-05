@@ -50,8 +50,19 @@ namespace ThinkingSpace.Speech
 
         private UnityWebRequest activeRequest;
         private string runtimeDevelopmentToken;
+        private string runtimeDevelopmentTokenSource = "Missing";
         public bool IsBusy => activeRequest != null;
         public string BackendUrl => backendUrl;
+        public string LastRequestStage { get; private set; } = "Idle";
+        public long LastHttpStatus { get; private set; }
+        public string LastErrorCategory { get; private set; } = "None";
+        public bool LastSubmittedValidRecording { get; private set; }
+        public string LastCompletionReason { get; private set; } = "No request completed";
+        public bool IsDevelopmentTokenConfigured => !string.IsNullOrEmpty(ResolveDevelopmentToken());
+        public string DevelopmentTokenSourceType
+        {
+            get { ResolveDevelopmentToken(); return runtimeDevelopmentTokenSource; }
+        }
         public string BackendBaseUrl
         {
             get
@@ -77,36 +88,48 @@ namespace ThinkingSpace.Speech
 
         public IEnumerator Transcribe(SpeechTranscriptionRequest request, Action<SpeechTranscriptionResult> completed)
         {
+            LastRequestStage = "Validating";
+            LastHttpStatus = 0;
+            LastErrorCategory = "None";
+            LastSubmittedValidRecording = false;
+            LastCompletionReason = "Request validation started";
             if (IsBusy)
             {
+                SetFailureDiagnostics("request_state", 0);
                 completed?.Invoke(Failure(request, "A transcription request is already active.", 0, 0f));
                 yield break;
             }
             if (request == null || request.WavData == null || request.WavData.Length <= 44)
             {
+                SetFailureDiagnostics("invalid_wav", 0);
                 completed?.Invoke(Failure(request, "The WAV request is empty or invalid.", 0, 0f));
                 yield break;
             }
             if (string.IsNullOrWhiteSpace(backendUrl))
             {
+                SetFailureDiagnostics("configuration", 0);
                 completed?.Invoke(Failure(request, "Backend URL is not configured.", 0, 0f));
                 yield break;
             }
             if (!backendUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                 && !IsPrivateDevelopmentUrl(backendUrl))
             {
+                SetFailureDiagnostics("endpoint_security", 0);
                 completed?.Invoke(Failure(request, "Backend URL must use HTTPS outside private-network development.", 0, 0f));
                 yield break;
             }
             string developmentToken = ResolveDevelopmentToken();
             if (string.IsNullOrEmpty(developmentToken))
             {
+                SetFailureDiagnostics("authentication_configuration", 0);
                 completed?.Invoke(Failure(request,
                     "Development authentication token is not configured on this device.", 0, 0f));
                 yield break;
             }
 
             float startedAt = Time.realtimeSinceStartup;
+            LastRequestStage = "Uploading";
+            LastSubmittedValidRecording = true;
             activeRequest = new UnityWebRequest(backendUrl, UnityWebRequest.kHttpVerbPOST)
             {
                 uploadHandler = new UploadHandlerRaw(request.WavData),
@@ -129,8 +152,16 @@ namespace ThinkingSpace.Speech
             {
                 BackendResponse response = JsonUtility.FromJson<BackendResponse>(requestInFlight.downloadHandler.text);
                 if (response == null || string.IsNullOrWhiteSpace(response.transcript))
+                {
+                    SetFailureDiagnostics("invalid_response", requestInFlight.responseCode);
                     completed?.Invoke(Failure(request, "Backend returned an empty transcript.", requestInFlight.responseCode, elapsed));
+                }
                 else
+                {
+                    LastRequestStage = "Completed";
+                    LastHttpStatus = requestInFlight.responseCode;
+                    LastErrorCategory = "None";
+                    LastCompletionReason = "HTTP request completed with a valid transcript";
                     completed?.Invoke(new SpeechTranscriptionResult
                     {
                         Success = true,
@@ -141,6 +172,7 @@ namespace ThinkingSpace.Speech
                         HttpStatus = requestInFlight.responseCode,
                         RequestDurationSeconds = elapsed
                     });
+                }
             }
             else
             {
@@ -154,6 +186,11 @@ namespace ThinkingSpace.Speech
                         else if (!string.IsNullOrEmpty(backendError.detail)) message = backendError.detail;
                     }
                 }
+                string category = requestInFlight.responseCode == 401 ? "authentication"
+                    : requestInFlight.responseCode == 0 ? "network"
+                    : requestInFlight.responseCode >= 500 ? "server"
+                    : "http";
+                SetFailureDiagnostics(category, requestInFlight.responseCode);
                 completed?.Invoke(Failure(request, "Transcription failed: " + message, requestInFlight.responseCode, elapsed));
             }
             requestInFlight.Dispose();
@@ -166,11 +203,24 @@ namespace ThinkingSpace.Speech
             activeRequest = null;
             request.Abort();
             request.Dispose();
+            LastRequestStage = "Cancelled";
+            LastErrorCategory = "cancelled";
+            LastCompletionReason = "Cancelled by the owning workflow";
+        }
+
+        private void SetFailureDiagnostics(string category, long status)
+        {
+            LastRequestStage = "Failed";
+            LastHttpStatus = status;
+            LastErrorCategory = category;
+            LastCompletionReason = "Request failed during " + category;
         }
 
         public void SetDevelopmentTokenForCurrentRun(string token)
         {
             runtimeDevelopmentToken = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+            runtimeDevelopmentTokenSource = string.IsNullOrEmpty(runtimeDevelopmentToken)
+                ? "Missing" : "Runtime override";
         }
 
         public string GetDevelopmentTokenForCurrentRun() => ResolveDevelopmentToken();
@@ -183,14 +233,21 @@ namespace ThinkingSpace.Speech
             if (!string.IsNullOrEmpty(runtimeDevelopmentToken)) return runtimeDevelopmentToken;
             string fromEnvironment = Environment.GetEnvironmentVariable(developmentTokenEnvironmentVariable);
             if (!string.IsNullOrWhiteSpace(fromEnvironment))
+            {
+                runtimeDevelopmentTokenSource = "Environment variable";
                 return runtimeDevelopmentToken = fromEnvironment.Trim();
+            }
             try
             {
                 string path = DevelopmentTokenPath;
                 if (File.Exists(path))
                 {
                     string fromFile = File.ReadAllText(path).Trim();
-                    if (!string.IsNullOrEmpty(fromFile)) return runtimeDevelopmentToken = fromFile;
+                    if (!string.IsNullOrEmpty(fromFile))
+                    {
+                        runtimeDevelopmentTokenSource = "Quest persistent token file";
+                        return runtimeDevelopmentToken = fromFile;
+                    }
                 }
             }
             catch (Exception ex)
@@ -198,6 +255,7 @@ namespace ThinkingSpace.Speech
                 Debug.LogWarning("Thinking Space development token file could not be read: "
                     + ex.GetType().Name, this);
             }
+            runtimeDevelopmentTokenSource = "Missing";
             return null;
         }
 

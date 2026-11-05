@@ -34,6 +34,19 @@ namespace ThinkingSpace.Speech
         public bool ShowRenderingSelfTest => showRenderingSelfTest;
         public string Status { get; private set; } = "not initialized";
 
+        public void SetVisible(bool visible)
+        {
+            bool allowed = visible && (Debug.isDebugBuild || Application.isEditor);
+            showJointMarkers = allowed;
+            showRenderingSelfTest = false;
+            if (!allowed)
+            {
+                SetHandActive(true, false);
+                SetHandActive(false, false);
+                if (selfTestVisual != null) selfTestVisual.root.SetActive(false);
+            }
+        }
+
         public void SetHeadset(Transform value) => headset = value;
 
         public void SetHand(bool isLeft, bool tracked, Transform thumbBase, Transform thumbTip,

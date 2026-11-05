@@ -17,6 +17,11 @@ namespace ThinkingSpace.Speech
         private Transform headset;
 
         public bool ShowDiagnostics => showDiagnostics;
+        public void SetVisible(bool visible)
+        {
+            showDiagnostics = visible && (Debug.isDebugBuild || Application.isEditor);
+            if (panelTransform != null) panelTransform.gameObject.SetActive(showDiagnostics);
+        }
 
         private void Awake()
         {

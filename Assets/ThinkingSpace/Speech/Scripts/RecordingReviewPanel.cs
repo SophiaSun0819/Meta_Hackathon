@@ -168,7 +168,7 @@ namespace ThinkingSpace.Speech
             exportStatusText.gameObject.SetActive(false);
 
             playButton = CreateButton("Play Recording", rect, new Vector2(0.07f, 0.31f), new Vector2(0.48f, 0.47f), out playLabel);
-            sendButton = CreateButton("Send to AI", rect, new Vector2(0.52f, 0.31f), new Vector2(0.93f, 0.47f), out _);
+            sendButton = CreateButton("Send to Orby", rect, new Vector2(0.52f, 0.31f), new Vector2(0.93f, 0.47f), out _);
             discardButton = CreateButton("Discard", rect, new Vector2(0.07f, 0.12f), new Vector2(0.48f, 0.28f), out _);
             rerecordButton = CreateButton("Rerecord", rect, new Vector2(0.52f, 0.12f), new Vector2(0.93f, 0.28f), out _);
             exportButton = CreateButton("Export WAV (Dev)", rect, new Vector2(0.3f, 0.02f), new Vector2(0.7f, 0.1f), out _);

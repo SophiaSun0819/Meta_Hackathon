@@ -114,6 +114,7 @@ namespace ThinkingSpace.Speech
         public event Action<CompletedMicrophoneRecording> RecordingCompleted;
         public event Action<string> RecordingFailed;
         public event Action<MicrophoneRecordingState> StateChanged;
+        public int StartAttemptCount { get; private set; }
 
         public void SetSessionIdentifier(string value) => sessionIdentifier = value ?? string.Empty;
 
@@ -177,6 +178,7 @@ namespace ThinkingSpace.Speech
 
         private bool StartCapture()
         {
+            StartAttemptCount++;
             try
             {
                 string[] devices = Microphone.devices;
@@ -217,7 +219,8 @@ namespace ThinkingSpace.Speech
             {
                 UpdateCapturedFrameCount();
                 UpdateLiveMeter();
-                if (logicalUtteranceActive && LogicalUtteranceElapsedSeconds >= maximumDuration)
+                if (logicalUtteranceActive && ShouldFinalizeForMaximumDuration(
+                    LogicalUtteranceElapsedSeconds, maximumDuration))
                 {
                     maximumDurationReached = true;
                     LastStatus = "Maximum recording duration reached";
@@ -242,6 +245,9 @@ namespace ThinkingSpace.Speech
                 }
             }
         }
+
+        public static bool ShouldFinalizeForMaximumDuration(float elapsedSeconds, float maximumSeconds)
+            => maximumSeconds > 0f && elapsedSeconds >= maximumSeconds;
 
         private void UpdateCapturedFrameCount()
         {

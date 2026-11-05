@@ -8,12 +8,15 @@ using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.Speech;
+using ThinkingSpace.Companion;
 
 namespace ThinkingSpace.UI
 {
     [DisallowMultipleComponent]
     public sealed class BrainstormMenuController : MonoBehaviour
     {
+        public event Action PalmMenuOpened;
+        public event Action<BrainstormSession> SessionActivated;
         private enum MenuScreen { Main, Session, VoiceHelp, GestureHelp }
         private enum OpeningHand { None, Left, Right }
         private enum MenuButtonState { WaitingForPalm, Stabilizing, Visible, WaitingForRelease }
@@ -190,6 +193,8 @@ namespace ThinkingSpace.UI
         private string menuVisibilityDiagnostic = "Menu not opened";
         private int buttonTransitionCount;
         private string lastButtonTransition = "Initialized";
+        private readonly PalmMenuActivationGate toggleGate = new PalmMenuActivationGate();
+        private string lastToggleGateResult = "No toggle attempted";
         private HandNormalVisualization leftNormalVisual, rightNormalVisual;
 
         private sealed class HandNormalVisualization
@@ -201,6 +206,24 @@ namespace ThinkingSpace.UI
 
         public BrainstormSessionStore SessionStore => sessionStore;
         public ThinkingSpacePreferencesStore PreferencesStore => preferencesStore;
+        public bool IsMenuVisible => menuCanvas != null && menuCanvas.gameObject.activeSelf;
+        public string DevelopmentMenuStatus => "Menu visible=" + IsMenuVisible
+            + " · owner=" + menuOwner + " · button=" + buttonState + "/" + buttonOwner
+            + " · gate=" + toggleGate.ConsumedGeneration + "/" + toggleGate.InteractionGeneration
+            + " held=" + toggleGate.PointerHeld + " · " + lastToggleGateResult
+            + " · " + menuVisibilityDiagnostic;
+        public void SetDevelopmentDiagnosticsVisible(bool visible)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            showOpenPalmDiagnostics = visible;
+            showInteractionDiagnostics = visible;
+            showCanvasFrontDiagnostics = visible;
+            showPalmNormalVisualization = visible;
+#else
+            showOpenPalmDiagnostics = showInteractionDiagnostics = showCanvasFrontDiagnostics = false;
+            showPalmNormalVisualization = false;
+#endif
+        }
         private ThinkingSpacePreferencesStore preferencesStore;
 
         private static readonly Color PanelColor = new Color(0.035f, 0.055f, 0.09f, 0.97f);
@@ -232,7 +255,10 @@ namespace ThinkingSpace.UI
             bool restoredSession = sessionStore.ActiveSession != null;
             if (restoredSession)
                 recordingGestureController.SetSessionIdentifier("Session " + sessionStore.ActiveSession.Number);
-            recordingGestureController.SetSessionActive(restoredSession);
+            // Restoring session data and completing onboarding are independent. Never
+            // enable recording during the Awake/Start gap when onboarding is incomplete.
+            bool onboardingRequired=OrbyOnboardingController.ShouldBeginTutorial(preferencesStore.Data);
+            recordingGestureController.SetSessionActive(restoredSession&&!onboardingRequired);
             ApplyPreferences();
             EnsureMetaCanvasEventSystem();
             if (authoredMenuPrefab != null) BuildAuthoredMenu();
@@ -289,6 +315,8 @@ namespace ThinkingSpace.UI
 
             if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
             {
+                // The authored full menu is now the sole menu surface while open.
+                // Ownership is retained so CloseMenuInternal can enforce rearm.
                 SetPalmButtonVisible(false);
                 return;
             }
@@ -661,9 +689,13 @@ namespace ThinkingSpace.UI
                 () => InvokeGuarded(() => ChangeSilenceDuration(-ThinkingSpacePreferencesStore.StepSeconds)),
                 () => InvokeGuarded(() => ChangeSilenceDuration(ThinkingSpacePreferencesStore.StepSeconds)),
                 () => InvokeGuarded(() => ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode.Conversational)),
-                () => InvokeGuarded(() => ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode.Manual)));
+                () => InvokeGuarded(() => ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode.Manual)),
+                () => InvokeGuarded(() => ChangeSubtitles(true)),
+                () => InvokeGuarded(() => ChangeSubtitles(false)),
+                () => InvokeGuarded(EditPreferredName),
+                () => InvokeGuarded(ReplayTutorial));
             authoredView.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
-                preferencesStore.Data.RecordingMode);
+                preferencesStore.Data.RecordingMode,preferencesStore.Data.SubtitlesEnabled);
             authoredView.SetFrontMarkerVisible(false);
             authoredView.gameObject.SetActive(false);
         }
@@ -684,15 +716,20 @@ namespace ThinkingSpace.UI
             recordingGestureController.ConversationalListening?.SetSilenceDuration(
                 preferencesStore.Data.SilenceDurationSeconds);
             authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
-                preferencesStore.Data.RecordingMode);
+                preferencesStore.Data.RecordingMode,preferencesStore.Data.SubtitlesEnabled);
         }
 
         private void ChangeRecordingMode(ThumbRecordingGestureController.RecordingMode mode)
         {
             if (preferencesStore == null || !preferencesStore.SetRecordingMode(mode)) return;
             recordingGestureController.SetRecordingMode(mode);
-            authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds, mode);
+            authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds, mode,preferencesStore.Data.SubtitlesEnabled);
         }
+
+        private void ChangeSubtitles(bool value)
+        {if(preferencesStore==null||!preferencesStore.SetSubtitlesEnabled(value))return;OrbyVoiceDirector.Instance?.SetSubtitlesEnabled(value);authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,preferencesStore.Data.RecordingMode,value);}
+        private void EditPreferredName()=>FindFirstObjectByType<OrbyOnboardingController>()?.EditPreferredName();
+        private void ReplayTutorial()=>FindFirstObjectByType<OrbyOnboardingController>()?.ReplayTutorial();
 
         private void BuildPalmMenuButton()
         {
@@ -710,7 +747,10 @@ namespace ThinkingSpace.UI
             palmMenuButtonImage = palmMenuButtonView.ButtonImage;
             palmButtonLabel = palmMenuButtonView.Label;
             palmMenuButton.onClick.RemoveAllListeners();
-            palmMenuButton.onClick.AddListener(() => InvokeGuarded(PressPalmMenuButton));
+            // The palm toggle owns its physical press/release gate. The previous
+            // nested InvokeGuarded call stamped the click before this callback and
+            // caused the callback's second guard to reject every valid click.
+            palmMenuButton.onClick.AddListener(PressPalmMenuButton);
             palmMenuButtonView.UnityPointerDown += HandleUnityPointerDown;
             palmMenuButtonView.UnityPointerUp += HandleUnityPointerUp;
             palmMenuButtonView.UnityPointerClick += HandleUnityPointerClick;
@@ -790,7 +830,7 @@ namespace ThinkingSpace.UI
             if (!authoredTestWasVisible)
             {
                 authoredView.gameObject.SetActive(true);
-                authoredView.ShowMain(sessionStore.Sessions, recordingGestureController.SelectedRecordingHand, ReopenSession);
+                authoredView.ShowMain(sessionStore.Sessions, recordingGestureController.SelectedRecordingHand, ReopenSession, RequestDeleteSession);
                 authoredTestWasVisible = true;
             }
             menuOwner = OpeningHand.None;
@@ -1058,6 +1098,8 @@ namespace ThinkingSpace.UI
                     + "\nButton/Meta " + (palmMenuButton != null && palmMenuButton.interactable)
                     + "/" + (palmMenuButtonView != null && palmMenuButtonView.IsEligible)
                     + "\nHover/Select " + palmButtonHovered + "/" + palmButtonSelected
+                    + "\nGate consumed/generation " + toggleGate.ConsumedGeneration + "/" + toggleGate.InteractionGeneration
+                    + " held=" + toggleGate.PointerHeld + " · " + lastToggleGateResult
                     + "\nLast " + interactionDiagnostic
                     + "\nMenu " + menuVisibilityDiagnostic;
             else
@@ -1192,6 +1234,7 @@ namespace ThinkingSpace.UI
             }
             else if (args.Canvas == palmButtonCanvas)
             {
+                toggleGate.BeginInteraction(Time.unscaledTime);
                 palmButtonSelected = true;
                 palmButtonPoseLocked = true;
                 interactionDiagnostic = "Palm Menu press: " + GetInteractionObjectName(args.Hovered);
@@ -1211,6 +1254,7 @@ namespace ThinkingSpace.UI
             }
             else if (args.Canvas == palmButtonCanvas)
             {
+                toggleGate.EndInteraction();
                 palmButtonSelected = false;
                 palmButtonPoseLocked = palmButtonHovered;
                 interactionDiagnostic = "Palm Menu release: " + GetInteractionObjectName(args.Hovered);
@@ -1221,12 +1265,14 @@ namespace ThinkingSpace.UI
 
         private void HandleUnityPointerDown(PointerEventData args)
         {
+            toggleGate.BeginInteraction(Time.unscaledTime);
             palmButtonPoseLocked = true;
             RecordInteractionEvent("UNITY POINTER DOWN", args.pointerId, args.pointerPressRaycast.gameObject);
         }
 
         private void HandleUnityPointerUp(PointerEventData args)
         {
+            toggleGate.EndInteraction();
             RecordInteractionEvent("UNITY POINTER UP", args.pointerId, args.pointerPressRaycast.gameObject);
             palmButtonPoseLocked = palmButtonHovered || palmButtonSelected;
         }
@@ -1268,6 +1314,16 @@ namespace ThinkingSpace.UI
         {
             RecordInteractionEvent("UNITY BUTTON ONCLICK", null,
                 palmMenuButton != null ? palmMenuButton.gameObject : null);
+            if (!toggleGate.TryConsume(Time.unscaledTime, duplicateClickGuard))
+            {
+                lastToggleGateResult = "Rejected duplicate callback without a new press/release cycle";
+                RecordInteractionEvent("TOGGLE GATE REJECTED", null,
+                    palmMenuButton != null ? palmMenuButton.gameObject : null);
+                return;
+            }
+            lastToggleGateResult = "Accepted generation " + toggleGate.ConsumedGeneration;
+            if(menuCanvas!=null&&menuCanvas.gameObject.activeSelf)
+            {lastPointerClick="Menu closed by palm button at "+Time.unscaledTime.ToString("0.00")+"s";CloseMenuInternal(menuOwner);RecordInteractionEvent("CONTROLLER TOGGLE CLOSE",null,menuCanvas.gameObject);return;}
             if (debugShowPalmMenuButtonAtHeadset)
             {
                 interactionDiagnostic = "Debug palm Menu button clicked successfully";
@@ -1290,7 +1346,8 @@ namespace ThinkingSpace.UI
             if (buttonState != MenuButtonState.Visible || buttonOwner == OpeningHand.None) return;
             OpeningHand activatingHand = buttonOwner;
             lastPointerClick = "Menu opened at " + Time.unscaledTime.ToString("0.00") + "s";
-            SetPalmButtonVisible(false);
+            // The same authored button remains the close toggle. Do not disable and
+            // re-enable Meta interactables inside their own click dispatch.
             // Use the last stable tracked anchor. A single joint-resolution drop on
             // the poke/release frame must not consume a valid Unity Button click.
             OpenMenu(activatingHand, lastStableButtonAnchor);
@@ -1401,10 +1458,11 @@ namespace ThinkingSpace.UI
         private void OpenMenu(OpeningHand owner, Vector3 handAnchor)
         {
             menuOwner = owner;
-            buttonOwner = OpeningHand.None;
+            buttonOwner = owner;
             SetButtonState(MenuButtonState.WaitingForRelease, "Menu button clicked; full menu opened");
             buttonDismissalReason = "Menu button clicked; full menu opened";
             SetPalmButtonVisible(false);
+            PalmMenuOpened?.Invoke();
             gestureHoldTimer = sequenceTimer = trackingLossTimer = fistReleaseTimer = closeFistTimer = 0f;
             followVelocity = Vector3.zero;
             Transform headset = recordingGestureController.CenterEyeAnchor;
@@ -1532,7 +1590,7 @@ namespace ThinkingSpace.UI
             if (authoredView != null)
             {
                 if (screen == MenuScreen.Main)
-                    authoredView.ShowMain(sessionStore.Sessions, recordingGestureController.SelectedRecordingHand, ReopenSession);
+                    authoredView.ShowMain(sessionStore.Sessions, recordingGestureController.SelectedRecordingHand, ReopenSession, RequestDeleteSession);
                 else if (screen == MenuScreen.Session)
                     authoredView.ShowSession(
                         sessionStore.ActiveSession != null ? sessionStore.ActiveSession.Number : 0,
@@ -1615,6 +1673,12 @@ namespace ThinkingSpace.UI
             BrainstormSession session = sessionStore.StartNewSession();
             recordingGestureController.SetSessionIdentifier("Session " + session.Number);
             recordingGestureController.SetSessionActive(true);
+            OrbyVoiceDirector.Instance?.SetActiveSession(session.SessionId);
+            SessionActivated?.Invoke(session);
+            OrbyVoiceDirector director=OrbyVoiceDirector.Instance;
+            if(!OrbyOnboardingController.ShouldBeginTutorial(preferencesStore.Data)&&director!=null&&!director.TutorialRecordingBlocked)
+                director.PlayPrerecorded("session_started",session.SessionId);
+            else director?.ReportEvent("session_started",false,false,OrbyVoicePriority.Acknowledgement,session.SessionId);
             ShowScreen(MenuScreen.Session);
         }
 
@@ -1623,12 +1687,40 @@ namespace ThinkingSpace.UI
             if (!sessionStore.ReopenSession(number)) return;
             recordingGestureController.SetSessionActive(true);
             recordingGestureController.SetSessionIdentifier("Session " + number);
+            OrbyVoiceDirector.Instance?.SetActiveSession(sessionStore.ActiveSession.SessionId);
+            SessionActivated?.Invoke(sessionStore.ActiveSession);
+            OrbyVoiceDirector director=OrbyVoiceDirector.Instance;
+            if(!OrbyOnboardingController.ShouldBeginTutorial(preferencesStore.Data)&&director!=null&&!director.TutorialRecordingBlocked)
+                director.PlayPrerecorded("greeting_return",sessionStore.ActiveSession.SessionId);
+            else director?.ReportEvent("session_resumed",false,false,OrbyVoicePriority.Acknowledgement,sessionStore.ActiveSession.SessionId);
             ShowScreen(MenuScreen.Session);
+        }
+
+        private void RequestDeleteSession(int number)
+        {
+            BrainstormSession target = null;
+            for (int i = 0; i < sessionStore.Sessions.Count; i++)
+                if (sessionStore.Sessions[i].Number == number) { target = sessionStore.Sessions[i]; break; }
+            if (target == null) return;
+            bool wasActive = sessionStore.ActiveSession != null
+                && sessionStore.ActiveSession.SessionId == target.SessionId;
+            if (!sessionStore.TryDeleteSession(number))
+            {
+                authoredView?.SetSessionStatus(string.IsNullOrEmpty(sessionStore.LastPersistenceError)
+                    ? "Session deletion failed." : sessionStore.LastPersistenceError);
+                return;
+            }
+            OrbyVoiceDirector.Instance?.RemoveSessionCache(target.SessionId);
+            if (wasActive) recordingGestureController.SetSessionActive(false);
+            ShowScreen(MenuScreen.Main);
         }
 
         private void EndSession()
         {
             recordingGestureController.SetSessionActive(false);
+            OrbyVoiceDirector director=OrbyVoiceDirector.Instance;
+            director?.SetActiveSession(string.Empty);
+            director?.PlayPrerecorded("session_ended",string.Empty,null,true);
             sessionStore.EndActiveSession();
             ShowScreen(MenuScreen.Main);
         }
@@ -1689,6 +1781,49 @@ namespace ThinkingSpace.UI
             lastButtonActivation = Time.unscaledTime;
             action?.Invoke();
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [ContextMenu("Development/Palm Menu/Show Full Menu At Headset")]
+        public void DevelopmentShowMenuAtHeadset()
+        {
+            Transform headset = recordingGestureController != null
+                ? recordingGestureController.CenterEyeAnchor : Camera.main != null ? Camera.main.transform : null;
+            if (menuCanvas == null || headset == null)
+            {
+                lastToggleGateResult = "Development show rejected: menu Canvas or headset unavailable";
+                return;
+            }
+            OpenMenuAtHeadset(headset);
+            lastToggleGateResult = "Development show completed; no session changed";
+        }
+
+        [ContextMenu("Development/Palm Menu/Hide Full Menu")]
+        public void DevelopmentHideMenu()
+        {
+            if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
+            menuOwner = OpeningHand.None;
+            menuHovered = menuSelected = menuPoseLocked = false;
+            menuVisibilityDiagnostic = "Hidden by development command";
+            lastToggleGateResult = "Development hide completed; no session changed";
+        }
+
+        [ContextMenu("Development/Palm Menu/Simulate One Button Callback")]
+        public void DevelopmentSimulateMenuButtonCallback()
+        {
+            toggleGate.BeginDevelopmentInteraction(Time.unscaledTime);
+            if (IsMenuVisible) PressPalmMenuButton();
+            else
+            {
+                if (!toggleGate.TryConsume(Time.unscaledTime, 0f)) return;
+                DevelopmentShowMenuAtHeadset();
+                RecordInteractionEvent("DEVELOPMENT SIMULATED OPEN CALLBACK", null,
+                    menuCanvas != null ? menuCanvas.gameObject : null);
+            }
+        }
+
+        [ContextMenu("Development/Palm Menu/Test Separate Toggle Click")]
+        public void DevelopmentTestToggle() => DevelopmentSimulateMenuButtonCallback();
+#endif
 
         private void AddHeading(string text, float size) => AddLabel(text, size, Color.white, 76f, FontStyles.Bold);
 

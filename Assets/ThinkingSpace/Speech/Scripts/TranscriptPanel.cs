@@ -58,7 +58,7 @@ namespace ThinkingSpace.Speech
             heading.text = "Transcription Complete";
             SetPagedBody(transcript);
             retryAction = confirm;
-            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Send / Confirm";
+            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Send to Orby";
             retryButton.gameObject.SetActive(confirm != null);
             retryButton.interactable = confirm != null;
             closeAction = back;
@@ -80,6 +80,22 @@ namespace ThinkingSpace.Speech
             closeLabel.text = "Back to Recording";
             closeButton.gameObject.SetActive(back != null);
             closeButton.interactable = back != null;
+        }
+
+        public void ShowWorkflowError(string headingText, string message, Action retry,
+            Action discard)
+        {
+            Show();
+            heading.text = string.IsNullOrWhiteSpace(headingText) ? "Request Failed" : headingText;
+            SetPagedBody(message + "\n\nThe completed recording is still available in memory.");
+            retryAction = retry;
+            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Retry";
+            retryButton.gameObject.SetActive(retry != null);
+            retryButton.interactable = retry != null;
+            closeAction = discard;
+            closeLabel.text = "Discard";
+            closeButton.gameObject.SetActive(discard != null);
+            closeButton.interactable = discard != null;
         }
 
         public void ShowNotice(string headingText, string message, Action closed)

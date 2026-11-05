@@ -18,7 +18,39 @@ namespace ThinkingSpace.Speech
     }
 
     [Serializable] public sealed class AICommandParameters
-    { public string scale, direction, question; }
+    { public string scale, direction, settings_section; }
+
+    [Serializable] public sealed class ConversationTurnPayload
+    { public string role, text; public string[] related_idea_ids = Array.Empty<string>(); }
+
+    [Serializable] public sealed class ConversationContextPayload
+    {
+        public ConversationTurnPayload[] recent_turns = Array.Empty<ConversationTurnPayload>();
+        public string most_recent_idea_id;
+        public string current_mode = "conversational";
+    }
+
+    [Serializable] public sealed class ConversationProcessRequest
+    {
+        public string request_id, session_id, raw_transcript, cleaned_transcript;
+        public string transcript_source = "raw";
+        public AIIdeaContext[] available_ideas = Array.Empty<AIIdeaContext>();
+        public ConversationContextPayload context = new ConversationContextPayload();
+        public string clarification_id;
+    }
+
+    [Serializable] public sealed class ConversationProcessResponse
+    {
+        public string contract_version, request_id, session_id, intent_category, proposed_action;
+        public string[] target_idea_ids;
+        public AICommandParameters parameters;
+        public string spoken_response, subtitle_text, suggested_emotion;
+        public bool requires_confirmation;
+        public string clarification_id, clarification_question;
+        public string[] candidate_idea_ids;
+        public bool should_create_idea, should_execute_action;
+        public string status, error;
+    }
 
     [Serializable] public sealed class IntentRouteResponse
     {
@@ -85,6 +117,80 @@ namespace ThinkingSpace.Speech
             public AIIdeaContext[] existing_ideas;
         }
 
+        [Serializable] private sealed class ConversationContextWithoutRecentWire
+        {
+            public ConversationTurnPayload[] recent_turns;
+            public string current_mode;
+        }
+
+        [Serializable] private sealed class ConversationContextWithRecentWire
+        {
+            public ConversationTurnPayload[] recent_turns;
+            public string most_recent_idea_id, current_mode;
+        }
+
+        [Serializable] private sealed class InitialConversationWithoutRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentWire context;
+        }
+
+        [Serializable] private sealed class InitialConversationWithRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentWire context;
+        }
+
+        [Serializable] private sealed class FollowUpConversationWithoutRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentWire context;
+            public string clarification_id;
+        }
+
+        [Serializable] private sealed class FollowUpConversationWithRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentWire context;
+            public string clarification_id;
+        }
+
+        public static string Serialize(ConversationProcessRequest value)
+        {
+            AIIdeaContext[] ideas = value.available_ideas ?? Array.Empty<AIIdeaContext>();
+            ConversationContextPayload context = value.context ?? new ConversationContextPayload();
+            context.recent_turns = context.recent_turns ?? Array.Empty<ConversationTurnPayload>();
+            bool hasRecent = !string.IsNullOrWhiteSpace(context.most_recent_idea_id);
+            var withoutRecent = new ConversationContextWithoutRecentWire
+            { recent_turns = context.recent_turns, current_mode = context.current_mode };
+            var withRecent = new ConversationContextWithRecentWire
+            { recent_turns = context.recent_turns, most_recent_idea_id = context.most_recent_idea_id,
+              current_mode = context.current_mode };
+            if (string.IsNullOrEmpty(value.clarification_id))
+                return hasRecent
+                    ? JsonUtility.ToJson(new InitialConversationWithRecentWireRequest
+                    { request_id = value.request_id, session_id = value.session_id,
+                      raw_transcript = value.raw_transcript, transcript_source = value.transcript_source,
+                      available_ideas = ideas, context = withRecent })
+                    : JsonUtility.ToJson(new InitialConversationWithoutRecentWireRequest
+                    { request_id = value.request_id, session_id = value.session_id,
+                      raw_transcript = value.raw_transcript, transcript_source = value.transcript_source,
+                      available_ideas = ideas, context = withoutRecent });
+            return hasRecent
+                ? JsonUtility.ToJson(new FollowUpConversationWithRecentWireRequest
+                { request_id = value.request_id, session_id = value.session_id,
+                  raw_transcript = value.raw_transcript, transcript_source = value.transcript_source,
+                  available_ideas = ideas, context = withRecent, clarification_id = value.clarification_id })
+                : JsonUtility.ToJson(new FollowUpConversationWithoutRecentWireRequest
+                { request_id = value.request_id, session_id = value.session_id,
+                  raw_transcript = value.raw_transcript, transcript_source = value.transcript_source,
+                  available_ideas = ideas, context = withoutRecent, clarification_id = value.clarification_id });
+        }
+
         public static string Serialize(IntentRouteRequest value)
         {
             AIIdeaContext[] ideas = value.available_ideas ?? Array.Empty<AIIdeaContext>();
@@ -141,6 +247,8 @@ namespace ThinkingSpace.Speech
     {
         bool IsBusy { get; }
         IEnumerator RouteIntent(IntentRouteRequest request, Action<AIBackendResult<IntentRouteResponse>> completed);
+        IEnumerator ProcessConversation(ConversationProcessRequest request,
+            Action<AIBackendResult<ConversationProcessResponse>> completed);
         IEnumerator ProcessIdea(IdeaProcessRequest request, Action<AIBackendResult<IdeaProcessResponse>> completed);
         void Cancel();
     }
@@ -148,6 +256,7 @@ namespace ThinkingSpace.Speech
     [DisallowMultipleComponent]
     public sealed class ThinkingSpaceAIBackendClient : MonoBehaviour, IThinkingSpaceAIBackendClient
     {
+        public const string ConversationEndpointPath = "/api/conversations/process";
         [SerializeField, Range(5, 120)] private int requestTimeoutSeconds = 45;
         private SpeechTranscriptionService transcriptionService;
         private UnityWebRequest activeRequest;
@@ -160,6 +269,13 @@ namespace ThinkingSpace.Speech
         public bool LastRequestTimedOut { get; private set; }
         public string LastValidationFieldPath { get; private set; } = "None";
         public string LastValidationCategory { get; private set; } = "None";
+        public string LastFailureStage { get; private set; } = "None";
+        public string LastFailureFieldPath { get; private set; } = "None";
+        public string LastFailureCategory { get; private set; } = "None";
+        public string LastCompletionStatus { get; private set; } = "None";
+        public string LastIncompleteReason { get; private set; } = "None";
+        public int LastOutputTokenCount { get; private set; } = -1;
+        public int LastReasoningTokenCount { get; private set; } = -1;
         private static readonly Regex IdentifierPattern = new Regex(
             "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.CultureInvariant);
         private static readonly Regex SessionPattern = new Regex(
@@ -167,10 +283,20 @@ namespace ThinkingSpace.Speech
 
         public void Configure(SpeechTranscriptionService service) => transcriptionService = service;
 
+        public static string ValidateConversationRequest(ConversationProcessRequest request,
+            out string fieldPath, out string category)
+            => ValidatePayload(request, out fieldPath, out category);
+
         public IEnumerator RouteIntent(IntentRouteRequest request,
             Action<AIBackendResult<IntentRouteResponse>> completed)
         {
             yield return PostJson("api/intents/route", request, completed);
+        }
+
+        public IEnumerator ProcessConversation(ConversationProcessRequest request,
+            Action<AIBackendResult<ConversationProcessResponse>> completed)
+        {
+            yield return PostJson(ConversationEndpointPath.TrimStart('/'), request, completed);
         }
 
         public IEnumerator ProcessIdea(IdeaProcessRequest request,
@@ -189,6 +315,9 @@ namespace ThinkingSpace.Speech
             LastRequestTimedOut = false;
             LastValidationFieldPath = "None";
             LastValidationCategory = "None";
+            LastFailureStage = LastFailureFieldPath = LastFailureCategory = "None";
+            LastCompletionStatus = LastIncompleteReason = "None";
+            LastOutputTokenCount = LastReasoningTokenCount = -1;
             if (IsBusy)
             {
                 LastError = "Another AI request is already active.";
@@ -219,7 +348,9 @@ namespace ThinkingSpace.Speech
                 completed?.Invoke(Failure<TResponse>(validationError, 0, 0f));
                 yield break;
             }
-            string json = payload is IntentRouteRequest intent
+            string json = payload is ConversationProcessRequest conversation
+                ? AIRequestJsonSerializer.Serialize(conversation)
+                : payload is IntentRouteRequest intent
                 ? AIRequestJsonSerializer.Serialize(intent)
                 : payload is IdeaProcessRequest idea
                     ? AIRequestJsonSerializer.Serialize(idea)
@@ -245,6 +376,7 @@ namespace ThinkingSpace.Speech
             }
             activeRequest = null;
             LastHttpStatus = request.responseCode;
+            ReadSafeDiagnosticHeaders(request);
             if (request.result == UnityWebRequest.Result.Success)
             {
                 TResponse response = default;
@@ -274,6 +406,28 @@ namespace ThinkingSpace.Speech
                 completed?.Invoke(Failure<TResponse>(message, request.responseCode, elapsed));
             }
             request.Dispose();
+        }
+
+        private void ReadSafeDiagnosticHeaders(UnityWebRequest request)
+        {
+            string Header(string name)
+            {
+                string value = request.GetResponseHeader(name);
+                return string.IsNullOrWhiteSpace(value) ? "None" : value;
+            }
+            LastFailureStage = Header("X-ThinkingSpace-Failure-Stage");
+            LastFailureFieldPath = Header("X-ThinkingSpace-Failure-Field");
+            LastFailureCategory = Header("X-ThinkingSpace-Failure-Category");
+            LastCompletionStatus = Header("X-ThinkingSpace-Completion-Status");
+            LastIncompleteReason = Header("X-ThinkingSpace-Incomplete-Reason");
+            LastOutputTokenCount = int.TryParse(request.GetResponseHeader(
+                "X-ThinkingSpace-Output-Tokens"), out int outputTokens) ? outputTokens : -1;
+            LastReasoningTokenCount = int.TryParse(request.GetResponseHeader(
+                "X-ThinkingSpace-Reasoning-Tokens"), out int reasoningTokens) ? reasoningTokens : -1;
+            string validationField = request.GetResponseHeader("X-ThinkingSpace-Validation-Field");
+            string validationCategory = request.GetResponseHeader("X-ThinkingSpace-Validation-Category");
+            if (!string.IsNullOrWhiteSpace(validationField)) LastValidationFieldPath = validationField;
+            if (!string.IsNullOrWhiteSpace(validationCategory)) LastValidationCategory = validationCategory;
         }
 
         public void Cancel()
@@ -328,6 +482,23 @@ namespace ThinkingSpace.Speech
                 { fieldPath = "available_ideas"; category = "too_many_items"; return "Too many available ideas were supplied."; }
                 return ValidateIdeaContexts(ideas, "available_ideas", out fieldPath, out category);
             }
+            if (payload is ConversationProcessRequest conversation)
+            {
+                string common = ValidateCommon(conversation.request_id, conversation.session_id,
+                    conversation.raw_transcript, out fieldPath, out category);
+                if (!string.IsNullOrEmpty(common)) return common;
+                if (conversation.transcript_source != "raw" && conversation.transcript_source != "cleaned")
+                { fieldPath = "transcript_source"; category = "invalid_enum"; return "Transcript source is invalid."; }
+                if (!string.IsNullOrEmpty(conversation.clarification_id)
+                    && !IdentifierPattern.IsMatch(conversation.clarification_id))
+                { fieldPath = "clarification_id"; category = "invalid_identifier"; return "Clarification identifier is invalid."; }
+                AIIdeaContext[] ideas = conversation.available_ideas ?? Array.Empty<AIIdeaContext>();
+                if (ideas.Length > 32)
+                { fieldPath = "available_ideas"; category = "too_many_items"; return "Too many available ideas were supplied."; }
+                string ideaError = ValidateIdeaContexts(ideas, "available_ideas", out fieldPath, out category);
+                if (!string.IsNullOrEmpty(ideaError)) return ideaError;
+                return ValidateConversationContext(conversation.context, ideas, out fieldPath, out category);
+            }
             if (payload is IdeaProcessRequest idea)
             {
                 string common = ValidateCommon(idea.request_id, idea.session_id,
@@ -367,6 +538,49 @@ namespace ThinkingSpace.Speech
                 { fieldPath = prefix + "." + i + ".title"; category = "invalid_length"; return "An idea title is invalid."; }
                 if (string.IsNullOrWhiteSpace(item.summary) || item.summary.Length > 2000)
                 { fieldPath = prefix + "." + i + ".summary"; category = "invalid_length"; return "An idea summary is invalid."; }
+            }
+            return string.Empty;
+        }
+
+        private static string ValidateConversationContext(ConversationContextPayload context,
+            AIIdeaContext[] ideas, out string fieldPath, out string category)
+        {
+            fieldPath = "None"; category = "None";
+            if (context == null)
+            { fieldPath = "context"; category = "missing"; return "Conversation context is missing."; }
+            if (context.current_mode != "conversational")
+            { fieldPath = "context.current_mode"; category = "invalid_enum"; return "Conversation mode is invalid."; }
+            ConversationTurnPayload[] turns = context.recent_turns ?? Array.Empty<ConversationTurnPayload>();
+            if (turns.Length > 12)
+            { fieldPath = "context.recent_turns"; category = "too_many_items"; return "Conversation history is too long."; }
+            var known = new System.Collections.Generic.HashSet<string>();
+            for (int i = 0; i < ideas.Length; i++)
+                if (!known.Add(ideas[i].idea_id))
+                { fieldPath = "available_ideas." + i + ".idea_id"; category = "duplicate_identifier"; return "Available idea identifiers must be unique."; }
+            if (known.Count > 0 && string.IsNullOrEmpty(context.most_recent_idea_id))
+            { fieldPath = "context.most_recent_idea_id"; category = "missing"; return "Most-recent idea is required when ideas are available."; }
+            if (!string.IsNullOrEmpty(context.most_recent_idea_id)
+                && (!IdentifierPattern.IsMatch(context.most_recent_idea_id)
+                    || !known.Contains(context.most_recent_idea_id)))
+            { fieldPath = "context.most_recent_idea_id"; category = "unknown_idea"; return "Most-recent idea is unavailable."; }
+            for (int i = 0; i < turns.Length; i++)
+            {
+                ConversationTurnPayload turn = turns[i];
+                if (turn == null || (turn.role != "user" && turn.role != "orby"))
+                { fieldPath = "context.recent_turns." + i + ".role"; category = "invalid_enum"; return "Conversation role is invalid."; }
+                if (string.IsNullOrWhiteSpace(turn.text) || turn.text.Length > 2000)
+                { fieldPath = "context.recent_turns." + i + ".text"; category = "invalid_length"; return "Conversation text is invalid."; }
+                string[] related = turn.related_idea_ids ?? Array.Empty<string>();
+                if (related.Length > 8)
+                { fieldPath = "context.recent_turns." + i + ".related_idea_ids"; category = "too_many_items"; return "Conversation references too many ideas."; }
+                var turnIds = new System.Collections.Generic.HashSet<string>();
+                for (int j = 0; j < related.Length; j++)
+                {
+                    if (!turnIds.Add(related[j]))
+                    { fieldPath = "context.recent_turns." + i + ".related_idea_ids." + j; category = "duplicate_identifier"; return "Conversation idea references must be unique."; }
+                    if (!known.Contains(related[j]))
+                    { fieldPath = "context.recent_turns." + i + ".related_idea_ids." + j; category = "unknown_idea"; return "Conversation references an unavailable idea."; }
+                }
             }
             return string.Empty;
         }

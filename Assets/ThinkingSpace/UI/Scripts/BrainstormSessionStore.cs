@@ -24,6 +24,7 @@ namespace ThinkingSpace.UI
     {
         public string MessageId = string.Empty, Speaker = string.Empty, Text = string.Empty, CreatedUtc = string.Empty;
         public string MessageType = string.Empty, RelatedRequestId = string.Empty;
+        public List<string> RelatedIdeaIds = new List<string>();
     }
 
     [Serializable]
@@ -99,6 +100,15 @@ namespace ThinkingSpace.UI
         public void SetOnboardingCompleted(bool completed)
         { if (OnboardingCompleted == completed) return; OnboardingCompleted = completed; Save(); }
 
+        public bool ResetAllSessionsForDevelopment()
+        {
+            var previousSessions=new List<BrainstormSession>(sessions);BrainstormSession previousActive=ActiveSession;
+            int previousNext=nextSessionNumber;bool previousOnboarding=OnboardingCompleted;
+            sessions.Clear();ActiveSession=null;nextSessionNumber=1;OnboardingCompleted=false;
+            if(Save())return true;
+            sessions.AddRange(previousSessions);ActiveSession=previousActive;nextSessionNumber=previousNext;OnboardingCompleted=previousOnboarding;return false;
+        }
+
         public bool TryAddIdea(string sessionId, BrainstormIdeaRecord idea)
         {
             if (ActiveSession == null || idea == null || string.IsNullOrEmpty(idea.IdeaId)
@@ -114,13 +124,28 @@ namespace ThinkingSpace.UI
                 if (string.IsNullOrEmpty(related)
                     || !ActiveSession.Ideas.Exists(item => item.IdeaId == related)) continue;
                 ActiveSession.Relationships.Add(new IdeaRelationshipRecord
-                { SourceIdeaId = idea.IdeaId, TargetIdeaId = related, RelationshipType = "related" });
+                { SourceIdeaId = idea.IdeaId, TargetIdeaId = related,
+                  RelationshipType = idea.RelatedIdeaIds.Count >= 2 ? "combined_from" : "derived_from" });
             }
             return Save();
         }
 
+        public bool TryDeleteSession(int sessionNumber)
+        {
+            int index = sessions.FindIndex(value => value != null && value.Number == sessionNumber);
+            if (index < 0) return false;
+            BrainstormSession removed = sessions[index];
+            BrainstormSession previousActive = ActiveSession;
+            sessions.RemoveAt(index);
+            if (ActiveSession == removed) ActiveSession = null;
+            if (Save()) return true;
+            sessions.Insert(index, removed);
+            ActiveSession = previousActive;
+            return false;
+        }
+
         public bool AppendConversation(string sessionId, string speaker, string text,
-            string messageType, string relatedRequestId)
+            string messageType, string relatedRequestId, IEnumerable<string> relatedIdeaIds = null)
         {
             if (ActiveSession == null || ActiveSession.SessionId != sessionId
                 || string.IsNullOrWhiteSpace(text)) return false;
@@ -131,6 +156,8 @@ namespace ThinkingSpace.UI
                 Text = text,
                 MessageType = messageType ?? string.Empty,
                 RelatedRequestId = relatedRequestId ?? string.Empty,
+                RelatedIdeaIds = relatedIdeaIds == null
+                    ? new List<string>() : new List<string>(relatedIdeaIds),
                 CreatedUtc = DateTime.UtcNow.ToString("O")
             });
             return Save();

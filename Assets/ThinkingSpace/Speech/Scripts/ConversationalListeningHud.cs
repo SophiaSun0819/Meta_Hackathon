@@ -4,6 +4,9 @@ using UnityEngine.UI;
 
 namespace ThinkingSpace.Speech
 {
+    public enum MicrophoneStatusDisplayState
+    { MicOff, Idle, SpeechDetected, FinishingThought, Thinking, Speaking, Paused }
+
     [DisallowMultipleComponent]
     public sealed class ConversationalListeningHud : MonoBehaviour
     {
@@ -32,26 +35,52 @@ namespace ThinkingSpace.Speech
             if (initializedMode && listeningVisible == enabled) return;
             listeningVisible = enabled;
             initializedMode = true;
-            canvas.gameObject.SetActive(enabled || showNotification);
+            canvas.gameObject.SetActive(true);
             if (showNotification) ShowNotification(enabled ? "Mic On" : "Mic Off");
+            if (!enabled) SetStatus(MicrophoneStatusDisplayState.MicOff, 0f, 0f, 0f);
         }
 
-        public void SetMetrics(ConversationalListeningState state, float rms, float peak,
+        public void SetStatus(MicrophoneStatusDisplayState state, float rms, float peak,
             float utteranceElapsed)
         {
             if (canvas == null) Build();
-            string status = state == ConversationalListeningState.SpeechActive ? "Speech Detected"
-                : state == ConversationalListeningState.SilenceCountdown ? "Finishing Thought"
-                : state == ConversationalListeningState.Finalizing ? "Finalizing"
-                : state == ConversationalListeningState.Suspended ? "Listening Paused"
-                : "Listening";
+            if (!canvas.gameObject.activeSelf) canvas.gameObject.SetActive(true);
+            string status = state == MicrophoneStatusDisplayState.MicOff ? "Mic Off"
+                : state == MicrophoneStatusDisplayState.Idle ? "Mic On · Idle"
+                : state == MicrophoneStatusDisplayState.SpeechDetected ? "Speech Detected"
+                : state == MicrophoneStatusDisplayState.FinishingThought ? "Finishing Thought"
+                : state == MicrophoneStatusDisplayState.Thinking ? "Thinking"
+                : state == MicrophoneStatusDisplayState.Speaking ? "Speaking"
+                : "Paused";
             statusText.text = status;
+            statusText.color = state == MicrophoneStatusDisplayState.MicOff
+                ? new Color(1f, 0.35f, 0.35f) : Color.white;
             timerText.text = FormatTime(utteranceElapsed);
             levelFill.fillAmount = Mathf.Clamp01(rms * 24f);
             float peakValue = Mathf.Clamp01(peak * 18f);
             RectTransform marker = peakMarker.rectTransform;
             marker.anchorMin = new Vector2(peakValue, 0f);
             marker.anchorMax = new Vector2(peakValue, 1f);
+        }
+
+        public static MicrophoneStatusDisplayState ResolveDisplayState(ConversationalListeningState listening,
+            ThinkingSpace.Companion.OrbyConversationState orby, bool enabled, RecordingWorkflowState workflow)
+        {
+            if (orby == ThinkingSpace.Companion.OrbyConversationState.Speaking)
+                return MicrophoneStatusDisplayState.Speaking;
+            if (orby == ThinkingSpace.Companion.OrbyConversationState.Thinking
+                || workflow == RecordingWorkflowState.Transcribing)
+                return MicrophoneStatusDisplayState.Thinking;
+            if (!enabled) return MicrophoneStatusDisplayState.MicOff;
+            if (listening == ConversationalListeningState.SpeechActive)
+                return MicrophoneStatusDisplayState.SpeechDetected;
+            if (listening == ConversationalListeningState.SilenceCountdown
+                || listening == ConversationalListeningState.Finalizing)
+                return MicrophoneStatusDisplayState.FinishingThought;
+            if (listening == ConversationalListeningState.Suspended
+                || workflow != RecordingWorkflowState.Ready)
+                return MicrophoneStatusDisplayState.Paused;
+            return MicrophoneStatusDisplayState.Idle;
         }
 
         private void ShowNotification(string message)
@@ -75,7 +104,7 @@ namespace ThinkingSpace.Speech
             if (elapsed < notificationDuration) return;
             notificationActive = false;
             notificationGroup.gameObject.SetActive(false);
-            if (!listeningVisible) canvas.gameObject.SetActive(false);
+            if (!listeningVisible) SetStatus(MicrophoneStatusDisplayState.MicOff, 0f, 0f, 0f);
         }
 
         private void Build()

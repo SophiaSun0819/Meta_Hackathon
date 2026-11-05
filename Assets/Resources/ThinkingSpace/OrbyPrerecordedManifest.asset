@@ -1,0 +1,204 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b9aef534c41422086beb3347192738c, type: 3}
+  m_Name: OrbyPrerecordedManifest
+  m_EditorClassIdentifier: Assembly-CSharp:ThinkingSpace.Companion:OrbyPrerecordedManifest
+  Entries:
+  - EventKey: greeting_welcome
+    Clip: {fileID: 8300000, guid: 9a74a603403770348a30c492f179c85d, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 20
+    AllowedTriggerConditions: First launch only. Transcript requires manual verification.
+  - EventKey: greeting_return
+    Clip: {fileID: 8300000, guid: 002fe2a8ea6b515428a3da7f92a76766, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Returning launch, no tutorial active. Transcript requires manual verification.
+  - EventKey: tutorial_menu
+    Clip: {fileID: 8300000, guid: 9579c317aa5c5b04689ad9bca65a3140, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 20
+    AllowedTriggerConditions: Onboarding menu instruction. Transcript requires manual verification.
+  - EventKey: tutorial_menu_opened
+    Clip: {fileID: 8300000, guid: 086480682abc8364d9777bbcd4378170, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 20
+    AllowedTriggerConditions: Palm menu actually opened. Transcript requires manual verification.
+  - EventKey: tutorial_first_session
+    Clip: {fileID: 8300000, guid: 0e3248600af9dc2429934f7d0784e9d8, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 20
+    AllowedTriggerConditions: First session actually activated. Transcript requires manual verification.
+  - EventKey: mic_on
+    Clip: {fileID: 8300000, guid: 29608215f9765664f8fa9205f80b3b3e, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Listening manually enabled. Transcript requires manual verification.
+  - EventKey: mic_off
+    Clip: {fileID: 8300000, guid: 501be4881ad0e60439a5554334e0a232, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Listening manually disabled. Transcript requires manual verification.
+  - EventKey: listening_ready
+    Clip: {fileID: 8300000, guid: bf22b00ce537b794a93f113d7ffdab5b, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 0
+    AllowedTriggerConditions: Listening enabled after idle threshold and cooldown. Transcript requires manual verification.
+  - EventKey: idea_created
+    Clip: {fileID: 8300000, guid: a97468b977a73dc4588ff18be98ce01c, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Optional acknowledgement; never alongside dynamic idea summary. Transcript requires manual verification.
+  - EventKey: idea_saved
+    Clip: {fileID: 8300000, guid: 19df1dbf3bedc334e81872129621c9e2, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Idea saved without dynamic response. Transcript requires manual verification.
+  - EventKey: idea_selected
+    Clip: {fileID: 8300000, guid: aee00c719b8e72c4e8bf2c9a70fb8df0, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Manual selection only. Transcript requires manual verification.
+  - EventKey: idea_expand
+    Clip: {fileID: 8300000, guid: f1543abc99182114abf3b90ab499c3d6, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Expand action acknowledgement only. Transcript requires manual verification.
+  - EventKey: idea_challenge
+    Clip: {fileID: 8300000, guid: d9b87308ed7bbfe4eaa865628889fc0b, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Challenge action acknowledgement only. Transcript requires manual verification.
+  - EventKey: idea_combine
+    Clip: {fileID: 8300000, guid: bbda5a53b3f55d04c82f019e2491d4af, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Combine action acknowledgement only. Transcript requires manual verification.
+  - EventKey: clarify_which
+    Clip: {fileID: 8300000, guid: 8d8fc86f478b6624a8d8d07a59744695, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 30
+    AllowedTriggerConditions: Clarification question when no dynamic voice is queued. Transcript requires manual verification.
+  - EventKey: clarify_again
+    Clip: {fileID: 8300000, guid: 054552a62bbaa384da361cf3abd8c9db, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 30
+    AllowedTriggerConditions: Repeated clarification when no dynamic voice is queued. Transcript requires manual verification.
+  - EventKey: action_cancelled
+    Clip: {fileID: 8300000, guid: bd452da272ecf124aba6f954d0e61f47, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Cancellation. Transcript requires manual verification.
+  - EventKey: error_general
+    Clip: {fileID: 8300000, guid: a7c3b3f7027c1f2489f2038b454e89ac, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 40
+    AllowedTriggerConditions: Recoverable application error. Transcript requires manual verification.
+  - EventKey: error_network
+    Clip: {fileID: 8300000, guid: 380cd166843febe43be7b4a06518be4d, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 40
+    AllowedTriggerConditions: Recoverable network error. Transcript requires manual verification.
+  - EventKey: confirm_got_it
+    Clip: {fileID: 8300000, guid: 9d3c720562f62cd4aa245c01fc0f9184, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Short explicit confirmation. Transcript requires manual verification.
+  - EventKey: confirm_understood
+    Clip: {fileID: 8300000, guid: acd01507bccd24e4a867c6641b967e5f, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Short explicit confirmation. Transcript requires manual verification.
+  - EventKey: recording_retry
+    Clip: {fileID: 8300000, guid: 2497d36dd491ea546a135b2ead6dd6cb, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Recording retry prompt. Transcript requires manual verification.
+  - EventKey: session_started
+    Clip: {fileID: 8300000, guid: d984b0d351508ec47930cb3365692919, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Session activation outside tutorial. Transcript requires manual verification.
+  - EventKey: session_ended
+    Clip: {fileID: 8300000, guid: 7abb108e6d1af57438ceff9dca06e898, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Session end. Transcript requires manual verification.
+  - EventKey: goodbye
+    Clip: {fileID: 8300000, guid: adf176ffaadb77a4882099a0a907d1f6, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Application or session farewell. Transcript requires manual verification.
+  - EventKey: first_review_options
+    Clip: {fileID: 8300000, guid: 356ad88884dc82c4e84fd2eb66d1b16c, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: First completed recording review only. Transcript requires manual verification.
+  - EventKey: review_options
+    Clip: {fileID: 8300000, guid: 2d387f8b0a272ff42aa8cdcc585fbe8e, type: 3}
+    ExactSpokenText: 
+    SubtitleText: 
+    TranscriptVerified: 0
+    Priority: 10
+    AllowedTriggerConditions: Subsequent completed recording reviews. Transcript requires manual verification.

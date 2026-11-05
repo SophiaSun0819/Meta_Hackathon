@@ -17,6 +17,8 @@ namespace ThinkingSpace.Speech
         private Func<BrainstormSessionStore> storeProvider;
         private Transform headset, bubbleRoot, panelRoot, diagnosticRoot;
         private Action<string> ideaDeleted;
+        private Func<BrainstormIdeaRecord, Action<bool>, string> playIdeaSummary;
+        private Action<string> stopIdeaSummary;
         private TMP_Text diagnosticText;
         private string activeSessionId = string.Empty;
 
@@ -27,11 +29,15 @@ namespace ThinkingSpace.Speech
         public int VisibleBubbleCount => visible.Count;
 
         public void Configure(Func<BrainstormSessionStore> provider, Transform headsetTransform,
-            Action<string> deletedCallback = null)
+            Action<string> deletedCallback = null,
+            Func<BrainstormIdeaRecord, Action<bool>, string> playSummaryCallback = null,
+            Action<string> stopSummaryCallback = null)
         {
             storeProvider = provider;
             headset = headsetTransform;
             ideaDeleted = deletedCallback;
+            playIdeaSummary = playSummaryCallback;
+            stopIdeaSummary = stopSummaryCallback;
             if (bubbleRoot == null)
             {
                 GameObject root = new GameObject("Session Idea Bubbles");
@@ -167,7 +173,11 @@ namespace ThinkingSpace.Speech
             IdeaDetailsPanel panel = root.AddComponent<IdeaDetailsPanel>();
             openPanels.Add(idea.IdeaId, panel);
             panel.Configure(idea, visible.TryGetValue(idea.IdeaId, out IdeaBubbleView bubble) ? bubble.transform : null,
-                headset, slot, ClosePanel, DeleteFromPanel);
+                headset, slot, ClosePanel, DeleteFromPanel, playIdeaSummary, stopIdeaSummary);
+            var occupied = new List<Vector3>();
+            foreach (IdeaDetailsPanel other in openPanels.Values)
+                if (other != null && other != panel) occupied.Add(other.transform.position);
+            panel.NudgeToAvoid(occupied);
         }
 
         private int FirstAvailablePanelSlot()

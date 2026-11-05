@@ -13,13 +13,13 @@ namespace ThinkingSpace.Speech
     public readonly struct VoiceActivityUpdate
     {
         public readonly bool SpeechStarted, SpeechActive, UtteranceQualified, UtteranceQualifiedNow,
-            ImpulseRejected, ShouldFinalize;
+            ImpulseRejected, ShouldFinalize, SilenceReset;
         public readonly float NoiseFloor, SpeechThreshold, ReleaseThreshold, SilenceElapsed, VoicedDuration;
         public VoiceActivityUpdate(bool started, bool active, bool qualified, bool qualifiedNow, bool rejected,
-            bool finalize, float noise, float threshold, float release, float silence, float voiced)
+            bool finalize, bool silenceReset, float noise, float threshold, float release, float silence, float voiced)
         { SpeechStarted = started; SpeechActive = active; UtteranceQualified = qualified;
           UtteranceQualifiedNow = qualifiedNow; ImpulseRejected = rejected;
-          ShouldFinalize = finalize; NoiseFloor = noise;
+          ShouldFinalize = finalize; SilenceReset = silenceReset; NoiseFloor = noise;
           SpeechThreshold = threshold; ReleaseThreshold = release;
           SilenceElapsed = silence; VoicedDuration = voiced; }
     }
@@ -29,7 +29,8 @@ namespace ThinkingSpace.Speech
         private readonly float thresholdMultiplier, thresholdOffset, minimumThreshold;
         private readonly float startConfirmation, minimumVoicedDuration, hysteresisRatio;
         private float silenceDuration;
-        private float candidateDuration, voicedDuration, silenceElapsed;
+        private const float ReleaseHangoverSeconds = 0.25f;
+        private float candidateDuration, voicedDuration, silenceElapsed, releaseBandElapsed;
         private bool speechActive, utteranceQualified;
         public float NoiseFloor { get; private set; }
         public float SpeechThreshold => Mathf.Max(minimumThreshold,
@@ -51,7 +52,7 @@ namespace ThinkingSpace.Speech
         {
             rms = Mathf.Max(0f, rms); deltaTime = Mathf.Max(0f, deltaTime);
             float threshold = SpeechThreshold;
-            bool started = false, qualified = false, rejected = false;
+            bool started = false, qualified = false, rejected = false, silenceReset = false;
             if (!speechActive)
             {
                 if (rms >= threshold)
@@ -61,7 +62,7 @@ namespace ThinkingSpace.Speech
                     {
                         speechActive = true; started = true;
                         voicedDuration = candidateDuration;
-                        silenceElapsed = 0f;
+                        silenceElapsed = releaseBandElapsed = 0f;
                     }
                 }
                 else
@@ -74,24 +75,50 @@ namespace ThinkingSpace.Speech
             else
             {
                 float releaseThreshold = ReleaseThreshold;
-                if (rms >= releaseThreshold)
+                if (rms >= threshold)
                 {
                     voicedDuration += deltaTime;
-                    silenceElapsed = 0f;
+                    silenceReset = silenceElapsed > 0f;
+                    silenceElapsed = releaseBandElapsed = 0f;
                 }
-                else silenceElapsed += deltaTime;
+                else if (rms >= releaseThreshold)
+                {
+                    releaseBandElapsed += deltaTime;
+                    if (releaseBandElapsed <= ReleaseHangoverSeconds)
+                    {
+                        voicedDuration += deltaTime;
+                        silenceReset = silenceElapsed > 0f;
+                        silenceElapsed = 0f;
+                    }
+                    else silenceElapsed += deltaTime;
+                }
+                else
+                {
+                    releaseBandElapsed = 0f;
+                    silenceElapsed += deltaTime;
+                }
                 if (!utteranceQualified && voicedDuration >= minimumVoicedDuration)
                 { utteranceQualified = true; qualified = true; }
                 if (!utteranceQualified && silenceElapsed >= 0.55f)
                 {
                     speechActive = false; rejected = true;
-                    candidateDuration = voicedDuration = silenceElapsed = 0f;
+                    candidateDuration = voicedDuration = silenceElapsed = releaseBandElapsed = 0f;
                 }
             }
             bool finalize = speechActive && utteranceQualified
                 && silenceElapsed >= silenceDuration;
             return new VoiceActivityUpdate(started, speechActive, utteranceQualified, qualified, rejected, finalize,
+                silenceReset,
                 NoiseFloor, SpeechThreshold, ReleaseThreshold, silenceElapsed, voicedDuration);
+        }
+
+        public void Calibrate(float rms, float deltaTime)
+        {
+            rms = Mathf.Max(0.00001f, rms);
+            float blend = 1f - Mathf.Exp(-Mathf.Max(0f, deltaTime) / 0.2f);
+            NoiseFloor = Mathf.Lerp(NoiseFloor, rms, blend);
+            candidateDuration = voicedDuration = silenceElapsed = releaseBandElapsed = 0f;
+            speechActive = utteranceQualified = false;
         }
 
         public void SetSilenceDuration(float seconds) => silenceDuration = Mathf.Clamp(seconds, 1f, 10f);
@@ -109,6 +136,7 @@ namespace ThinkingSpace.Speech
         [SerializeField, Range(0.0005f, 0.03f)] private float minimumSpeechThreshold = 0.003f;
         [SerializeField, Range(0.3f, 0.9f)] private float releaseHysteresis = 0.65f;
         [SerializeField, Range(0.1f, 0.5f)] private float preRollSeconds = 0.25f;
+        [SerializeField, Range(0.2f, 1.5f)] private float startupCalibrationSeconds = 0.6f;
 
         private QuestMicrophoneRecorder recorder;
         private SpeechTranscriptionCoordinator coordinator;
@@ -116,7 +144,7 @@ namespace ThinkingSpace.Speech
         private OrbyPlaceholderView orbyView;
         private ConversationalListeningHud hud;
         private AdaptiveVoiceActivityDetector detector;
-        private bool sessionActive, ownsCapture, speechWasDetected;
+        private bool sessionActive, ownsCapture, speechWasDetected, shutdownAfterUtterance;
         private int generation;
         private float captureStartedAt;
 
@@ -131,6 +159,8 @@ namespace ThinkingSpace.Speech
         public float ContinuousSpeechDuration { get; private set; }
         public float LastDetectedSpeechTime { get; private set; } = -1f;
         public string LastFinalizationReason { get; private set; } = "None";
+        public string LastSilenceDecision { get; private set; } = "None";
+        public int SilenceResetCount { get; private set; }
         public string WorkflowBlocker { get; private set; } = "Listening disabled";
         public string DiagnosticText => "CONVERSATION: " + State
             + "   Enabled: " + (ListeningEnabled ? "YES" : "no")
@@ -145,6 +175,9 @@ namespace ThinkingSpace.Speech
             + "s   Last speech: " + LastDetectedSpeechTime.ToString("0.0")
             + "\nRecorder elapsed: " + (recorder != null ? recorder.ElapsedSeconds.ToString("0.0") : "0")
             + "s   Finalization: " + LastFinalizationReason
+            + "\nSilence decision: " + LastSilenceDecision + "   Resets: " + SilenceResetCount
+            + "   Voice active: " + (OrbyVoiceDirector.Instance != null && OrbyVoiceDirector.Instance.IsSpeaking ? "YES" : "no")
+            + "\nMic Off deferred: " + (shutdownAfterUtterance ? "YES — preserving utterance" : "no")
             + "\nBlocker: " + WorkflowBlocker;
 
         public void Configure(QuestMicrophoneRecorder microphone,
@@ -174,14 +207,18 @@ namespace ThinkingSpace.Speech
         public void EnableListening()
         {
             if (!sessionActive) { WorkflowBlocker = "No active brainstorming session"; return; }
+            if (coordinator != null && !coordinator.CanBeginRecording)
+            { WorkflowBlocker = "Recording is temporarily blocked"; return; }
             if (ListeningEnabled) return;
             ListeningEnabled = true;
+            shutdownAfterUtterance = false;
             generation++;
             State = ConversationalListeningState.WaitingForCapture;
             WorkflowBlocker = "None";
             ResolveOrby();
             orby?.SetState(OrbyConversationState.Listening);
             hud?.SetListeningMode(true, true);
+            OrbyVoiceDirector.Instance?.PlayPrerecorded("mic_on");
         }
 
         public void DisableListening(string reason = "Disabled by thumbs-down", bool cancelActiveSpeech = false)
@@ -192,14 +229,16 @@ namespace ThinkingSpace.Speech
             WorkflowBlocker = reason;
             if (ownsCapture && recorder != null && recorder.IsCaptureActive)
             {
-                if (!cancelActiveSpeech && speechWasDetected)
+                if (ShouldDeferMicrophoneShutdown(ownsCapture, recorder.IsCaptureActive,
+                    speechWasDetected, cancelActiveSpeech))
                 {
-                    State = ConversationalListeningState.Finalizing;
-                    LastFinalizationReason = "Listening disabled during an active utterance";
-                    recorder.StopRecording(LastFinalizationReason);
+                    shutdownAfterUtterance = true;
+                    WorkflowBlocker = "Mic Off requested; preserving active utterance until VAD finalizes it";
+                    LastFinalizationReason = "Mic Off deferred until the active utterance completes";
                 }
                 else
                 {
+                    shutdownAfterUtterance = false;
                     coordinator?.NotifyConversationalCaptureCancelled();
                     recorder.CancelRecording();
                     ownsCapture = false;
@@ -207,20 +246,33 @@ namespace ThinkingSpace.Speech
                 }
             }
             else State = ConversationalListeningState.Off;
-            if (coordinator == null || coordinator.State == RecordingWorkflowState.Ready)
+            if (!shutdownAfterUtterance
+                && (coordinator == null || coordinator.State == RecordingWorkflowState.Ready))
                 orby?.SetState(OrbyConversationState.Idle);
             orbyView?.SetLiveAudioLevel(0f, false, 0f);
             if (wasEnabled) hud?.SetListeningMode(false, true);
+            if(wasEnabled&&reason=="Disabled by thumbs-down"&&!shutdownAfterUtterance)
+                OrbyVoiceDirector.Instance?.PlayPrerecorded("mic_off");
         }
+
+        public static bool ShouldDeferMicrophoneShutdown(bool ownsCapture, bool captureActive,
+            bool utteranceQualified, bool explicitCancellation)
+            => ownsCapture && captureActive && utteranceQualified && !explicitCancellation;
 
         private void Update()
         {
-            if (!ListeningEnabled || !sessionActive || recorder == null || coordinator == null) return;
             ResolveOrby();
-            hud?.SetMetrics(State, recorder.LiveRms, recorder.LivePeak,
-                recorder.LogicalUtteranceElapsedSeconds);
+            UpdateHud();
+            if ((!ListeningEnabled && !shutdownAfterUtterance) || !sessionActive
+                || recorder == null || coordinator == null) return;
             if (orby != null && orby.State == OrbyConversationState.Speaking)
             {
+                if (ownsCapture && speechWasDetected)
+                {
+                    State = ConversationalListeningState.SilenceCountdown;
+                    WorkflowBlocker = "Qualified utterance retained; Orby playback should be deferred";
+                    return;
+                }
                 if (ownsCapture && recorder.IsCaptureActive)
                 {
                     coordinator.NotifyConversationalCaptureCancelled();
@@ -244,6 +296,19 @@ namespace ThinkingSpace.Speech
             }
             if (!recorder.IsRecording) return;
 
+            if (State == ConversationalListeningState.Calibrating)
+            {
+                detector.Calibrate(recorder.LiveRms, Time.unscaledDeltaTime);
+                NoiseFloor = detector.NoiseFloor;
+                SpeechThreshold = detector.SpeechThreshold;
+                ReleaseThreshold = detector.ReleaseThreshold;
+                float remaining = startupCalibrationSeconds - (Time.unscaledTime - captureStartedAt);
+                WorkflowBlocker = "Calibrating ambient audio · " + Mathf.Max(0f, remaining).ToString("0.0") + "s";
+                if (remaining > 0f) return;
+                State = ConversationalListeningState.WaitingForSpeech;
+                WorkflowBlocker = "Waiting for speech";
+            }
+
             VoiceActivityUpdate update = detector.Process(recorder.LiveRms, Time.unscaledDeltaTime);
             NoiseFloor = update.NoiseFloor;
             SpeechThreshold = update.SpeechThreshold;
@@ -253,6 +318,10 @@ namespace ThinkingSpace.Speech
                 LastDetectedSpeechTime = Time.unscaledTime;
             SilenceRemaining = update.UtteranceQualified
                 ? Mathf.Max(0f, silenceDuration - update.SilenceElapsed) : silenceDuration;
+            if (update.SilenceReset)
+            { SilenceResetCount++; LastSilenceDecision = "Countdown reset by renewed speech above activation threshold"; }
+            else if (update.UtteranceQualified && update.SilenceElapsed > 0f)
+                LastSilenceDecision = "Countdown advancing below sustained-speech threshold";
             if (update.UtteranceQualifiedNow)
             {
                 speechWasDetected = true;
@@ -279,7 +348,9 @@ namespace ThinkingSpace.Speech
             {
                 State = ConversationalListeningState.Finalizing;
                 WorkflowBlocker = "Finalizing utterance";
-                LastFinalizationReason = silenceDuration.ToString("0.0") + " seconds of end-of-speech silence";
+                LastFinalizationReason = shutdownAfterUtterance
+                    ? "Mic Off: active utterance preserved through end-of-speech"
+                    : silenceDuration.ToString("0.0") + " seconds of end-of-speech silence";
                 recorder.StopRecording(LastFinalizationReason);
             }
         }
@@ -297,6 +368,8 @@ namespace ThinkingSpace.Speech
             ContinuousSpeechDuration = 0f;
             LastDetectedSpeechTime = -1f;
             LastFinalizationReason = "None";
+            LastSilenceDecision = "Awaiting calibrated microphone samples";
+            SilenceResetCount = 0;
             ownsCapture = true;
             State = ConversationalListeningState.Calibrating;
             WorkflowBlocker = "Starting microphone monitor";
@@ -315,24 +388,28 @@ namespace ThinkingSpace.Speech
         {
             if (!ownsCapture) return;
             captureStartedAt = Time.unscaledTime;
-            State = ConversationalListeningState.WaitingForSpeech;
-            WorkflowBlocker = "Waiting for speech";
+            State = ConversationalListeningState.Calibrating;
+            WorkflowBlocker = "Calibrating ambient audio";
             orby?.SetState(OrbyConversationState.Listening);
         }
 
         public void NotifyRecordingCompleted()
         {
             if (recorder != null) LastFinalizationReason = recorder.LastFinalizationReason;
+            bool announceDeferredMicOff = shutdownAfterUtterance;
             ownsCapture = false;
+            shutdownAfterUtterance = false;
             State = ListeningEnabled ? ConversationalListeningState.Suspended : ConversationalListeningState.Off;
             WorkflowBlocker = "Recording review pending";
             orbyView?.SetLiveAudioLevel(0f, false, 0f);
+            if (announceDeferredMicOff) OrbyVoiceDirector.Instance?.PlayPrerecorded("mic_off");
         }
 
         public void NotifyRecordingFailed(string message)
         {
             ListeningEnabled = false;
             ownsCapture = false;
+            shutdownAfterUtterance = false;
             State = ConversationalListeningState.Error;
             WorkflowBlocker = message ?? "Microphone failure";
             orby?.SetError(WorkflowBlocker);
@@ -343,6 +420,16 @@ namespace ThinkingSpace.Speech
             if (orby == null) orby = FindFirstObjectByType<OrbyConversationStateController>();
             if (orbyView == null) orbyView = FindFirstObjectByType<OrbyPlaceholderView>();
             if (hud != null && orbyView != null) hud.Configure(orbyView.transform);
+        }
+
+        private void UpdateHud()
+        {
+            if (hud == null || recorder == null) return;
+            MicrophoneStatusDisplayState display = ConversationalListeningHud.ResolveDisplayState(
+                State, orby != null ? orby.State : OrbyConversationState.Idle,
+                ListeningEnabled, coordinator != null ? coordinator.State : RecordingWorkflowState.Ready);
+            hud.SetStatus(display, recorder.LiveRms, recorder.LivePeak,
+                recorder.LogicalUtteranceElapsedSeconds);
         }
 
         private void OnApplicationPause(bool paused)

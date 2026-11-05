@@ -115,11 +115,21 @@ namespace ThinkingSpace.Companion
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         public static void EnsurePlaceholderForRuntime()
         {
-            if (Object.FindFirstObjectByType<OrbyConversationStateController>() != null) return;
-            GameObject root = new GameObject("Orby Placeholder Companion");
+            OrbyConversationStateController existing=Object.FindFirstObjectByType<OrbyConversationStateController>();
+            GameObject root=existing!=null?existing.gameObject:new GameObject("Orby Placeholder Companion");
             if (Application.isPlaying) Object.DontDestroyOnLoad(root);
-            root.AddComponent<OrbyConversationStateController>();
-            root.AddComponent<OrbyPlaceholderView>();
+            if(existing==null)existing=root.AddComponent<OrbyConversationStateController>();
+            if(root.GetComponent<OrbyPlaceholderView>()==null)root.AddComponent<OrbyPlaceholderView>();
+            if(root.GetComponent<OrbyVoiceDirector>()==null)root.AddComponent<OrbyVoiceDirector>();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            ThinkingSpaceDevelopmentReset reset=Object.FindFirstObjectByType<ThinkingSpaceDevelopmentReset>();
+            GameObject tools=GameObject.Find("ThinkingSpace Development Tools")??new GameObject("ThinkingSpace Development Tools");
+            if(Application.isPlaying)Object.DontDestroyOnLoad(tools);
+            if(reset==null)reset=tools.AddComponent<ThinkingSpaceDevelopmentReset>();
+            if(tools.GetComponent<ThinkingSpaceDevelopmentTools>()==null)tools.AddComponent<ThinkingSpaceDevelopmentTools>();
+#endif
+            if(root.GetComponent<OrbyVoiceDiagnosticsPanel>()==null)root.AddComponent<OrbyVoiceDiagnosticsPanel>();
+            if(root.GetComponent<OrbyOnboardingController>()==null)root.AddComponent<OrbyOnboardingController>();
         }
     }
 }
