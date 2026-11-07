@@ -906,9 +906,16 @@ namespace ThinkingSpace.Tests.Editor
                 "conversational_idea_challenge", "conversational_challenge",
                 System.Array.Empty<string>());
             challenge.should_create_idea = true;
-            StringAssert.Contains("unsafe action flag",
+            StringAssert.Contains("conflicting creation flags",
                 ThinkingSpaceAIWorkflowController.ValidateConversationResponse(
                     challenge, "request-challenge", session.SessionId, session));
+            var executingChallenge = ValidConversationResponse("request-challenge-execute", session.SessionId,
+                "conversational_idea_challenge", "conversational_challenge",
+                System.Array.Empty<string>());
+            executingChallenge.should_execute_action = true;
+            StringAssert.Contains("unsafe action flag",
+                ThinkingSpaceAIWorkflowController.ValidateConversationResponse(
+                    executingChallenge, "request-challenge-execute", session.SessionId, session));
         }
 
         [Test]
