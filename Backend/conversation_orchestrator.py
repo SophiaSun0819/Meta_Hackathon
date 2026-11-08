@@ -70,6 +70,7 @@ class ConversationContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     recent_turns: list[ConversationTurn] = Field(default_factory=list, max_length=12)
     most_recent_idea_id: str | None = None
+    preferred_name: str | None = Field(default=None, max_length=32)
     current_mode: Literal["conversational", "manual_review", "onboarding", "idle"] = "conversational"
 
     @field_validator("most_recent_idea_id")
@@ -78,6 +79,18 @@ class ConversationContext(BaseModel):
         if value is not None and not IDENTIFIER_PATTERN.fullmatch(value):
             raise ValueError("Invalid most-recent idea identifier.")
         return value
+
+    @field_validator("preferred_name")
+    @classmethod
+    def validate_preferred_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        name = value.strip()
+        if not name:
+            return None
+        if any(not (character.isalnum() or character in " -'") for character in name):
+            raise ValueError("Invalid preferred name.")
+        return name
 
 
 class ConversationRequest(BaseModel):
