@@ -128,6 +128,10 @@ class IdeaProcessResponse(BaseModel):
     spoken_response: str | None
     status: Literal["completed", "error"]
     error: str | None
+    # "model" = AI provider, "mock" = mock mode, "fallback" = built locally after a provider failure.
+    source: Literal["model", "mock", "fallback"] = "model"
+    # A line Orby can say when status is "error" because of a provider or capacity failure.
+    fallback_spoken_response: str | None = None
 
 
 class IdeaManagerFailure(Exception):

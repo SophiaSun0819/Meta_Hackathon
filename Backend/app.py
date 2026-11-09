@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+import uuid
 import wave
 from collections import deque
 
@@ -14,8 +15,9 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from idea_manager import (IdeaManager, IdeaManagerMalformedOutput, IdeaManagerProviderFailure,
-    IdeaManagerTimeout, IdeaProcessRequest, IdeaRequestRegistry, OpenAIIdeaProvider, error_response)
+from idea_manager import (IdeaAction, IdeaManager, IdeaManagerMalformedOutput, IdeaManagerProviderFailure,
+    IdeaManagerTimeout, IdeaProcessRequest, IdeaProcessResponse, IdeaRequestRegistry, OpenAIIdeaProvider,
+    error_response)
 from intent_router import (ClarificationStore, IntentRouteRequest, IntentRouter, IntentRouterMalformedOutput,
     IntentRouterProviderFailure, IntentRouterTimeout, OpenAIIntentProvider,
     error_response as intent_error_response)
@@ -26,6 +28,8 @@ from conversation_orchestrator import (ConversationClarificationStore, Conversat
     ConversationMalformedOutput, ConversationOrchestrator,
     ConversationProviderFailure, ConversationRequest, ConversationTimeout,
     OpenAIConversationProvider, error_response as conversation_error_response)
+from mock_providers import (MockConversationProvider, MockIdeaProvider, MockIntentProvider,
+    MockTranscriber, MockVoiceProvider, build_fallback_idea)
 from urllib.parse import quote
 
 load_dotenv()
@@ -56,6 +60,17 @@ CONVERSATION_TIMEOUT_SECONDS = float(os.getenv("OPENAI_CONVERSATION_TIMEOUT_SECO
 MAX_CONVERSATION_REQUEST_BYTES = int(os.getenv("MAX_CONVERSATION_REQUEST_BYTES", str(48 * 1024)))
 MAX_CONVERSATION_REQUESTS_PER_MINUTE = int(os.getenv("MAX_CONVERSATION_REQUESTS_PER_MINUTE", "30"))
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+# Mock mode replaces every external AI provider with deterministic local responses.
+# It is opt-in only: a missing API key never silently switches the service to mock data.
+MOCK_MODE = os.getenv("THINKING_SPACE_MOCK_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+# Lines Orby can say when a request fails for reasons the user can't fix by rephrasing.
+FALLBACK_SPOKEN_RESPONSES = {
+    429: "I need a moment to catch up. Try again in a few seconds.",
+    500: "Sorry, something went wrong on my side. Could you say that again?",
+    502: "Sorry, I lost my train of thought. Could you say that again?",
+    503: "My thinking service isn't available right now. Your ideas are still safe here.",
+    504: "Sorry, that took me too long. Could you say it again?",
+}
 app = FastAPI(title="Thinking Space Backend", version="1.4.0")
 request_times: deque[float] = deque()
 rate_limit_lock = asyncio.Lock()
@@ -71,19 +86,22 @@ idea_request_registry = IdeaRequestRegistry()
 intent_request_registry = IdeaRequestRegistry()
 voice_request_registry = IdeaRequestRegistry()
 conversation_request_registry = IdeaRequestRegistry()
+mock_transcriber = MockTranscriber()
 idea_manager = IdeaManager(
-    OpenAIIdeaProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=IDEA_MODEL),
+    MockIdeaProvider() if MOCK_MODE
+    else OpenAIIdeaProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=IDEA_MODEL),
     timeout_seconds=IDEA_TIMEOUT_SECONDS,
 )
 intent_router = IntentRouter(
-    OpenAIIntentProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=INTENT_MODEL),
+    MockIntentProvider() if MOCK_MODE
+    else OpenAIIntentProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=INTENT_MODEL),
     timeout_seconds=INTENT_TIMEOUT_SECONDS,
     clarification_store=ClarificationStore(
         expiration_seconds=CLARIFICATION_EXPIRATION_SECONDS,
         maximum_attempts=2,
         maximum_sessions=MAX_PENDING_CLARIFICATIONS),
 )
-voice_provider = ElevenLabsVoiceProvider(
+voice_provider = MockVoiceProvider() if MOCK_MODE else ElevenLabsVoiceProvider(
     api_key=os.getenv("ELEVENLABS_API_KEY", ""),
     voice_id=os.getenv("ELEVENLABS_VOICE_ID", ""),
     model=ELEVENLABS_TTS_MODEL,
@@ -91,7 +109,8 @@ voice_provider = ElevenLabsVoiceProvider(
     maximum_audio_bytes=MAX_TTS_AUDIO_BYTES,
 )
 conversation_orchestrator = ConversationOrchestrator(
-    OpenAIConversationProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=CONVERSATION_MODEL),
+    MockConversationProvider() if MOCK_MODE
+    else OpenAIConversationProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=CONVERSATION_MODEL),
     timeout_seconds=CONVERSATION_TIMEOUT_SECONDS,
     clarification_store=ConversationClarificationStore(
         expiration_seconds=CLARIFICATION_EXPIRATION_SECONDS, maximum_attempts=2,
@@ -184,17 +203,19 @@ async def process_conversation(request: Request,
 
 @app.get("/health")
 async def health() -> JSONResponse:
+    mode = "mock" if MOCK_MODE else "live"
     missing_configuration = []
-    if not os.getenv("OPENAI_API_KEY"):
+    if not MOCK_MODE and not os.getenv("OPENAI_API_KEY"):
         missing_configuration.append("OPENAI_API_KEY")
     if not DEV_TOKEN:
         missing_configuration.append("THINKING_SPACE_DEV_TOKEN")
     if missing_configuration:
         return JSONResponse(status_code=503, content={
             "status": "not_ready",
+            "mode": mode,
             "missing_configuration": missing_configuration,
         })
-    return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "ok", "mode": mode})
 
 @app.post("/api/voice/synthesize")
 async def synthesize_voice(request: Request,
@@ -341,13 +362,19 @@ async def process_idea(request: Request,
     completed = False
     try:
         result = await idea_manager.process(idea_request)
+        if MOCK_MODE:
+            result = result.model_copy(update={"source": "mock"})
         completed = True
         return JSONResponse(status_code=200, content=result.model_dump(mode="json"))
-    except IdeaManagerTimeout:
-        return make_idea_error(504, "AI manager timed out.", idea_request)
-    except IdeaManagerMalformedOutput:
-        return make_idea_error(502, "AI manager returned an invalid structured response.", idea_request)
-    except IdeaManagerProviderFailure:
+    except (IdeaManagerTimeout, IdeaManagerMalformedOutput, IdeaManagerProviderFailure) as exc:
+        fallback = make_fallback_idea_response(idea_request, exc)
+        if fallback is not None:
+            completed = True
+            return fallback
+        if isinstance(exc, IdeaManagerTimeout):
+            return make_idea_error(504, "AI manager timed out.", idea_request)
+        if isinstance(exc, IdeaManagerMalformedOutput):
+            return make_idea_error(502, "AI manager returned an invalid structured response.", idea_request)
         return make_idea_error(502, "AI manager provider request failed.", idea_request)
     except Exception:
         return make_idea_error(500, "AI manager request failed.", idea_request)
@@ -379,6 +406,19 @@ async def transcribe(request: Request, x_recording_id: str = Header(default=""),
     if len(wav_bytes) > MAX_WAV_BYTES:
         raise HTTPException(status_code=413, detail="WAV payload is too large.")
     validate_wav(wav_bytes)
+    if MOCK_MODE:
+        mock_transcript = mock_transcriber.next_transcript()
+        return JSONResponse({
+            "request_id": x_recording_id,
+            "session_id": x_session_id,
+            "model": "mock",
+            "transcript": mock_transcript,
+            "recording_id": x_recording_id,
+            "raw_transcript": mock_transcript,
+            "cleaned_transcript": None,
+            "transcription_model": "mock",
+            "transcription_status": "completed",
+        })
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="Transcription service is not configured.")
@@ -490,7 +530,25 @@ async def read_limited_body(request: Request, maximum_bytes: int = MAX_WAV_BYTES
 def make_idea_error(status_code: int, message: str,
                     idea_request: IdeaProcessRequest | None = None) -> JSONResponse:
     _, response = error_response(status_code, message, idea_request)
+    response.fallback_spoken_response = FALLBACK_SPOKEN_RESPONSES.get(status_code)
     return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
+
+def make_fallback_idea_response(idea_request: IdeaProcessRequest, failure: Exception) -> JSONResponse | None:
+    # Only a new idea can be saved faithfully without a model: the transcript is the idea.
+    # Expansion, challenge and combination need real reasoning, so they keep returning errors.
+    if idea_request.action != IdeaAction.CREATE:
+        return None
+    output = build_fallback_idea(idea_request)
+    logger.warning("idea_fallback_used action=%s failure=%s", idea_request.action.value,
+                   type(failure).__name__)
+    response = IdeaProcessResponse(
+        request_id=idea_request.request_id, session_id=idea_request.session_id,
+        action=idea_request.action.value, idea_id="idea_" + uuid.uuid4().hex,
+        title=output.title, summary=output.summary, category=output.category,
+        related_idea_ids=list(idea_request.related_idea_ids),
+        spoken_response=output.spoken_response, status="completed", error=None,
+        source="fallback")
+    return JSONResponse(status_code=200, content=response.model_dump(mode="json"))
 
 def make_intent_error(status_code: int, message: str,
                       intent_request: IntentRouteRequest | None = None) -> JSONResponse:
@@ -516,6 +574,7 @@ def make_conversation_error(status_code: int, message: str,
         output_characters: int | None = None,
         structured_parse_attempted: bool | None = None) -> JSONResponse:
     response = conversation_error_response(message, conversation_request)
+    response.fallback_spoken_response = FALLBACK_SPOKEN_RESPONSES.get(status_code)
     headers = None
     if validation_stage and validation_field and validation_category:
         headers = {
