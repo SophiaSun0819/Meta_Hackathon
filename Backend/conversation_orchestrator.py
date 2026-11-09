@@ -187,6 +187,9 @@ class ConversationResponse(BaseModel):
     should_execute_action: bool
     status: Literal["completed", "error"]
     error: str | None
+    # A line Orby can say when status is "error" because of a provider or capacity failure.
+    # The error status and diagnostic headers stay unchanged, so failures remain visible.
+    fallback_spoken_response: str | None = None
 
 
 class ConversationFailure(Exception): pass

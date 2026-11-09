@@ -144,17 +144,21 @@ class IdeaManagerEndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(self.provider.calls, 0)
 
+    # create_idea failures fall back to a locally built idea (see test_mock_and_fallback.py),
+    # so the error paths are exercised with an action that has no fallback.
     def test_model_timeout(self):
         backend_app.idea_manager = IdeaManager(MockIdeaProvider("timeout"), timeout_seconds=0.01)
-        response = self.post(self.payload("create_idea", "request-timeout"))
+        response = self.post(self.payload("expand_idea", "request-timeout", idea_id="idea-original"))
         self.assertEqual(response.status_code, 504)
         self.assertEqual(response.json()["error"], "AI manager timed out.")
+        self.assertTrue(response.json()["fallback_spoken_response"])
 
     def test_malformed_model_output(self):
         backend_app.idea_manager = IdeaManager(MockIdeaProvider("malformed"), timeout_seconds=1.0)
-        response = self.post(self.payload("create_idea", "request-malformed"))
+        response = self.post(self.payload("expand_idea", "request-malformed", idea_id="idea-original"))
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["error"], "AI manager returned an invalid structured response.")
+        self.assertTrue(response.json()["fallback_spoken_response"])
 
     def test_duplicate_request(self):
         payload = self.payload("create_idea", "request-duplicate")

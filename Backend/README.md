@@ -34,8 +34,9 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
 Check `http://127.0.0.1:8000/health` from the development machine. `/health` intentionally does
-not require authentication. It returns HTTP 200 with `{ "status": "ok" }` when both required
+not require authentication. It returns HTTP 200 with `{ "status": "ok", "mode": "live" }` when both required
 secrets are configured, or HTTP 503 with only the names of missing variables. It never returns values.
+`mode` is `"mock"` when mock mode is on (see **Mock mode and fallback** below).
 
 ## Render Starter deployment preparation
 
@@ -673,3 +674,36 @@ Operational settings:
 For one controlled paid smoke test, use synthetic content and a unique request ID. Send “What is virtual reality?”
 with an empty idea inventory, then verify a successful `general_conversation` response with matching spoken/subtitle
 text and both action booleans false. Do not include private transcripts or run this test without explicit approval.
+
+## Mock mode and fallback
+
+### Mock mode
+
+Set `THINKING_SPACE_MOCK_MODE=1` to run the whole backend without OpenAI or ElevenLabs. Only
+`THINKING_SPACE_DEV_TOKEN` is still required. Mock mode is opt-in: a missing API key never switches the
+service to mock data on its own, so a misconfigured deployment still shows up as a 503 on `/health`.
+
+| Endpoint | Mock behavior |
+| --- | --- |
+| `/health` | `{ "status": "ok", "mode": "mock" }`; `OPENAI_API_KEY` is not required |
+| `/api/transcriptions` | Validates the WAV, then cycles through fixed English transcripts (`model: "mock"`) |
+| `/api/conversations/process` | Keyword rules: "combine"/"merge" with two ideas → `combine_ideas`; "expand" → `expand_idea`; "risk"/"challenge" → `conversational_challenge`; questions → `converse`; anything else → `create_idea` |
+| `/api/ideas/process` | Builds every action locally; `source: "mock"` |
+| `/api/voice/synthesize` | HTTP 503 "not configured", so Unity shows subtitles only |
+
+Mock responses still go through the same orchestrator validation as live responses.
+Code: `mock_providers.py`.
+
+### Fallback in live mode
+
+- **Idea creation:** if the idea provider times out, returns malformed output, or fails, `create_idea` still
+  succeeds. The backend saves the transcript as the summary, picks up to five keywords as the title, and returns
+  `source: "fallback"`. Expansion, challenge, and combination need real reasoning, so they keep returning errors.
+- **Spoken line on errors:** conversation and idea error bodies include `fallback_spoken_response` for HTTP 429,
+  500, 502, 503, and 504: a short line Orby can say instead of staying silent. The HTTP status, `status: "error"`,
+  and diagnostic headers are unchanged, so failures stay visible. Validation errors (4xx other than 429) leave it
+  `null`.
+- `source` is `"model"` for normal idea responses. Unity's `JsonUtility` ignores both new fields until the client
+  reads them.
+
+Tests: `tests/test_mock_and_fallback.py`.
