@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import quote
 
 import httpx
@@ -14,6 +14,17 @@ class VoiceSynthesisRequest(BaseModel):
     request_id: str
     session_id: str = Field(min_length=1, max_length=128)
     text: str
+    delivery: Literal[
+        "neutral",
+        "laughs",
+        "curious",
+        "excited",
+        "sighs",
+        "whispers",
+        "clears_throat",
+        "mischievously",
+        "snorts",
+    ] = "neutral"
 
     @field_validator("request_id")
     @classmethod

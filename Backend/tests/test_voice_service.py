@@ -20,9 +20,11 @@ class FixedVoiceProvider:
         self.audio = audio
         self.error = error
         self.calls = 0
+        self.texts = []
 
     async def synthesize(self, text):
         self.calls += 1
+        self.texts.append(text)
         if self.error:
             raise self.error
         return self.audio
@@ -66,6 +68,43 @@ class VoiceEndpointTests(unittest.TestCase):
         self.assertEqual(response.headers["x-thinkingspace-request-id"], "voice-test-1")
         self.assertEqual(response.headers["x-thinkingspace-audio-format"], "mp3_44100_128")
         self.assertEqual(provider.calls, 1)
+
+    def test_delivery_is_optional_and_supported_values_are_ignored(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        plain_text = "Plain text remains unchanged."
+
+        without_delivery = self.payload(plain_text)
+        self.assertEqual(self.post(without_delivery).status_code, 200)
+
+        supported_deliveries = (
+            "neutral", "laughs", "curious", "excited", "sighs", "whispers",
+            "clears_throat", "mischievously", "snorts",
+        )
+        for index, delivery in enumerate(supported_deliveries, start=2):
+            with self.subTest(delivery=delivery):
+                payload = {
+                    "request_id": f"voice-delivery-{index}",
+                    "session_id": "Session 1",
+                    "text": plain_text,
+                    "delivery": delivery,
+                }
+                self.assertEqual(self.post(payload).status_code, 200)
+
+        expected_calls = 1 + len(supported_deliveries)
+        self.assertEqual(provider.calls, expected_calls)
+        self.assertEqual(provider.texts, [plain_text] * expected_calls)
+
+    def test_unsupported_delivery_is_rejected_before_provider(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        payload = self.payload("Plain text remains unchanged.")
+        payload["delivery"] = "unsupported"
+
+        response = self.post(payload)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(provider.calls, 0)
 
     def test_missing_and_incorrect_authentication(self):
         backend_app.voice_provider = FixedVoiceProvider()
