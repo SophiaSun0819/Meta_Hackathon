@@ -117,6 +117,7 @@ namespace ThinkingSpace.UI
             if (string.IsNullOrEmpty(idea.CreatedUtc)) idea.CreatedUtc = DateTime.UtcNow.ToString("O");
             if (idea.RelatedIdeaIds == null) idea.RelatedIdeaIds = new List<string>();
             if (idea.Bubble == null) idea.Bubble = new BubbleTransformRecord();
+            int priorRelationshipCount = ActiveSession.Relationships.Count;
             ActiveSession.Ideas.Add(idea);
             for (int i = 0; i < idea.RelatedIdeaIds.Count; i++)
             {
@@ -127,7 +128,12 @@ namespace ThinkingSpace.UI
                 { SourceIdeaId = idea.IdeaId, TargetIdeaId = related,
                   RelationshipType = idea.RelatedIdeaIds.Count >= 2 ? "combined_from" : "derived_from" });
             }
-            return Save();
+            if (Save()) return true;
+            ActiveSession.Ideas.Remove(idea);
+            if (ActiveSession.Relationships.Count > priorRelationshipCount)
+                ActiveSession.Relationships.RemoveRange(priorRelationshipCount,
+                    ActiveSession.Relationships.Count - priorRelationshipCount);
+            return false;
         }
 
         public bool TryDeleteSession(int sessionNumber)
