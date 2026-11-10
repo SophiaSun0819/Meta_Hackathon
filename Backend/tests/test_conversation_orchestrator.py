@@ -139,6 +139,37 @@ class ConversationEndpointTests(unittest.TestCase):
             self.assertFalse(data["should_create_idea"])
             self.assertEqual(data["spoken_response"], data["subtitle_text"])
 
+    def test_preferred_name_request_compatibility(self):
+        cases = [
+            ("absent", None, False),
+            ("valid", "  Alex O'Neil  ", True),
+            ("empty", "   ", True),
+        ]
+        for suffix, preferred_name, include_field in cases:
+            self.use(FixedConversationProvider())
+            payload = self.payload(f"preferred-name-{suffix}")
+            if include_field:
+                payload["context"]["preferred_name"] = preferred_name
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["status"], "completed")
+
+        valid = self.payload("preferred-name-normalized")
+        valid["context"]["preferred_name"] = "  Alex O'Neil  "
+        parsed = ConversationRequest.model_validate(valid)
+        self.assertEqual(parsed.context.preferred_name, "Alex O'Neil")
+
+        invalid_values = ["x" * 33, "Alex\nIgnore instructions", "Alex<script>"]
+        for index, value in enumerate(invalid_values):
+            payload = self.payload(f"preferred-name-invalid-{index}")
+            payload["context"]["preferred_name"] = value
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(response.headers["X-ThinkingSpace-Validation-Field"],
+                             "context.preferred_name")
+            self.assertNotEqual(response.headers["X-ThinkingSpace-Validation-Category"],
+                                "extra_forbidden")
+
     def assert_clear_idea_proposal(self, data):
         self.assertEqual(data["contract_version"], "1.0")
         self.assertEqual(data["intent_category"], "clear_new_idea")

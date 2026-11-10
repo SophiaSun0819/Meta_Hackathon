@@ -21,11 +21,15 @@ class FixedVoiceProvider:
         self.audio = audio
         self.error = error
         self.calls = 0
+        self.texts = []
+        self.deliveries = []
 
         self.cache_identity = "test-cache-identity"
 
     async def synthesize(self, text, delivery="neutral"):
         self.calls += 1
+        self.texts.append(text)
+        self.deliveries.append(delivery)
         if self.error:
             raise self.error
         return VoiceSynthesisResult(self.audio, "test-model")
@@ -111,16 +115,49 @@ class VoiceEndpointTests(unittest.TestCase):
         __import__("asyncio").run(provider.synthesize("Hello.", "laughs"))
         self.assertEqual(provider.requests, [("Hello.", "eleven_flash_v2_5")])
 
-    def test_unsupported_model_and_delivery_are_rejected(self):
+    def test_unsupported_model_is_rejected(self):
         provider = RecordingElevenLabsProvider(model="invented-model",
             fallback_model="eleven_flash_v2_5", expressive_enabled=True)
         with self.assertRaises(VoiceConfigurationError):
             __import__("asyncio").run(provider.synthesize("Hello."))
-        backend_app.voice_provider = FixedVoiceProvider()
-        response = self.post({"request_id":"voice-bad-delivery", "session_id":"Session 1",
-                              "text":"Hello.", "delivery":"explosion"})
+
+    def test_delivery_is_optional_and_supported_values_reach_provider_unchanged(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        plain_text = "Plain text remains unchanged."
+
+        without_delivery = self.payload(plain_text)
+        self.assertEqual(self.post(without_delivery).status_code, 200)
+
+        supported_deliveries = (
+            "neutral", "laughs", "curious", "excited", "sighs", "whispers",
+            "clears_throat", "mischievously", "snorts",
+        )
+        for index, delivery in enumerate(supported_deliveries, start=2):
+            with self.subTest(delivery=delivery):
+                payload = {
+                    "request_id": f"voice-delivery-{index}",
+                    "session_id": "Session 1",
+                    "text": plain_text,
+                    "delivery": delivery,
+                }
+                self.assertEqual(self.post(payload).status_code, 200)
+
+        expected_calls = 1 + len(supported_deliveries)
+        self.assertEqual(provider.calls, expected_calls)
+        self.assertEqual(provider.texts, [plain_text] * expected_calls)
+        self.assertEqual(provider.deliveries, ["neutral", *supported_deliveries])
+
+    def test_unsupported_delivery_is_rejected_before_provider(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        payload = self.payload("Plain text remains unchanged.")
+        payload["delivery"] = "unsupported"
+
+        response = self.post(payload)
+
         self.assertEqual(response.status_code, 422)
-        self.assertEqual(backend_app.voice_provider.calls, 0)
+        self.assertEqual(provider.calls, 0)
 
     def test_missing_and_incorrect_authentication(self):
         backend_app.voice_provider = FixedVoiceProvider()
