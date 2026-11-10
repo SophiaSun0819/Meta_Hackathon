@@ -12,7 +12,8 @@ from fastapi.testclient import TestClient
 import app as backend_app
 from idea_manager import IdeaRequestRegistry
 from voice_service import (VoiceConfigurationError, VoiceInvalidAudio, VoiceProviderFailure,
-                           VoiceProviderTimeout)
+                           VoiceProviderTimeout, VoiceSynthesisResult, ElevenLabsVoiceProvider,
+                           apply_expressive_delivery, strip_tts_tags)
 
 
 class FixedVoiceProvider:
@@ -21,11 +22,29 @@ class FixedVoiceProvider:
         self.error = error
         self.calls = 0
 
-    async def synthesize(self, text):
+        self.cache_identity = "test-cache-identity"
+
+    async def synthesize(self, text, delivery="neutral"):
         self.calls += 1
         if self.error:
             raise self.error
-        return self.audio
+        return VoiceSynthesisResult(self.audio, "test-model")
+
+
+class RecordingElevenLabsProvider(ElevenLabsVoiceProvider):
+    def __init__(self, failures=None, **kwargs):
+        super().__init__(api_key="test-key", voice_id="E584YCmNqnu35GrWlrqy",
+            timeout_seconds=1, maximum_audio_bytes=1024, **kwargs)
+        self.requests = []
+        self.failures = list(failures or [])
+
+    async def _request(self, text, model):
+        self.requests.append((text, model))
+        if self.failures:
+            failure = self.failures.pop(0)
+            if failure:
+                raise failure
+        return b"ID3\x04\x00\x00mock-mp3"
 
 
 class VoiceEndpointTests(unittest.TestCase):
@@ -65,7 +84,43 @@ class VoiceEndpointTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "audio/mpeg")
         self.assertEqual(response.headers["x-thinkingspace-request-id"], "voice-test-1")
         self.assertEqual(response.headers["x-thinkingspace-audio-format"], "mp3_44100_128")
+        self.assertEqual(response.headers["x-thinkingspace-voice-model"], "test-model")
         self.assertEqual(provider.calls, 1)
+
+    def test_v4_model_selection_preserves_voice_and_flash_rollback(self):
+        provider = RecordingElevenLabsProvider(model="eleven_v4_turbo",
+            fallback_model="eleven_flash_v2_5", expressive_enabled=True,
+            failures=[VoiceProviderFailure("unsupported"), None])
+        result = __import__("asyncio").run(provider.synthesize("A bright idea.", "excited"))
+        self.assertEqual(provider.voice_id, "E584YCmNqnu35GrWlrqy")
+        self.assertEqual(provider.requests[0], ("[excited] A bright idea.", "eleven_v4_turbo"))
+        self.assertEqual(provider.requests[1], ("A bright idea.", "eleven_flash_v2_5"))
+        self.assertTrue(result.used_fallback)
+        self.assertEqual(result.model, "eleven_flash_v2_5")
+
+    def test_expressive_allowlist_and_plain_subtitle_text(self):
+        self.assertEqual(apply_expressive_delivery("Hello.", "curious"), "[curious] Hello.")
+        self.assertEqual(apply_expressive_delivery("Hello.", "explosion"), "Hello.")
+        self.assertEqual(strip_tts_tags("[laughs] Fair point [Phase 2]."),
+                         "Fair point [Phase 2].")
+        self.assertEqual(strip_tts_tags("[explosion] Still safe."), "Still safe.")
+
+    def test_flash_model_uses_plain_text_without_expression(self):
+        provider = RecordingElevenLabsProvider(model="eleven_flash_v2_5",
+            fallback_model="eleven_flash_v2_5", expressive_enabled=True)
+        __import__("asyncio").run(provider.synthesize("Hello.", "laughs"))
+        self.assertEqual(provider.requests, [("Hello.", "eleven_flash_v2_5")])
+
+    def test_unsupported_model_and_delivery_are_rejected(self):
+        provider = RecordingElevenLabsProvider(model="invented-model",
+            fallback_model="eleven_flash_v2_5", expressive_enabled=True)
+        with self.assertRaises(VoiceConfigurationError):
+            __import__("asyncio").run(provider.synthesize("Hello."))
+        backend_app.voice_provider = FixedVoiceProvider()
+        response = self.post({"request_id":"voice-bad-delivery", "session_id":"Session 1",
+                              "text":"Hello.", "delivery":"explosion"})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(backend_app.voice_provider.calls, 0)
 
     def test_missing_and_incorrect_authentication(self):
         backend_app.voice_provider = FixedVoiceProvider()

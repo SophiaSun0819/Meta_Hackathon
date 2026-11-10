@@ -660,6 +660,33 @@ Operational settings:
 - `MAX_CONVERSATION_REQUEST_BYTES=49152`
 - `MAX_CONVERSATION_REQUESTS_PER_MINUTE=30`
 
+### Orby expressive voice configuration
+
+Dynamic Orby speech can use Eleven v4 Turbo with the verified model ID `eleven_v4_turbo` while
+preserving the configured `ELEVENLABS_VOICE_ID`. The previous working model remains the bounded
+rollback:
+
+```text
+ELEVENLABS_TTS_MODEL=eleven_v4_turbo
+ELEVENLABS_TTS_FALLBACK_MODEL=eleven_flash_v2_5
+ELEVENLABS_EXPRESSIVE_TTS=true
+ORBY_HUMOR_ENABLED=true
+```
+
+If the v4 model is rejected for the configured account/voice, or returns invalid audio, one request
+may fall back to `eleven_flash_v2_5` using plain text. Timeouts are not automatically retried. Set
+`ELEVENLABS_TTS_MODEL=eleven_flash_v2_5` and `ELEVENLABS_EXPRESSIVE_TTS=false` for an explicit rollback.
+No voice settings such as speed, stability, style, or similarity are overridden.
+
+The server accepts only a conservative delivery allowlist: `laughs`, `curious`, `excited`, `sighs`,
+`whispers`, `clears_throat`, `mischievously`, and `snorts`. It constructs the corresponding documented
+Eleven v4 tag server-side. Unsupported delivery values fail request validation, and known unsupported
+tags in text are removed without altering ordinary meaningful bracketed text. Unity subtitles continue
+to use the untagged spoken text.
+
+`ORBY_HUMOR_ENABLED=false` retains concise conversational personality while disabling prompt guidance
+for jokes and sarcasm. This setting does not add another OpenAI request.
+
 ### Conversational deployment checklist
 
 1. Run the complete mocked suite under Python 3.12.

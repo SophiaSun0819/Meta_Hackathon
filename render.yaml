@@ -55,7 +55,11 @@ services:
       - key: ELEVENLABS_VOICE_ID
         sync: false
       - key: ELEVENLABS_TTS_MODEL
+        value: eleven_v4_turbo
+      - key: ELEVENLABS_TTS_FALLBACK_MODEL
         value: eleven_flash_v2_5
+      - key: ELEVENLABS_EXPRESSIVE_TTS
+        value: "true"
       - key: ELEVENLABS_TIMEOUT_SECONDS
         value: "20"
       - key: MAX_TTS_TEXT_CHARACTERS
@@ -66,3 +70,5 @@ services:
         value: "20"
       - key: MAX_TTS_AUDIO_BYTES
         value: "5242880"
+      - key: ORBY_HUMOR_ENABLED
+        value: "true"
