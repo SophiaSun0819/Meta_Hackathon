@@ -12,8 +12,18 @@ namespace ThinkingSpace.Speech
     {
         [SerializeField, Range(0.12f, 0.15f)] private float bubbleDiameter = 0.135f;
         [SerializeField] private bool showDevelopmentDiagnostics;
+        [Header("Beckon and return")]
+        [SerializeField, Range(0.7f, 1f)] private float inspectionDistance = 0.82f;
+        [SerializeField, Range(0.04f, 0.18f)] private float deliberateHandTravel = 0.08f;
+        [SerializeField, Range(0.1f, 0.5f)] private float neutralHoldDuration = 0.2f;
+        [SerializeField, Range(0.5f, 2f)] private float gestureWindow = 1.25f;
+        [SerializeField, Range(0.2f, 1.2f)] private float gestureCooldown = 0.65f;
+        [SerializeField, Range(0.15f, 1f)] private float movementDuration = 0.45f;
+        [SerializeField, Range(0.45f, 0.8f)] private float curledChordRatio = 0.64f;
+        [SerializeField, Range(0.7f, 0.98f)] private float extendedChordRatio = 0.82f;
         private readonly Dictionary<string, IdeaBubbleView> visible = new Dictionary<string, IdeaBubbleView>();
         private readonly Dictionary<string, IdeaDetailsPanel> openPanels = new Dictionary<string, IdeaDetailsPanel>();
+        private readonly List<string> panelFocusOrder = new List<string>();
         private Func<BrainstormSessionStore> storeProvider;
         private Transform headset, bubbleRoot, panelRoot, diagnosticRoot;
         private Action<string> ideaDeleted;
@@ -21,12 +31,65 @@ namespace ThinkingSpace.Speech
         private Action<string> stopIdeaSummary;
         private TMP_Text diagnosticText;
         private string activeSessionId = string.Empty;
+        private string selectedIdeaId = string.Empty;
+        private BrainstormMenuController menuController;
+        private ThinkingSpaceAIWorkflowController workflowController;
+        private SpeechTranscriptionCoordinator transcriptionCoordinator;
+        private ThumbRecordingGestureController recordingGestureController;
+        private bool interactionAvailable = true;
+        private readonly BeckonHand leftBeckon = new BeckonHand();
+        private readonly BeckonHand rightBeckon = new BeckonHand();
+        private BubbleInspection inspection;
+        private BubbleMovement movement;
+        private float gestureCooldownRemaining;
+        private int operationEpoch;
 
         public string LastCreatedIdeaId { get; private set; } = "None";
         public string LastRestoredIdeaId { get; private set; } = "None";
         public string LastSaveResult { get; private set; } = "Not attempted";
         public string LastLoadResult { get; private set; } = "Not attempted";
         public int VisibleBubbleCount => visible.Count;
+        public string SelectedIdeaId => selectedIdeaId;
+
+        private sealed class FingerChain
+        {
+            public Transform proximal, intermediate, distal, tip;
+            public bool Resolved => proximal != null && intermediate != null && distal != null && tip != null;
+        }
+
+        private sealed class BeckonHand
+        {
+            public OVRHand hand;
+            public OVRSkeleton skeleton;
+            public Transform wrist;
+            public readonly FingerChain index = new FingerChain();
+            public readonly FingerChain middle = new FingerChain();
+            public readonly FingerChain ring = new FingerChain();
+            public readonly FingerChain pinky = new FingerChain();
+            public bool armed;
+            public float neutralTimer, gestureTimer;
+            public Vector3 startWrist;
+            public bool Resolved => wrist != null && index.Resolved && middle.Resolved && ring.Resolved && pinky.Resolved;
+            public void Reset() { armed=false; neutralTimer=gestureTimer=0f; }
+        }
+
+        private sealed class BubbleInspection
+        {
+            public string ideaId, sessionId;
+            public int epoch;
+            public Vector3 position, scale;
+            public Quaternion rotation;
+        }
+
+        private sealed class BubbleMovement
+        {
+            public string ideaId, sessionId;
+            public int epoch;
+            public float elapsed;
+            public Vector3 fromPosition, toPosition, fromScale, toScale;
+            public Quaternion fromRotation, toRotation;
+            public bool returning;
+        }
 
         public void Configure(Func<BrainstormSessionStore> provider, Transform headsetTransform,
             Action<string> deletedCallback = null,
@@ -51,12 +114,14 @@ namespace ThinkingSpace.Speech
                 panelRoot = root.transform;
             }
             BuildDiagnostics();
+            ResolveInteractionOwners();
         }
 
         public void SetSessionActive(bool active, string sessionId)
         {
             if (!active || string.IsNullOrEmpty(sessionId))
             {
+                CancelInspectionMovement();
                 activeSessionId = string.Empty;
                 ClearVisibleBubbles();
                 ClearPanels();
@@ -69,6 +134,7 @@ namespace ThinkingSpace.Speech
                 RefreshDiagnostics();
                 return;
             }
+            CancelInspectionMovement();
             activeSessionId = sessionId;
             RestoreActiveSession();
         }
@@ -155,29 +221,42 @@ namespace ThinkingSpace.Speech
             root.transform.localScale = IsFinite(scale) && scale.x > 0.01f && scale.y > 0.01f && scale.z > 0.01f
                 ? scale : Vector3.one;
             IdeaBubbleView bubble = root.AddComponent<IdeaBubbleView>();
-            bubble.Initialize(idea, bubbleDiameter, ShowDetails);
+            bubble.Initialize(idea, bubbleDiameter, SelectAndShowDetails);
+            bubble.SetInteractionAvailable(interactionAvailable);
             visible.Add(idea.IdeaId, bubble);
             return bubble;
         }
 
-        private void ShowDetails(BrainstormIdeaRecord idea)
+        private void SelectAndShowDetails(BrainstormIdeaRecord idea)
         {
-            if (idea == null || string.IsNullOrEmpty(idea.IdeaId)) return;
+            if (!interactionAvailable || idea == null || string.IsNullOrEmpty(idea.IdeaId)
+                || !visible.TryGetValue(idea.IdeaId, out IdeaBubbleView next) || next == null) return;
+            if (!ShowDetails(idea)) return;
+            SetActivePanel(idea.IdeaId);
+            RefreshDiagnostics();
+        }
+
+        private bool ShowDetails(BrainstormIdeaRecord idea)
+        {
+            if (idea == null || string.IsNullOrEmpty(idea.IdeaId)) return false;
             if (openPanels.TryGetValue(idea.IdeaId, out IdeaDetailsPanel existing) && existing != null)
-            { existing.FocusPanel(); return; }
+            { existing.FocusPanel(); return true; }
             if (openPanels.Count >= 4)
-            { LastLoadResult = "Four idea panels are already open"; RefreshDiagnostics(); return; }
+            { LastLoadResult = "Four idea panels are already open"; RefreshDiagnostics(); return false; }
             int slot = FirstAvailablePanelSlot();
             GameObject root = new GameObject("Idea Details · " + idea.IdeaId, typeof(RectTransform));
             root.transform.SetParent(panelRoot, true);
             IdeaDetailsPanel panel = root.AddComponent<IdeaDetailsPanel>();
             openPanels.Add(idea.IdeaId, panel);
             panel.Configure(idea, visible.TryGetValue(idea.IdeaId, out IdeaBubbleView bubble) ? bubble.transform : null,
-                headset, slot, ClosePanel, DeleteFromPanel, playIdeaSummary, stopIdeaSummary);
+                headset, slot, ClosePanel, HandlePanelFocused, DeleteFromPanel,
+                playIdeaSummary, stopIdeaSummary, RequestReturn);
+            if (bubble != null) bubble.SetOpen(true);
             var occupied = new List<Vector3>();
             foreach (IdeaDetailsPanel other in openPanels.Values)
                 if (other != null && other != panel) occupied.Add(other.transform.position);
             panel.NudgeToAvoid(occupied);
+            return true;
         }
 
         private int FirstAvailablePanelSlot()
@@ -193,8 +272,15 @@ namespace ThinkingSpace.Speech
         private void ClosePanel(IdeaDetailsPanel panel)
         {
             if (panel == null) return;
-            openPanels.Remove(panel.IdeaId);
+            string ideaId = panel.IdeaId;
+            if (inspection != null && inspection.ideaId == ideaId) RestoreInspectionImmediately();
+            openPanels.Remove(ideaId);
+            panelFocusOrder.Remove(ideaId);
+            if (visible.TryGetValue(ideaId, out IdeaBubbleView bubble) && bubble != null)
+                bubble.SetOpen(false);
+            if (selectedIdeaId == ideaId) ActivateMostRecentlyFocusedPanel();
             Destroy(panel.gameObject);
+            RefreshDiagnostics();
         }
 
         private string DeleteFromPanel(IdeaDetailsPanel panel)
@@ -205,9 +291,16 @@ namespace ThinkingSpace.Speech
             if (!Store.TryDeleteIdea(activeSessionId, ideaId))
                 return string.IsNullOrEmpty(Store.LastPersistenceError)
                     ? "The idea could not be deleted." : Store.LastPersistenceError;
-            if (visible.TryGetValue(ideaId, out IdeaBubbleView bubble) && bubble != null) Destroy(bubble.gameObject);
+            if (inspection != null && inspection.ideaId == ideaId) CancelInspectionMovement();
+            if (visible.TryGetValue(ideaId, out IdeaBubbleView bubble) && bubble != null)
+            {
+                bubble.SetOpen(false);
+                Destroy(bubble.gameObject);
+            }
             visible.Remove(ideaId);
             openPanels.Remove(ideaId);
+            panelFocusOrder.Remove(ideaId);
+            if (selectedIdeaId == ideaId) ActivateMostRecentlyFocusedPanel();
             Destroy(panel.gameObject);
             ideaDeleted?.Invoke(ideaId);
             LastSaveResult = "Deleted idea " + ideaId;
@@ -243,6 +336,7 @@ namespace ThinkingSpace.Speech
 
         private void ClearVisibleBubbles()
         {
+            ClearSelection();
             ClearPanels();
             foreach (IdeaBubbleView bubble in visible.Values)
                 if (bubble != null) Destroy(bubble.gameObject);
@@ -251,12 +345,323 @@ namespace ThinkingSpace.Speech
 
         private void ClearPanels()
         {
+            foreach (string ideaId in openPanels.Keys)
+                if (visible.TryGetValue(ideaId, out IdeaBubbleView bubble) && bubble != null)
+                    bubble.SetOpen(false);
             foreach (IdeaDetailsPanel panel in openPanels.Values)
                 if (panel != null) Destroy(panel.gameObject);
             openPanels.Clear();
+            panelFocusOrder.Clear();
+            selectedIdeaId = string.Empty;
         }
 
         private BrainstormSessionStore Store => storeProvider != null ? storeProvider() : null;
+
+        private void Update()
+        {
+            if (menuController == null || workflowController == null || transcriptionCoordinator == null)
+                ResolveInteractionOwners();
+            bool available = !string.IsNullOrEmpty(activeSessionId)
+                && (menuController == null || (!menuController.IsMenuVisible
+                    && !menuController.IsPalmMenuButtonVisible))
+                && (workflowController == null || !workflowController.IsBlockingRecording)
+                && (transcriptionCoordinator == null || transcriptionCoordinator.State == RecordingWorkflowState.Ready);
+            if (available != interactionAvailable)
+            {
+                interactionAvailable = available;
+                foreach (IdeaBubbleView bubble in visible.Values)
+                    if (bubble != null) bubble.SetInteractionAvailable(available);
+                if (!available) ResetGestureRecognition();
+                RefreshDiagnostics();
+            }
+            UpdateMovement();
+            gestureCooldownRemaining = Mathf.Max(0f, gestureCooldownRemaining - Time.unscaledDeltaTime);
+            if (interactionAvailable && movement == null && gestureCooldownRemaining <= 0f)
+                UpdateBeckonGestures();
+        }
+
+        private void ResolveInteractionOwners()
+        {
+            if (menuController == null) menuController = FindFirstObjectByType<BrainstormMenuController>();
+            if (workflowController == null) workflowController = GetComponent<ThinkingSpaceAIWorkflowController>();
+            if (transcriptionCoordinator == null) transcriptionCoordinator = GetComponent<SpeechTranscriptionCoordinator>();
+            if (recordingGestureController == null)
+                recordingGestureController = FindFirstObjectByType<ThumbRecordingGestureController>();
+            if (recordingGestureController != null)
+            {
+                leftBeckon.hand = recordingGestureController.LeftOVRHand;
+                leftBeckon.skeleton = recordingGestureController.LeftOVRSkeleton;
+                rightBeckon.hand = recordingGestureController.RightOVRHand;
+                rightBeckon.skeleton = recordingGestureController.RightOVRSkeleton;
+            }
+        }
+
+        private void UpdateBeckonGestures()
+        {
+            foreach (IdeaDetailsPanel panel in openPanels.Values)
+                if (panel != null && panel.IsInteracting) { ResetGestureRecognition(); return; }
+            if (string.IsNullOrEmpty(selectedIdeaId) || !visible.ContainsKey(selectedIdeaId))
+            { ResetGestureRecognition(); return; }
+            bool returning = inspection != null;
+            if (EvaluateHandGesture(leftBeckon, returning) || EvaluateHandGesture(rightBeckon, returning))
+            {
+                if (returning) RequestReturn(selectedIdeaId);
+                else BeginInspection(selectedIdeaId);
+                gestureCooldownRemaining = gestureCooldown;
+                ResetGestureRecognition();
+            }
+        }
+
+        private bool EvaluateHandGesture(BeckonHand hand, bool returnGesture)
+        {
+            if (hand.hand == null || hand.skeleton == null || !hand.hand.IsTracked
+                || hand.hand.HandConfidence != OVRHand.TrackingConfidence.High
+                || hand.hand.GetFingerIsPinching(OVRHand.HandFinger.Index)
+                || !ResolveBeckonJoints(hand))
+            { hand.Reset(); return false; }
+
+            int curled = CountCurled(hand);
+            int extended = CountExtended(hand);
+            bool neutral = extended >= 3;
+            if (!hand.armed)
+            {
+                hand.neutralTimer = neutral ? hand.neutralTimer + Time.unscaledDeltaTime : 0f;
+                if (hand.neutralTimer >= neutralHoldDuration)
+                {
+                    hand.armed = true;
+                    hand.gestureTimer = 0f;
+                    hand.startWrist = hand.wrist.position;
+                }
+                return false;
+            }
+
+            hand.gestureTimer += Time.unscaledDeltaTime;
+            if (hand.gestureTimer > gestureWindow) { hand.Reset(); return false; }
+            if (headset == null) return false;
+            Vector3 towardHead = (headset.position - hand.startWrist).normalized;
+            float signedTravel = Vector3.Dot(hand.wrist.position - hand.startWrist, towardHead);
+            int poseCount = returnGesture ? extended : curled;
+            return IsDeliberateGesture(poseCount, signedTravel, deliberateHandTravel, returnGesture);
+        }
+
+        public static bool IsDeliberateGesture(int qualifyingFingerCount, float signedTravel,
+            float minimumTravel, bool returnGesture)
+            => qualifyingFingerCount >= 3 && (returnGesture
+                ? signedTravel <= -minimumTravel : signedTravel >= minimumTravel);
+
+        private void BeginInspection(string ideaId)
+        {
+            if (inspection != null || movement != null || string.IsNullOrEmpty(ideaId)
+                || !visible.TryGetValue(ideaId, out IdeaBubbleView bubble) || bubble == null
+                || !openPanels.ContainsKey(ideaId) || headset == null) return;
+            inspection = new BubbleInspection
+            {
+                ideaId=ideaId, sessionId=activeSessionId, epoch=++operationEpoch,
+                position=bubble.transform.position, rotation=bubble.transform.rotation,
+                scale=bubble.transform.localScale
+            };
+            Vector3 horizontalForward = Vector3.ProjectOnPlane(headset.forward, Vector3.up).normalized;
+            if (horizontalForward.sqrMagnitude < .001f) horizontalForward = headset.forward.normalized;
+            Vector3 destination = headset.position + horizontalForward * inspectionDistance - Vector3.up * .08f;
+            StartMovement(bubble, destination, bubble.transform.rotation, bubble.transform.localScale, false);
+        }
+
+        private void RequestReturn(string ideaId)
+        {
+            if (inspection == null || movement != null || ideaId != inspection.ideaId
+                || inspection.sessionId != activeSessionId || inspection.epoch != operationEpoch
+                || !visible.TryGetValue(ideaId, out IdeaBubbleView bubble) || bubble == null) return;
+            if (openPanels.TryGetValue(ideaId, out IdeaDetailsPanel panel) && panel != null)
+                panel.SetReturnAvailable(false);
+            StartMovement(bubble, inspection.position, inspection.rotation, inspection.scale, true);
+        }
+
+        private void StartMovement(IdeaBubbleView bubble, Vector3 position, Quaternion rotation,
+            Vector3 scale, bool returning)
+        {
+            movement = new BubbleMovement
+            {
+                ideaId=bubble.IdeaId, sessionId=activeSessionId, epoch=operationEpoch,
+                fromPosition=bubble.transform.position, toPosition=position,
+                fromRotation=bubble.transform.rotation, toRotation=rotation,
+                fromScale=bubble.transform.localScale, toScale=scale, returning=returning
+            };
+            bubble.SetMoving(true);
+        }
+
+        private void UpdateMovement()
+        {
+            if (movement == null) return;
+            if (movement.sessionId != activeSessionId || movement.epoch != operationEpoch
+                || !visible.TryGetValue(movement.ideaId, out IdeaBubbleView bubble) || bubble == null)
+            { CancelInspectionMovement(); return; }
+            movement.elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(movement.elapsed / movementDuration));
+            bubble.transform.position = Vector3.LerpUnclamped(movement.fromPosition, movement.toPosition, t);
+            bubble.transform.rotation = Quaternion.SlerpUnclamped(movement.fromRotation, movement.toRotation, t);
+            bubble.transform.localScale = Vector3.LerpUnclamped(movement.fromScale, movement.toScale, t);
+            if (t < 1f) return;
+            bool returned = movement.returning;
+            bubble.SetMoving(false);
+            movement = null;
+            if (returned)
+            {
+                if (openPanels.TryGetValue(inspection.ideaId, out IdeaDetailsPanel panel) && panel != null)
+                    panel.SetReturnAvailable(false);
+                inspection = null;
+                operationEpoch++;
+            }
+            else if (inspection != null && openPanels.TryGetValue(inspection.ideaId,
+                out IdeaDetailsPanel inspectionPanel) && inspectionPanel != null)
+                inspectionPanel.SetReturnAvailable(true);
+        }
+
+        private void CancelInspectionMovement()
+        {
+            operationEpoch++;
+            if (movement != null && visible.TryGetValue(movement.ideaId, out IdeaBubbleView moving) && moving != null)
+                moving.SetMoving(false);
+            if (inspection != null && openPanels.TryGetValue(inspection.ideaId, out IdeaDetailsPanel panel) && panel != null)
+                panel.SetReturnAvailable(false);
+            movement = null;
+            inspection = null;
+            ResetGestureRecognition();
+        }
+
+        private void RestoreInspectionImmediately()
+        {
+            if (inspection != null && visible.TryGetValue(inspection.ideaId, out IdeaBubbleView bubble)
+                && bubble != null)
+            {
+                bubble.transform.SetPositionAndRotation(inspection.position, inspection.rotation);
+                bubble.transform.localScale=inspection.scale;
+                bubble.SetMoving(false);
+            }
+            CancelInspectionMovement();
+        }
+
+        private void ResetGestureRecognition() { leftBeckon.Reset(); rightBeckon.Reset(); }
+
+        private int CountCurled(BeckonHand hand)
+        {
+            int count=0;
+            if (ChordRatio(hand.index) <= curledChordRatio) count++;
+            if (ChordRatio(hand.middle) <= curledChordRatio) count++;
+            if (ChordRatio(hand.ring) <= curledChordRatio) count++;
+            if (ChordRatio(hand.pinky) <= curledChordRatio) count++;
+            return count;
+        }
+
+        private int CountExtended(BeckonHand hand)
+        {
+            int count=0;
+            if (ChordRatio(hand.index) >= extendedChordRatio) count++;
+            if (ChordRatio(hand.middle) >= extendedChordRatio) count++;
+            if (ChordRatio(hand.ring) >= extendedChordRatio) count++;
+            if (ChordRatio(hand.pinky) >= extendedChordRatio) count++;
+            return count;
+        }
+
+        private static float ChordRatio(FingerChain finger)
+        {
+            float path=Vector3.Distance(finger.proximal.position,finger.intermediate.position)
+                +Vector3.Distance(finger.intermediate.position,finger.distal.position)
+                +Vector3.Distance(finger.distal.position,finger.tip.position);
+            return path < .001f ? 1f : Vector3.Distance(finger.proximal.position,finger.tip.position)/path;
+        }
+
+        private static bool ResolveBeckonJoints(BeckonHand hand)
+        {
+            if (hand.Resolved) return true;
+            if (hand.skeleton.Bones == null) return false;
+            bool xr=hand.skeleton.GetSkeletonType()==OVRSkeleton.SkeletonType.XRHandLeft
+                || hand.skeleton.GetSkeletonType()==OVRSkeleton.SkeletonType.XRHandRight;
+            foreach(OVRBone bone in hand.skeleton.Bones)
+            {
+                OVRSkeleton.BoneId id=bone.Id; Transform t=bone.Transform;
+                if(xr)
+                {
+                    if(id==OVRSkeleton.BoneId.XRHand_Wrist)hand.wrist=t;
+                    else AssignFinger(hand,id,t,true);
+                }
+                else
+                {
+                    if(id==OVRSkeleton.BoneId.Hand_WristRoot)hand.wrist=t;
+                    else AssignFinger(hand,id,t,false);
+                }
+            }
+            return hand.Resolved;
+        }
+
+        private static void AssignFinger(BeckonHand hand, OVRSkeleton.BoneId id, Transform t, bool xr)
+        {
+            if(xr)
+            {
+                SetFinger(hand.index,id,t,OVRSkeleton.BoneId.XRHand_IndexProximal,OVRSkeleton.BoneId.XRHand_IndexIntermediate,OVRSkeleton.BoneId.XRHand_IndexDistal,OVRSkeleton.BoneId.XRHand_IndexTip);
+                SetFinger(hand.middle,id,t,OVRSkeleton.BoneId.XRHand_MiddleProximal,OVRSkeleton.BoneId.XRHand_MiddleIntermediate,OVRSkeleton.BoneId.XRHand_MiddleDistal,OVRSkeleton.BoneId.XRHand_MiddleTip);
+                SetFinger(hand.ring,id,t,OVRSkeleton.BoneId.XRHand_RingProximal,OVRSkeleton.BoneId.XRHand_RingIntermediate,OVRSkeleton.BoneId.XRHand_RingDistal,OVRSkeleton.BoneId.XRHand_RingTip);
+                SetFinger(hand.pinky,id,t,OVRSkeleton.BoneId.XRHand_LittleProximal,OVRSkeleton.BoneId.XRHand_LittleIntermediate,OVRSkeleton.BoneId.XRHand_LittleDistal,OVRSkeleton.BoneId.XRHand_LittleTip);
+            }
+            else
+            {
+                SetFinger(hand.index,id,t,OVRSkeleton.BoneId.Hand_Index1,OVRSkeleton.BoneId.Hand_Index2,OVRSkeleton.BoneId.Hand_Index3,OVRSkeleton.BoneId.Hand_IndexTip);
+                SetFinger(hand.middle,id,t,OVRSkeleton.BoneId.Hand_Middle1,OVRSkeleton.BoneId.Hand_Middle2,OVRSkeleton.BoneId.Hand_Middle3,OVRSkeleton.BoneId.Hand_MiddleTip);
+                SetFinger(hand.ring,id,t,OVRSkeleton.BoneId.Hand_Ring1,OVRSkeleton.BoneId.Hand_Ring2,OVRSkeleton.BoneId.Hand_Ring3,OVRSkeleton.BoneId.Hand_RingTip);
+                SetFinger(hand.pinky,id,t,OVRSkeleton.BoneId.Hand_Pinky1,OVRSkeleton.BoneId.Hand_Pinky2,OVRSkeleton.BoneId.Hand_Pinky3,OVRSkeleton.BoneId.Hand_PinkyTip);
+            }
+        }
+
+        private static void SetFinger(FingerChain finger, OVRSkeleton.BoneId id, Transform t,
+            OVRSkeleton.BoneId proximal, OVRSkeleton.BoneId intermediate,
+            OVRSkeleton.BoneId distal, OVRSkeleton.BoneId tip)
+        {
+            if(id==proximal)finger.proximal=t; else if(id==intermediate)finger.intermediate=t;
+            else if(id==distal)finger.distal=t; else if(id==tip)finger.tip=t;
+        }
+
+        private void ClearSelection()
+        {
+            if (!string.IsNullOrEmpty(selectedIdeaId)
+                && visible.TryGetValue(selectedIdeaId, out IdeaBubbleView selectedBubble) && selectedBubble != null)
+                selectedBubble.SetSelected(false);
+            selectedIdeaId = string.Empty;
+        }
+
+        private void HandlePanelFocused(IdeaDetailsPanel panel)
+        {
+            if (panel != null) SetActivePanel(panel.IdeaId);
+        }
+
+        private void SetActivePanel(string ideaId)
+        {
+            if (string.IsNullOrEmpty(ideaId) || !openPanels.ContainsKey(ideaId)
+                || !visible.TryGetValue(ideaId, out IdeaBubbleView next) || next == null) return;
+            if (inspection != null && inspection.ideaId != ideaId) RestoreInspectionImmediately();
+            if (!string.IsNullOrEmpty(selectedIdeaId) && selectedIdeaId != ideaId
+                && visible.TryGetValue(selectedIdeaId, out IdeaBubbleView previous) && previous != null)
+                previous.SetSelected(false);
+            selectedIdeaId = ideaId;
+            next.SetOpen(true);
+            next.SetSelected(true);
+            panelFocusOrder.Remove(ideaId);
+            panelFocusOrder.Add(ideaId);
+            RefreshDiagnostics();
+        }
+
+        private void ActivateMostRecentlyFocusedPanel()
+        {
+            selectedIdeaId = string.Empty;
+            while (panelFocusOrder.Count > 0)
+            {
+                string candidate = panelFocusOrder[panelFocusOrder.Count - 1];
+                if (openPanels.ContainsKey(candidate) && visible.ContainsKey(candidate))
+                {
+                    SetActivePanel(candidate);
+                    return;
+                }
+                panelFocusOrder.RemoveAt(panelFocusOrder.Count - 1);
+            }
+        }
 
         private void BuildDiagnostics()
         {
@@ -302,6 +707,11 @@ namespace ThinkingSpace.Speech
                 + "\nSession: " + (string.IsNullOrEmpty(activeSessionId) ? "None" : activeSessionId)
                 + "\nSaved: " + (session != null ? session.Ideas.Count : 0)
                 + "   Visible: " + visible.Count
+                + "\nSelected: " + (string.IsNullOrEmpty(selectedIdeaId) ? "None" : selectedIdeaId)
+                + "   Open panels: " + openPanels.Count
+                + "\nInteraction: " + (interactionAvailable ? "available" : "blocked")
+                + "   Inspection: " + (inspection != null ? inspection.ideaId : "None")
+                + "\nMovement: " + (movement == null ? "idle" : movement.returning ? "returning" : "pulling")
                 + "\nLast created: " + LastCreatedIdeaId
                 + "\nLast restored: " + LastRestoredIdeaId
                 + "\nSave: " + LastSaveResult

@@ -2,6 +2,7 @@ using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
@@ -9,26 +10,91 @@ using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
+    public enum IdeaBubbleVisualState { Idle, Hovered, Open, Selected, Unavailable }
+
     [DisallowMultipleComponent]
     public sealed class IdeaBubbleView : MonoBehaviour
     {
         private BrainstormIdeaRecord idea;
         private Transform billboard;
         private Material material;
+        private Material outlineMaterial;
+        private Renderer outlineRenderer;
+        private Button selectionButton;
         private Action<BrainstormIdeaRecord> selected;
+        private bool hovered, isOpen, isSelected, isMoving, interactionAvailable = true;
+        private float visualDiameter;
 
         public string IdeaId => idea != null ? idea.IdeaId : string.Empty;
         public BrainstormIdeaRecord Idea => idea;
+        public bool IsSelected => isSelected;
+        public bool IsOpen => isOpen;
+        public bool IsInteractionAvailable => interactionAvailable;
+        public IdeaBubbleVisualState VisualState => ResolveVisualState(
+            interactionAvailable, hovered, isOpen, isSelected);
 
         public void Initialize(BrainstormIdeaRecord value, float diameter,
             Action<BrainstormIdeaRecord> onSelected)
         {
             idea = value;
             selected = onSelected;
+            visualDiameter = diameter;
             name = "Idea Bubble · " + value.IdeaId;
             BuildSphere(diameter, CategoryColor(value.Category));
             BuildSelectionCanvas(diameter);
+            RefreshVisualState();
         }
+
+        public void SetInteractionAvailable(bool available)
+        {
+            if (interactionAvailable == available) return;
+            interactionAvailable = available;
+            if (!available) hovered = false;
+            if (selectionButton != null) selectionButton.interactable = available;
+            RefreshVisualState();
+        }
+
+        public void SetSelected(bool value)
+        {
+            if (isSelected == value) return;
+            isSelected = value;
+            RefreshVisualState();
+        }
+
+        public void SetOpen(bool value)
+        {
+            if (isOpen == value) return;
+            isOpen = value;
+            if (!value) isSelected = false;
+            RefreshVisualState();
+        }
+
+        public void SetMoving(bool value)
+        {
+            if (isMoving == value) return;
+            isMoving = value;
+            RefreshVisualState();
+        }
+
+        internal void SetHovered(bool value)
+        {
+            value &= interactionAvailable;
+            if (hovered == value) return;
+            hovered = value;
+            RefreshVisualState();
+        }
+
+        public static IdeaBubbleVisualState ResolveVisualState(bool available, bool hover,
+            bool open, bool selectedValue)
+        {
+            if (!available) return IdeaBubbleVisualState.Unavailable;
+            if (selectedValue) return IdeaBubbleVisualState.Selected;
+            if (open) return IdeaBubbleVisualState.Open;
+            return hover ? IdeaBubbleVisualState.Hovered : IdeaBubbleVisualState.Idle;
+        }
+
+        public static IdeaBubbleVisualState ResolveVisualState(bool available, bool hover, bool selectedValue)
+            => ResolveVisualState(available, hover, selectedValue, selectedValue);
 
         private void LateUpdate()
         {
@@ -37,6 +103,7 @@ namespace ThinkingSpace.Speech
             Vector3 away = billboard.position - camera.transform.position;
             if (away.sqrMagnitude > 0.0001f)
                 billboard.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
+            if (isMoving) RefreshVisualState();
         }
 
         private void BuildSphere(float diameter, Color color)
@@ -54,6 +121,20 @@ namespace ThinkingSpace.Speech
             material.color = color;
             if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
             sphere.GetComponent<Renderer>().sharedMaterial = material;
+
+            GameObject outline = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            outline.name = "Interaction Outline";
+            outline.transform.SetParent(transform, false);
+            outline.transform.localScale = Vector3.one * (diameter * 1.08f);
+            Collider outlineCollider = outline.GetComponent<Collider>();
+            if (outlineCollider != null) Destroy(outlineCollider);
+            outlineRenderer = outline.GetComponent<Renderer>();
+            outlineRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            outlineRenderer.receiveShadows = false;
+            outlineMaterial = new Material(shader) { name = "Idea Bubble Outline Runtime Material" };
+            if (outlineMaterial.HasProperty("_Cull")) outlineMaterial.SetFloat("_Cull", 1f);
+            outlineRenderer.sharedMaterial = outlineMaterial;
+            outlineRenderer.enabled = false;
         }
 
         private void BuildSelectionCanvas(float diameter)
@@ -76,9 +157,11 @@ namespace ThinkingSpace.Speech
 
             Image hitArea = root.AddComponent<Image>();
             hitArea.color = new Color(1f, 1f, 1f, 0.001f);
-            Button button = root.AddComponent<Button>();
-            button.targetGraphic = hitArea;
-            button.onClick.AddListener(() => selected?.Invoke(idea));
+            selectionButton = root.AddComponent<Button>();
+            selectionButton.targetGraphic = hitArea;
+            selectionButton.onClick.AddListener(HandleSelection);
+            BubblePointerRelay relay = root.AddComponent<BubblePointerRelay>();
+            relay.Initialize(this);
 
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
@@ -94,28 +177,56 @@ namespace ThinkingSpace.Speech
             poke.InjectAllPokeInteractable(clipped);
             poke.InjectOptionalPointableElement(pointable);
 
-            GameObject labelObject = new GameObject("Short Title", typeof(RectTransform));
+            GameObject labelObject = new GameObject("Bubble Title", typeof(RectTransform));
             labelObject.transform.SetParent(root.transform, false);
             RectTransform labelRect = labelObject.GetComponent<RectTransform>();
-            labelRect.anchorMin = new Vector2(0.05f, 0.02f);
-            labelRect.anchorMax = new Vector2(0.95f, 0.30f);
+            labelRect.anchorMin = new Vector2(0.03f, 1.08f);
+            labelRect.anchorMax = new Vector2(0.97f, 1.50f);
             labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
             TextMeshProUGUI label = labelObject.AddComponent<TextMeshProUGUI>();
             label.font = TMP_Settings.defaultFontAsset;
             label.fontSize = 25f;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 16f;
+            label.fontSizeMax = 25f;
             label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Center;
             label.color = Color.white;
             label.textWrappingMode = TextWrappingModes.Normal;
             label.overflowMode = TextOverflowModes.Ellipsis;
             label.raycastTarget = false;
-            label.text = ShortTitle(idea.Title);
+            label.text = string.IsNullOrWhiteSpace(idea.Title) ? "Untitled Idea" : idea.Title;
         }
 
-        private static string ShortTitle(string value)
+        private void HandleSelection()
         {
-            string title = string.IsNullOrWhiteSpace(value) ? "Untitled Idea" : value.Trim();
-            return title.Length <= 42 ? title : title.Substring(0, 39) + "…";
+            if (interactionAvailable) selected?.Invoke(idea);
+        }
+
+        private void RefreshVisualState()
+        {
+            if (outlineRenderer == null || outlineMaterial == null) return;
+            IdeaBubbleVisualState state = VisualState;
+            bool visible = state == IdeaBubbleVisualState.Hovered || state == IdeaBubbleVisualState.Open
+                || state == IdeaBubbleVisualState.Selected;
+            outlineRenderer.enabled = visible;
+            if (!visible) return;
+            bool selectedState = state == IdeaBubbleVisualState.Selected;
+            bool openState = state == IdeaBubbleVisualState.Open;
+            Color color = selectedState || openState
+                ? new Color(1f, 0.72f, 0.16f, 1f)
+                : new Color(0.42f, 0.92f, 1f, 1f);
+            float movementPulse = isMoving ? 0.018f + Mathf.Sin(Time.unscaledTime * 7f) * 0.008f : 0f;
+            outlineRenderer.transform.localScale = Vector3.one * visualDiameter
+                * ((selectedState ? 1.16f : openState ? 1.11f : 1.08f) + movementPulse);
+            outlineMaterial.color = color;
+            if (outlineMaterial.HasProperty("_BaseColor")) outlineMaterial.SetColor("_BaseColor", color);
+            if (outlineMaterial.HasProperty("_EmissionColor"))
+            {
+                outlineMaterial.EnableKeyword("_EMISSION");
+                float intensity = selectedState ? 2.25f : openState ? 1.65f : 1.25f;
+                outlineMaterial.SetColor("_EmissionColor", color * (isMoving ? intensity + 0.55f : intensity));
+            }
         }
 
         private static Color CategoryColor(string category)
@@ -130,6 +241,34 @@ namespace ThinkingSpace.Speech
         private void OnDestroy()
         {
             if (material != null) Destroy(material);
+            if (outlineMaterial != null) Destroy(outlineMaterial);
+        }
+    }
+
+    internal sealed class BubblePointerRelay : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        private readonly System.Collections.Generic.HashSet<int> hoveringPointers =
+            new System.Collections.Generic.HashSet<int>();
+        private IdeaBubbleView owner;
+
+        public void Initialize(IdeaBubbleView value) => owner = value;
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            hoveringPointers.Add(eventData != null ? eventData.pointerId : 0);
+            owner?.SetHovered(true);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            hoveringPointers.Remove(eventData != null ? eventData.pointerId : 0);
+            owner?.SetHovered(hoveringPointers.Count > 0);
+        }
+
+        private void OnDisable()
+        {
+            hoveringPointers.Clear();
+            owner?.SetHovered(false);
         }
     }
 }
