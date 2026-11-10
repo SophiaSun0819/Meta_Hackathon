@@ -27,6 +27,7 @@ namespace ThinkingSpace.Speech
     {
         public ConversationTurnPayload[] recent_turns = Array.Empty<ConversationTurnPayload>();
         public string most_recent_idea_id;
+        public string preferred_name;
         public string current_mode = "conversational";
     }
 
@@ -120,13 +121,14 @@ namespace ThinkingSpace.Speech
         [Serializable] private sealed class ConversationContextWithoutRecentWire
         {
             public ConversationTurnPayload[] recent_turns;
+            public string preferred_name;
             public string current_mode;
         }
 
         [Serializable] private sealed class ConversationContextWithRecentWire
         {
             public ConversationTurnPayload[] recent_turns;
-            public string most_recent_idea_id, current_mode;
+            public string most_recent_idea_id, preferred_name, current_mode;
         }
 
         [Serializable] private sealed class InitialConversationWithoutRecentWireRequest
@@ -166,10 +168,11 @@ namespace ThinkingSpace.Speech
             context.recent_turns = context.recent_turns ?? Array.Empty<ConversationTurnPayload>();
             bool hasRecent = !string.IsNullOrWhiteSpace(context.most_recent_idea_id);
             var withoutRecent = new ConversationContextWithoutRecentWire
-            { recent_turns = context.recent_turns, current_mode = context.current_mode };
+            { recent_turns = context.recent_turns, preferred_name = context.preferred_name,
+              current_mode = context.current_mode };
             var withRecent = new ConversationContextWithRecentWire
             { recent_turns = context.recent_turns, most_recent_idea_id = context.most_recent_idea_id,
-              current_mode = context.current_mode };
+              preferred_name = context.preferred_name, current_mode = context.current_mode };
             if (string.IsNullOrEmpty(value.clarification_id))
                 return hasRecent
                     ? JsonUtility.ToJson(new InitialConversationWithRecentWireRequest
@@ -550,6 +553,16 @@ namespace ThinkingSpace.Speech
             { fieldPath = "context"; category = "missing"; return "Conversation context is missing."; }
             if (context.current_mode != "conversational")
             { fieldPath = "context.current_mode"; category = "invalid_enum"; return "Conversation mode is invalid."; }
+            if (!string.IsNullOrEmpty(context.preferred_name))
+            {
+                string name = context.preferred_name;
+                if (name.Length > 32 || name != name.Trim())
+                { fieldPath = "context.preferred_name"; category = "invalid_length"; return "Preferred name is invalid."; }
+                for (int i = 0; i < name.Length; i++)
+                    if (!(char.IsLetterOrDigit(name[i]) || name[i] == ' ' || name[i] == '-'
+                        || name[i] == '\''))
+                    { fieldPath = "context.preferred_name"; category = "invalid_character"; return "Preferred name is invalid."; }
+            }
             ConversationTurnPayload[] turns = context.recent_turns ?? Array.Empty<ConversationTurnPayload>();
             if (turns.Length > 12)
             { fieldPath = "context.recent_turns"; category = "too_many_items"; return "Conversation history is too long."; }

@@ -173,7 +173,8 @@ namespace ThinkingSpace.Speech
                 cleaned_transcript = null,
                 transcript_source = "raw",
                 available_ideas = availableIdeas,
-                context = BuildConversationContext(session, availableIdeas, requestId),
+                context = BuildConversationContext(session, availableIdeas, requestId,
+                    menuController?.PreferencesStore?.Data?.PreferredName),
                 clarification_id = followUp ? pendingClarificationId : null
             };
             yield return client.ProcessConversation(request, value => result = value);
@@ -333,7 +334,7 @@ namespace ThinkingSpace.Speech
             string text=BuildIdeaSpeechText(idea);
             return ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamicTracked(
                 text.Trim(),activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
-                completed,"idea_summary");
+                completed,"idea_summary","happy");
         }
         private void StopIdeaSummaryPlayback(string requestId)
             => ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.CancelSpeech(requestId);
@@ -351,7 +352,8 @@ namespace ThinkingSpace.Speech
                 responsePanel.Hide();
                 string request = ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamicTracked(
                     question, activeSessionId, ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
-                    success => CompleteAutomaticSpeech(success, question), "clarification_question");
+                    success => CompleteAutomaticSpeech(success, question), "clarification_question",
+                    response.suggested_emotion);
                 if (string.IsNullOrEmpty(request)) CompleteAutomaticSpeech(false, question);
                 return;
             }
@@ -361,7 +363,8 @@ namespace ThinkingSpace.Speech
                 response.clarification_question ?? response.spoken_response,
                 "Record Answer", DismissForClarification, "Cancel", CancelClarification);
             ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamic(question,activeSessionId,
-                ThinkingSpace.Companion.OrbyVoicePriority.AIResponse);
+                ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,null,"clarification_question",
+                response.suggested_emotion);
         }
 
         private void DismissForClarification()
@@ -390,7 +393,8 @@ namespace ThinkingSpace.Speech
                 {
                     string request = director?.SpeakDynamicTracked(response.spoken_response,
                         activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
-                        success => CompleteAutomaticSpeech(success, response.spoken_response),"conversation_response");
+                        success => CompleteAutomaticSpeech(success, response.spoken_response),"conversation_response",
+                        response.suggested_emotion);
                     if (string.IsNullOrEmpty(request)) CompleteAutomaticSpeech(false, response.spoken_response);
                 }
                 else
@@ -403,7 +407,8 @@ namespace ThinkingSpace.Speech
             }
             ShowMessage("AI Response", response.spoken_response + parameters, "Close");
             if(ShouldSpeakSemanticAction(response.proposed_action))director?.SpeakDynamic(response.spoken_response,
-                activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,null,"conversation_response");
+                activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,null,"conversation_response",
+                response.suggested_emotion);
             else director?.ReportEvent("spatial_confirmation_suppressed_unexecuted",false,false,
                 ThinkingSpace.Companion.OrbyVoicePriority.Acknowledgement,activeSessionId);
         }
@@ -584,9 +589,10 @@ namespace ThinkingSpace.Speech
             => BuildConversationContext(session, BuildIdeaContexts(session), excludeRequestId);
 
         public static ConversationContextPayload BuildConversationContext(BrainstormSession session,
-            AIIdeaContext[] availableIdeas, string excludeRequestId = null)
+            AIIdeaContext[] availableIdeas, string excludeRequestId = null, string preferredName = null)
         {
-            var context = new ConversationContextPayload { current_mode = "conversational" };
+            var context = new ConversationContextPayload { current_mode = "conversational",
+                preferred_name = SanitizePreferredName(preferredName) };
             if (session == null) return context;
             var availableIds = new HashSet<string>();
             AIIdeaContext[] available = availableIdeas ?? Array.Empty<AIIdeaContext>();
@@ -618,6 +624,16 @@ namespace ThinkingSpace.Speech
             }
             context.recent_turns = turns.ToArray();
             return context;
+        }
+
+        private static string SanitizePreferredName(string value)
+        {
+            string name = (value ?? string.Empty).Trim();
+            if (name.Length == 0 || name.Length > 32) return null;
+            for (int i = 0; i < name.Length; i++)
+                if (!(char.IsLetterOrDigit(name[i]) || name[i] == ' ' || name[i] == '-'
+                    || name[i] == '\'')) return null;
+            return name;
         }
 
         public static string ValidateConversationResponse(ConversationProcessResponse response,

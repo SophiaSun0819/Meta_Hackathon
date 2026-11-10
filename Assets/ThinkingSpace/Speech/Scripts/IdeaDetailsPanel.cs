@@ -18,31 +18,36 @@ namespace ThinkingSpace.Speech
         private Transform headset, bubble;
         private Canvas canvas;
         private TMP_Text heading, body, pageLabel;
-        private Button previous, next, close, delete, cancelDelete, confirmDelete, playSummary;
+        private Button previous, next, close, delete, cancelDelete, confirmDelete, playSummary, returnBubble;
         private readonly List<string> pages = new List<string>();
         private Action<IdeaDetailsPanel> closed;
+        private Action<IdeaDetailsPanel> focused;
         private Func<IdeaDetailsPanel, string> deleteRequested;
         private Func<BrainstormIdeaRecord, Action<bool>, string> playRequested;
         private Action<string> stopRequested;
+        private Action<string> returnRequested;
         private string summaryRequestId;
         private int page, slot;
-        private bool hovered, pressed, confirmingDelete;
+        private bool hovered, pressed, confirmingDelete, returnAvailable;
         private Vector3 stablePosition;
         private Quaternion stableRotation;
         public string IdeaId => idea != null ? idea.IdeaId : string.Empty;
         public int SlotIndex => slot;
+        public bool IsInteracting => hovered || pressed;
 
         public void Configure(BrainstormIdeaRecord value, Transform bubbleTransform, Transform headsetTransform,
-            int panelSlot, Action<IdeaDetailsPanel> onClosed, Func<IdeaDetailsPanel, string> onDelete,
+            int panelSlot, Action<IdeaDetailsPanel> onClosed, Action<IdeaDetailsPanel> onFocused,
+            Func<IdeaDetailsPanel, string> onDelete,
             Func<BrainstormIdeaRecord, Action<bool>, string> onPlaySummary,
-            Action<string> onStopSummary)
+            Action<string> onStopSummary, Action<string> onReturnBubble)
         {
             idea=value; bubble=bubbleTransform; headset=headsetTransform; slot=panelSlot;
-            closed=onClosed; deleteRequested=onDelete; playRequested=onPlaySummary;
-            stopRequested=onStopSummary; Build(); ShowDetails(); PlaceImmediately();
+            closed=onClosed; focused=onFocused; deleteRequested=onDelete; playRequested=onPlaySummary;
+            stopRequested=onStopSummary; Build(); ShowDetails(); PlaceImmediately(); focused?.Invoke(this);
+            returnRequested=onReturnBubble;
         }
 
-        public void FocusPanel() { if (canvas != null) { canvas.gameObject.SetActive(true); canvas.sortingOrder=80+slot; } }
+        public void FocusPanel() { if (canvas != null) { canvas.gameObject.SetActive(true); canvas.sortingOrder=80+slot; focused?.Invoke(this); } }
         private void ShowDetails()
         {
             confirmingDelete=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?"Idea Details":idea.Title;
@@ -55,6 +60,7 @@ namespace ThinkingSpace.Speech
             pageLabel.gameObject.SetActive(false); previous.gameObject.SetActive(false); next.gameObject.SetActive(false);
             close.gameObject.SetActive(false); delete.gameObject.SetActive(false);
             playSummary.gameObject.SetActive(false);
+            returnBubble.gameObject.SetActive(false);
             cancelDelete.gameObject.SetActive(true); confirmDelete.gameObject.SetActive(true);
         }
         private void ConfirmDelete()
@@ -69,6 +75,12 @@ namespace ThinkingSpace.Speech
             playSummary.gameObject.SetActive(true);
             previous.gameObject.SetActive(true); next.gameObject.SetActive(true);
             cancelDelete.gameObject.SetActive(false); confirmDelete.gameObject.SetActive(false);
+            returnBubble.gameObject.SetActive(returnAvailable);
+        }
+        public void SetReturnAvailable(bool available)
+        {
+            returnAvailable = available;
+            if (returnBubble != null) returnBubble.gameObject.SetActive(available && !confirmingDelete);
         }
         private void ClosePanel()=>closed?.Invoke(this);
 
@@ -164,17 +176,18 @@ namespace ThinkingSpace.Speech
             previous=Button("Previous",rect,new Vector2(.05f,.19f),new Vector2(.27f,.27f));previous.onClick.AddListener(()=>{page=Mathf.Max(0,page-1);Refresh();});
             pageLabel=Text("Page",rect,22,FontStyles.Normal,TextAlignmentOptions.Center,new Vector2(.29f,.19f),new Vector2(.71f,.27f));
             next=Button("Next",rect,new Vector2(.73f,.19f),new Vector2(.95f,.27f));next.onClick.AddListener(()=>{page=Mathf.Min(pages.Count-1,page+1);Refresh();});
-            playSummary=Button("Play Summary",rect,new Vector2(.04f,.05f),new Vector2(.31f,.16f));playSummary.onClick.AddListener(ToggleSummaryPlayback);
-            delete=Button("Delete Idea",rect,new Vector2(.36f,.05f),new Vector2(.63f,.16f));delete.onClick.AddListener(AskDelete);
-            close=Button("Close",rect,new Vector2(.68f,.05f),new Vector2(.95f,.16f));close.onClick.AddListener(ClosePanel);
+            playSummary=Button("Play Summary",rect,new Vector2(.03f,.05f),new Vector2(.25f,.16f));playSummary.onClick.AddListener(ToggleSummaryPlayback);
+            returnBubble=Button("Return",rect,new Vector2(.27f,.05f),new Vector2(.49f,.16f));returnBubble.onClick.AddListener(()=>returnRequested?.Invoke(IdeaId));returnBubble.gameObject.SetActive(false);
+            delete=Button("Delete Idea",rect,new Vector2(.51f,.05f),new Vector2(.73f,.16f));delete.onClick.AddListener(AskDelete);
+            close=Button("Close",rect,new Vector2(.75f,.05f),new Vector2(.97f,.16f));close.onClick.AddListener(ClosePanel);
             cancelDelete=Button("Cancel",rect,new Vector2(.06f,.05f),new Vector2(.44f,.16f));cancelDelete.onClick.AddListener(ShowDetails);
             confirmDelete=Button("Confirm Delete",rect,new Vector2(.56f,.05f),new Vector2(.94f,.16f));confirmDelete.onClick.AddListener(ConfirmDelete);
         }
         public void OnPointerEnter(PointerEventData _)=>hovered=true; public void OnPointerExit(PointerEventData _)=>hovered=false;
-        public void OnPointerDown(PointerEventData _)=>pressed=true; public void OnPointerUp(PointerEventData _)=>pressed=false;
+        public void OnPointerDown(PointerEventData _){pressed=true;focused?.Invoke(this);} public void OnPointerUp(PointerEventData _)=>pressed=false;
         private static TMP_Text Text(string name,Transform parent,float size,FontStyles style,TextAlignmentOptions align,Vector2 min,Vector2 max)
         {GameObject v=new GameObject(name,typeof(RectTransform));v.transform.SetParent(parent,false);RectTransform r=v.GetComponent<RectTransform>();r.anchorMin=min;r.anchorMax=max;r.offsetMin=r.offsetMax=Vector2.zero;TextMeshProUGUI t=v.AddComponent<TextMeshProUGUI>();t.font=TMP_Settings.defaultFontAsset;t.fontSize=size;t.fontStyle=style;t.alignment=align;t.color=Color.white;t.raycastTarget=false;return t;}
-        private static Button Button(string label,Transform parent,Vector2 min,Vector2 max)
-        {GameObject v=new GameObject(label+" Button",typeof(RectTransform));v.transform.SetParent(parent,false);RectTransform r=v.GetComponent<RectTransform>();r.anchorMin=min;r.anchorMax=max;r.offsetMin=r.offsetMax=Vector2.zero;Image i=v.AddComponent<Image>();i.color=new Color(.08f,.52f,.72f,1);Button b=v.AddComponent<Button>();b.targetGraphic=i;TMP_Text t=Text("Label",r,25,FontStyles.Bold,TextAlignmentOptions.Center,Vector2.zero,Vector2.one);t.text=label;return b;}
+        private Button Button(string label,Transform parent,Vector2 min,Vector2 max)
+        {GameObject v=new GameObject(label+" Button",typeof(RectTransform));v.transform.SetParent(parent,false);RectTransform r=v.GetComponent<RectTransform>();r.anchorMin=min;r.anchorMax=max;r.offsetMin=r.offsetMax=Vector2.zero;Image i=v.AddComponent<Image>();i.color=new Color(.08f,.52f,.72f,1);Button b=v.AddComponent<Button>();b.targetGraphic=i;b.onClick.AddListener(()=>focused?.Invoke(this));TMP_Text t=Text("Label",r,25,FontStyles.Bold,TextAlignmentOptions.Center,Vector2.zero,Vector2.one);t.text=label;return b;}
     }
 }

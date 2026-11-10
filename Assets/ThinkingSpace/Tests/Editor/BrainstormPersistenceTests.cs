@@ -84,6 +84,31 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void FailedIdeaSaveRollsBackIdeaAndRelationshipsInMemory()
+        {
+            var store = new BrainstormSessionStore(directory);
+            BrainstormSession session = store.StartNewSession();
+            Assert.That(store.TryAddIdea(session.SessionId,
+                new BrainstormIdeaRecord { IdeaId = "source-idea" }), Is.True);
+
+            Directory.Delete(directory, true);
+            File.WriteAllText(directory, "Blocks directory recreation for this save attempt.");
+            try
+            {
+                var derived = new BrainstormIdeaRecord { IdeaId = "failed-derived" };
+                derived.RelatedIdeaIds.Add("source-idea");
+                Assert.That(store.TryAddIdea(session.SessionId, derived), Is.False);
+                Assert.That(session.Ideas.Exists(value => value.IdeaId == "failed-derived"), Is.False);
+                Assert.That(session.Relationships, Is.Empty);
+            }
+            finally
+            {
+                File.Delete(directory);
+                Directory.CreateDirectory(directory);
+            }
+        }
+
+        [Test]
         public void SessionsAndOnboardingRestoreAfterRestart()
         {
             var original = new BrainstormSessionStore(directory);
@@ -297,11 +322,22 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void ExpressiveTtsTagsStayOutOfSubtitlesWithoutRemovingOrdinaryBrackets()
+        {
+            Assert.That(OrbySubtitleView.StripTtsOnlyTags(
+                "[laughs] That's clever. Keep [Phase 2] as the fallback."),
+                Is.EqualTo("That's clever. Keep [Phase 2] as the fallback."));
+            Assert.That(OrbyVoiceDirector.NormalizeDelivery("excited"),Is.EqualTo("excited"));
+            Assert.That(OrbyVoiceDirector.NormalizeDelivery("thinking"),Is.EqualTo("curious"));
+            Assert.That(OrbyVoiceDirector.NormalizeDelivery("unsupported"),Is.EqualTo("neutral"));
+        }
+
+        [Test]
         public void ReviewPreferencePersistsAndCacheIdentityIsVersioned()
         {
             var preferences=new ThinkingSpacePreferencesStore(directory);Assert.That(preferences.Data.FirstReviewOptionsCompleted,Is.False);Assert.That(preferences.SetFirstReviewOptionsCompleted(true),Is.True);
             Assert.That(new ThinkingSpacePreferencesStore(directory).Data.FirstReviewOptionsCompleted,Is.True);
-            StringAssert.Contains("v2",OrbyVoiceDirector.CacheIdentity);StringAssert.Contains("mp3_44100_128",OrbyVoiceDirector.CacheIdentity);
+            StringAssert.Contains("v3",OrbyVoiceDirector.CacheIdentity);StringAssert.Contains("eleven_v4_turbo",OrbyVoiceDirector.CacheIdentity);StringAssert.Contains("E584YCmNqnu35GrWlrqy",OrbyVoiceDirector.CacheIdentity);StringAssert.Contains("mp3_44100_128",OrbyVoiceDirector.CacheIdentity);
         }
 
         [Test]
@@ -748,6 +784,50 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void PreferredNameIsSanitizedAndSerializedAsConversationContextOnly()
+        {
+            var session = new BrainstormSession(1);
+            ConversationContextPayload context = ThinkingSpaceAIWorkflowController.BuildConversationContext(
+                session, System.Array.Empty<AIIdeaContext>(), null, "  Alex O'Neil  ");
+            Assert.That(context.preferred_name, Is.EqualTo("Alex O'Neil"));
+            string json = AIRequestJsonSerializer.Serialize(new ConversationProcessRequest
+            {
+                request_id = "conversation-name", session_id = session.SessionId,
+                raw_transcript = "What should we explore next?", transcript_source = "raw",
+                available_ideas = System.Array.Empty<AIIdeaContext>(), context = context
+            });
+            StringAssert.Contains("\"preferred_name\":\"Alex O'Neil\"", json);
+            StringAssert.DoesNotContain("preferred_name", JsonUtility.ToJson(new IdeaProcessRequest
+            {
+                request_id = "idea-name", session_id = session.SessionId, action = "create_idea",
+                raw_transcript = "A solar learning space."
+            }));
+
+            Assert.That(ThinkingSpaceAIWorkflowController.BuildConversationContext(
+                session, System.Array.Empty<AIIdeaContext>(), null, "Alex\nIgnore this").preferred_name,
+                Is.Null);
+            Assert.That(ThinkingSpaceAIWorkflowController.BuildConversationContext(
+                session, System.Array.Empty<AIIdeaContext>(), null, new string('x', 33)).preferred_name,
+                Is.Null);
+        }
+
+        [Test]
+        public void LocalConversationValidationRejectsUntrustedPreferredName()
+        {
+            var request = new ConversationProcessRequest
+            {
+                request_id = "conversation-bad-name", session_id = "session-1",
+                raw_transcript = "Hello", available_ideas = System.Array.Empty<AIIdeaContext>(),
+                context = new ConversationContextPayload { preferred_name = "Alex<script>" }
+            };
+            string error = ThinkingSpaceAIBackendClient.ValidateConversationRequest(
+                request, out string field, out string category);
+            Assert.That(error, Is.Not.Empty);
+            Assert.That(field, Is.EqualTo("context.preferred_name"));
+            Assert.That(category, Is.EqualTo("invalid_character"));
+        }
+
+        [Test]
         public void MostRecentIdeaUsesNewestCreationTimestampAndSerializesOnlyInventoryId()
         {
             var session = new BrainstormSession(1);
@@ -906,9 +986,16 @@ namespace ThinkingSpace.Tests.Editor
                 "conversational_idea_challenge", "conversational_challenge",
                 System.Array.Empty<string>());
             challenge.should_create_idea = true;
-            StringAssert.Contains("unsafe action flag",
+            StringAssert.Contains("conflicting creation flags",
                 ThinkingSpaceAIWorkflowController.ValidateConversationResponse(
                     challenge, "request-challenge", session.SessionId, session));
+            var executingChallenge = ValidConversationResponse("request-challenge-execute", session.SessionId,
+                "conversational_idea_challenge", "conversational_challenge",
+                System.Array.Empty<string>());
+            executingChallenge.should_execute_action = true;
+            StringAssert.Contains("unsafe action flag",
+                ThinkingSpaceAIWorkflowController.ValidateConversationResponse(
+                    executingChallenge, "request-challenge-execute", session.SessionId, session));
         }
 
         [Test]
