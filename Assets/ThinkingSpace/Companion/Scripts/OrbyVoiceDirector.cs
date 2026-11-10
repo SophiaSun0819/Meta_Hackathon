@@ -13,8 +13,8 @@ namespace ThinkingSpace.Companion
     public sealed class OrbyVoiceDirector : MonoBehaviour
     {
         private sealed class Request
-        { public string Id,SessionId,Text,CacheKey,EventKey;public AudioClip Clip;public OrbyVoicePriority Priority;public bool Idle,CancelOnSessionChange;public Action<bool> Completed; }
-        public const string CacheIdentity="orby-voice-contract-v2|server-config-2026-11|mp3_44100_128";
+        { public string Id,SessionId,Text,CacheKey,EventKey,Delivery;public AudioClip Clip;public OrbyVoicePriority Priority;public bool Idle,CancelOnSessionChange;public Action<bool> Completed; }
+        public const string CacheIdentity="orby-voice-contract-v3|voice:E584YCmNqnu35GrWlrqy|primary:eleven_v4_turbo|fallback:eleven_flash_v2_5|mp3_44100_128|tags-v1";
         public static OrbyVoiceDirector Instance { get; private set; }
         public event Action<string,string> SpeakingStarted;
         public event Action<string,bool> SpeakingFinished;
@@ -25,7 +25,7 @@ namespace ThinkingSpace.Companion
         private SpeechTranscriptionCoordinator workflow;private ConversationalListeningController listening;
         private ThinkingSpacePreferencesStore preferences;private BrainstormMenuController menu;private Request current;private string activeSessionId="";
         private bool tutorialBlock,paused;private float listeningIdleSince=-1f,lastReminder=-1000f;
-        private float playbackStartedAt,lastObservedTime,nextDiagnosticUpdate,nextInstanceAudit,lastPauseAt,lastResumeDuration,maxFrameMilliseconds;private string lastStopReason="Not started",lastMime="None",lastDecode="Not attempted",lastCacheStatus="Not checked",lastEndpoint="None",lastEvent="None",lastSubmission="None",lastFailure="None",lastRequestId="None",lastRequestSession="none",lastLifecycle="Initialized",lastLifecycleException="None";private long lastHttpStatus;private int lastByteCount,activeNetworkRequests,directorInstances,workflowInstances,recorderInstances;
+        private float playbackStartedAt,lastObservedTime,nextDiagnosticUpdate,nextInstanceAudit,lastPauseAt,lastResumeDuration,maxFrameMilliseconds,ttsRequestStartedAt,lastTtsSeconds,lastDecodeSeconds,lastTimeToPlaybackSeconds;private string lastStopReason="Not started",lastMime="None",lastDecode="Not attempted",lastCacheStatus="Not checked",lastEndpoint="None",lastEvent="None",lastSubmission="None",lastFailure="None",lastRequestId="None",lastRequestSession="none",lastLifecycle="Initialized",lastLifecycleException="None",lastVoiceModel="Unknown",lastVoiceFallback="false",lastServerCacheIdentity="Unknown";private long lastHttpStatus;private int lastByteCount,activeNetworkRequests,directorInstances,workflowInstances,recorderInstances;
         private AudioListener cachedListener;private QuestMicrophoneRecorder recorder;
         public bool IsSpeaking=>current!=null||source!=null&&source.isPlaying;
         public bool TutorialRecordingBlocked=>tutorialBlock;
@@ -65,13 +65,13 @@ namespace ThinkingSpace.Companion
             Request request=new Request{Id="pre-"+Guid.NewGuid().ToString("N"),SessionId=sessionId??activeSessionId,EventKey=eventKey,
                 Text=entry.TranscriptVerified?entry.SubtitleText:string.Empty,Clip=entry.Clip,Priority=entry.Priority,Idle=entry.Priority==OrbyVoicePriority.IdleReminder,Completed=completed,CancelOnSessionChange=cancelOnSessionChange};lastRequestId=request.Id;lastRequestSession=request.SessionId;bool accepted=Enqueue(request);ReportEvent(eventKey,true,accepted,entry.Priority,request.SessionId);return accepted;
         }
-        public bool SpeakDynamic(string text,string sessionId,OrbyVoicePriority priority=OrbyVoicePriority.AIResponse,Action<bool> completed=null,string eventName="dynamic_tts")
-            =>SpeakDynamicTracked(text,sessionId,priority,completed,eventName)!=null;
-        public string SpeakDynamicTracked(string text,string sessionId,OrbyVoicePriority priority=OrbyVoicePriority.AIResponse,Action<bool> completed=null,string eventName="dynamic_tts")
+        public bool SpeakDynamic(string text,string sessionId,OrbyVoicePriority priority=OrbyVoicePriority.AIResponse,Action<bool> completed=null,string eventName="dynamic_tts",string delivery="neutral")
+            =>SpeakDynamicTracked(text,sessionId,priority,completed,eventName,delivery)!=null;
+        public string SpeakDynamicTracked(string text,string sessionId,OrbyVoicePriority priority=OrbyVoicePriority.AIResponse,Action<bool> completed=null,string eventName="dynamic_tts",string delivery="neutral")
         {
             if(string.IsNullOrWhiteSpace(text)||string.IsNullOrWhiteSpace(sessionId)){lastFailure="Dynamic text or session ID missing";ReportEvent(eventName,true,false,priority,sessionId);return null;}
-            string key=OrbyVoiceCache.CreateKey(text,CacheIdentity,sessionId);if(pendingKeys.Contains(key)){lastFailure="Duplicate dynamic request already pending";ReportEvent(eventName,true,false,priority,sessionId);return null;}pendingKeys.Add(key);
-            Request request=new Request{Id="voice-"+Guid.NewGuid().ToString("N"),SessionId=sessionId,Text=text,CacheKey=key,EventKey=eventName,Priority=priority,Completed=completed};lastRequestId=request.Id;lastRequestSession=sessionId;bool accepted=Enqueue(request);if(!accepted)pendingKeys.Remove(key);ReportEvent(eventName,true,accepted,priority,sessionId);return accepted?request.Id:null;
+            delivery=NormalizeDelivery(delivery);string key=OrbyVoiceCache.CreateKey(text,CacheIdentity+"|delivery:"+delivery,sessionId);if(pendingKeys.Contains(key)){lastFailure="Duplicate dynamic request already pending";ReportEvent(eventName,true,false,priority,sessionId);return null;}pendingKeys.Add(key);
+            Request request=new Request{Id="voice-"+Guid.NewGuid().ToString("N"),SessionId=sessionId,Text=text,Delivery=delivery,CacheKey=key,EventKey=eventName,Priority=priority,Completed=completed};lastRequestId=request.Id;lastRequestSession=sessionId;bool accepted=Enqueue(request);if(!accepted)pendingKeys.Remove(key);ReportEvent(eventName,true,accepted,priority,sessionId);return accepted?request.Id:null;
         }
         public bool SpeakOnboardingGreeting(string text,Action<bool> completed)
         {string owner=string.IsNullOrEmpty(activeSessionId)?"onboarding":activeSessionId;return SpeakDynamic(text,owner,OrbyVoicePriority.Tutorial,completed,"personalized_greeting");}
@@ -118,7 +118,7 @@ namespace ThinkingSpace.Companion
                 while(clip.loadState==AudioDataLoadState.Loading&&Time.realtimeSinceStartup<loadDeadline)yield return null;
                 if(clip.loadState==AudioDataLoadState.Failed){lastStopReason="AudioClip data load failed";RefreshDiagnostics(lastStopReason);Finish(false);continue;}
                 Resolve();workflow?.SetVoicePlaybackBlocked(true);stateController?.SetState(OrbyConversationState.Speaking);
-                subtitles.Show(current.Text,preferences.Data.SubtitlesEnabled,clip.length);source.enabled=true;source.mute=false;source.volume=1f;source.pitch=1f;source.clip=clip;source.Play();playbackStartedAt=Time.realtimeSinceStartup;lastObservedTime=source.time;lastStopReason="Playing";RefreshDiagnostics("Play invoked");SpeakingStarted?.Invoke(current.Id,current.Text);
+                string subtitleText=OrbySubtitleView.StripTtsOnlyTags(current.Text);subtitles.Show(subtitleText,preferences.Data.SubtitlesEnabled,clip.length);source.enabled=true;source.mute=false;source.volume=1f;source.pitch=1f;source.clip=clip;source.Play();playbackStartedAt=Time.realtimeSinceStartup;lastTimeToPlaybackSeconds=ttsRequestStartedAt>0?playbackStartedAt-ttsRequestStartedAt:0;lastObservedTime=source.time;lastStopReason="Playing";RefreshDiagnostics("Play invoked");SpeakingStarted?.Invoke(current.Id,subtitleText);
                 yield return null;
                 if(!source.isPlaying){lastStopReason="AudioSource did not enter isPlaying after Play";RefreshDiagnostics(lastStopReason);Finish(false);continue;}
                 while(source.isPlaying&&!paused)yield return null;
@@ -134,10 +134,10 @@ namespace ThinkingSpace.Companion
             SpeechTranscriptionService config=FindFirstObjectByType<SpeechTranscriptionService>();
             if(config==null||string.IsNullOrEmpty(config.BackendBaseUrl)){lastFailure="TTS backend base URL is unavailable";RefreshDiagnostics(lastFailure);completed(null);yield break;}
             string token=config.GetDevelopmentTokenForCurrentRun();if(string.IsNullOrEmpty(token)){lastFailure="Development authentication token is unavailable";RefreshDiagnostics(lastFailure);completed(null);yield break;}
-            string json=JsonUtility.ToJson(new VoiceWireRequest{request_id=request.Id,session_id=request.SessionId,text=request.Text});
+            string json=JsonUtility.ToJson(new VoiceWireRequest{request_id=request.Id,session_id=request.SessionId,text=request.Text,delivery=request.Delivery});ttsRequestStartedAt=Time.realtimeSinceStartup;lastTtsSeconds=lastDecodeSeconds=lastTimeToPlaybackSeconds=0;
             lastEndpoint=BuildVoiceEndpoint(config.BackendBaseUrl);activeNetworkRequests++;using(UnityWebRequest web=new UnityWebRequest(lastEndpoint,UnityWebRequest.kHttpVerbPOST))
             {web.uploadHandler=new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));web.downloadHandler=new DownloadHandlerBuffer();web.timeout=30;web.SetRequestHeader("Content-Type","application/json");web.SetRequestHeader("X-ThinkingSpace-Token",token);yield return web.SendWebRequest();
-                activeNetworkRequests=Mathf.Max(0,activeNetworkRequests-1);string mime=web.GetResponseHeader("Content-Type")??"";byte[] bytes=web.downloadHandler?.data;lastHttpStatus=web.responseCode;lastMime=string.IsNullOrEmpty(mime)?"None":mime;lastByteCount=bytes?.Length??0;RefreshDiagnostics("TTS response received");
+                activeNetworkRequests=Mathf.Max(0,activeNetworkRequests-1);lastTtsSeconds=Time.realtimeSinceStartup-ttsRequestStartedAt;string mime=web.GetResponseHeader("Content-Type")??"";byte[] bytes=web.downloadHandler?.data;lastHttpStatus=web.responseCode;lastMime=string.IsNullOrEmpty(mime)?"None":mime;lastByteCount=bytes?.Length??0;lastVoiceModel=web.GetResponseHeader("X-ThinkingSpace-Voice-Model")??"Unknown";lastVoiceFallback=web.GetResponseHeader("X-ThinkingSpace-Voice-Fallback")??"false";lastServerCacheIdentity=web.GetResponseHeader("X-ThinkingSpace-Voice-Cache")??"Unknown";RefreshDiagnostics("TTS response received");
                 if(web.result!=UnityWebRequest.Result.Success){lastFailure="TTS HTTP request failed: "+web.responseCode;RefreshDiagnostics(lastFailure);completed(null);yield break;}
                 if(!mime.StartsWith("audio/mpeg",StringComparison.OrdinalIgnoreCase)){lastFailure="Unexpected TTS MIME type";RefreshDiagnostics(lastFailure);completed(null);yield break;}
                 if(bytes==null||bytes.Length<4||bytes.Length>5*1024*1024){lastFailure="TTS audio byte count is invalid";RefreshDiagnostics(lastFailure);completed(null);yield break;}
@@ -145,7 +145,7 @@ namespace ThinkingSpace.Companion
             yield return LoadClip(path,completed);
         }
         private IEnumerator LoadClip(string path,Action<AudioClip> completed)
-        {using(UnityWebRequest request=UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri,AudioType.MPEG)){request.timeout=15;DownloadHandlerAudioClip handler=request.downloadHandler as DownloadHandlerAudioClip;if(handler!=null)handler.streamAudio=false;lastDecode="Loading MP3";yield return request.SendWebRequest();if(request.result!=UnityWebRequest.Result.Success){lastDecode="Failed: "+request.error;lastStopReason="Cached MP3 decode failed: "+request.error;RefreshDiagnostics(lastStopReason);completed(null);}else{AudioClip clip=DownloadHandlerAudioClip.GetContent(request);lastDecode=clip!=null?"Decoded · "+clip.length.ToString("0.00")+"s":"Decoder returned null";RefreshDiagnostics(lastDecode);completed(clip);}}}
+        {float started=Time.realtimeSinceStartup;using(UnityWebRequest request=UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri,AudioType.MPEG)){request.timeout=15;DownloadHandlerAudioClip handler=request.downloadHandler as DownloadHandlerAudioClip;if(handler!=null)handler.streamAudio=false;lastDecode="Loading MP3";yield return request.SendWebRequest();lastDecodeSeconds=Time.realtimeSinceStartup-started;if(request.result!=UnityWebRequest.Result.Success){lastDecode="Failed: "+request.error;lastStopReason="Cached MP3 decode failed: "+request.error;RefreshDiagnostics(lastStopReason);completed(null);}else{AudioClip clip=DownloadHandlerAudioClip.GetContent(request);lastDecode=clip!=null?"Decoded · "+clip.length.ToString("0.00")+"s":"Decoder returned null";RefreshDiagnostics(lastDecode);completed(clip);}}}
         private void Finish(bool success)
         {string id=current?.Id;string key=current?.CacheKey;AudioClip played=source!=null?source.clip:null;bool dynamic=current!=null&&current.Clip==null;if(!string.IsNullOrEmpty(key))pendingKeys.Remove(key);current?.Completed?.Invoke(success);SpeakingFinished?.Invoke(id,success);current=null;if(source!=null)source.clip=null;if(dynamic&&played!=null)Destroy(played);subtitles.Hide();RefreshDiagnostics(lastStopReason);Resolve();workflow?.SetVoicePlaybackBlocked(false);if(!tutorialBlock)stateController?.SetState(listening!=null&&listening.ListeningEnabled?OrbyConversationState.Listening:OrbyConversationState.Idle);}
         private void StopCurrent(bool success){if(source!=null)source.Stop();if(current!=null)Finish(success);}
@@ -164,6 +164,8 @@ namespace ThinkingSpace.Companion
         public bool DebugPlayPrerecorded(string eventKey="greeting_welcome")
         {if(!Debug.isDebugBuild&&!Application.isEditor)return false;CancelAllSpeech();return PlayPrerecorded(eventKey);}
         public static string BuildVoiceEndpoint(string baseUrl)=>(baseUrl??string.Empty).TrimEnd('/')+"/api/voice/synthesize";
+        public static string NormalizeDelivery(string value)
+        {switch((value??"").Trim().ToLowerInvariant()){case "laughs":case "curious":case "excited":case "sighs":case "whispers":case "clears_throat":case "mischievously":case "snorts":return value.Trim().ToLowerInvariant();case "thinking":case "attentive":case "confused":return "curious";case "happy":return "mischievously";default:return "neutral";}}
         public void ReportEvent(string eventName,bool submitted,bool accepted,OrbyVoicePriority priority,string sessionId)
         {lastEvent=eventName??"Unknown";lastSubmission=(submitted?"Submitted":"Not submitted")+" · "+(accepted?"accepted":"rejected")+" · priority "+priority+" · session "+(string.IsNullOrEmpty(sessionId)?"none":sessionId);RefreshDiagnostics("Event: "+lastEvent);}
         private void RefreshDiagnostics(string stage)
@@ -177,10 +179,11 @@ namespace ThinkingSpace.Companion
                 "\nListener: "+(listener!=null&&listener.isActiveAndEnabled)+" · global pause/volume: "+AudioListener.pause+"/"+AudioListener.volume.ToString("0.00")+
                 "\nPlay/isPlaying/time/pitch: "+(playbackStartedAt>0)+"/"+(source!=null&&source.isPlaying)+"/"+lastObservedTime.ToString("0.00")+"/"+(source!=null?source.pitch.ToString("0.00"):"n/a")+" · output "+AudioSettings.outputSampleRate+"Hz"+
                 "\nEndpoint: "+lastEndpoint+" · cache: "+lastCacheStatus+"\nTTS HTTP/MIME/bytes: "+lastHttpStatus+"/"+lastMime+"/"+lastByteCount+" · decode: "+lastDecode+
+                "\nVoice model/fallback/cache: "+lastVoiceModel+"/"+lastVoiceFallback+"/"+lastServerCacheIdentity+" · request/decode/first-play: "+lastTtsSeconds.ToString("0.000")+"/"+lastDecodeSeconds.ToString("0.000")+"/"+lastTimeToPlaybackSeconds.ToString("0.000")+"s"+
                 "\nLifecycle: "+lastLifecycle+" · resume "+lastResumeDuration.ToString("0.00")+"s · max frame "+maxFrameMilliseconds.ToString("0.0")+"ms · network "+activeNetworkRequests+" · mic starts "+(recorder!=null?recorder.StartAttemptCount:0)+
                 "\nInstances voice/workflow/recorder: "+directorInstances+"/"+workflowInstances+"/"+recorderInstances+" · exception: "+lastLifecycleException+
                 "\nStop/cancel: "+lastStopReason+" · failure: "+lastFailure;
         }
-        [Serializable] private sealed class VoiceWireRequest{public string request_id,session_id,text;}
+        [Serializable] private sealed class VoiceWireRequest{public string request_id,session_id,text,delivery;}
     }
 }

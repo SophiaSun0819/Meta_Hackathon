@@ -155,6 +155,8 @@ namespace ThinkingSpace.UI
         private float trackingLossTimer;
         private float fistReleaseTimer;
         private float closeFistTimer;
+        private bool closeFistRearmRequired;
+        private OpeningHand closeFistRearmOwner;
         private float palmPoseLossTimer;
         private float lastButtonActivation = -10f;
         private string leftPalmDiagnostic = "Not evaluated";
@@ -185,6 +187,8 @@ namespace ThinkingSpace.UI
         private bool palmButtonSelected;
         private bool menuHovered;
         private bool menuSelected;
+        private readonly HashSet<int?> externalHoveredPointers = new HashSet<int?>();
+        private readonly HashSet<int?> externalSelectedPointers = new HashSet<int?>();
         private bool debugButtonPosePlaced;
         private Vector3 debugButtonFrozenPosition;
         private Quaternion debugButtonFrozenRotation;
@@ -207,6 +211,7 @@ namespace ThinkingSpace.UI
         public BrainstormSessionStore SessionStore => sessionStore;
         public ThinkingSpacePreferencesStore PreferencesStore => preferencesStore;
         public bool IsMenuVisible => menuCanvas != null && menuCanvas.gameObject.activeSelf;
+        public bool IsPalmMenuButtonVisible => palmButtonVisualVisible;
         public string DevelopmentMenuStatus => "Menu visible=" + IsMenuVisible
             + " · owner=" + menuOwner + " · button=" + buttonState + "/" + buttonOwner
             + " · gate=" + toggleGate.ConsumedGeneration + "/" + toggleGate.InteractionGeneration
@@ -313,11 +318,29 @@ namespace ThinkingSpace.UI
             HandlePalmCalibration(left, true);
             HandlePalmCalibration(right, false);
 
+            if (closeFistRearmRequired)
+            {
+                SetPalmButtonVisible(false);
+                OpenPalmHand rearmHand = closeFistRearmOwner == OpeningHand.Left ? left : right;
+                bool stillFist = closeFistRearmOwner != OpeningHand.None
+                    && IsFist(rearmHand, closeFistRearmOwner == OpeningHand.Left);
+                if (stillFist) fistReleaseTimer = 0f;
+                else fistReleaseTimer += Time.unscaledDeltaTime;
+                if (fistReleaseTimer >= fistReleaseDebounce)
+                {
+                    closeFistRearmRequired = false;
+                    closeFistRearmOwner = OpeningHand.None;
+                    fistReleaseTimer = 0f;
+                }
+                return;
+            }
+
             if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
             {
                 // The authored full menu is now the sole menu surface while open.
                 // Ownership is retained so CloseMenuInternal can enforce rearm.
                 SetPalmButtonVisible(false);
+                UpdateMenuCloseFist();
                 return;
             }
 
@@ -571,6 +594,41 @@ namespace ThinkingSpace.UI
             hand.classification = accepted ? "FIST" : hand.openRecognized ? "OPEN" : "NEUTRAL";
             return accepted;
         }
+
+        private void UpdateMenuCloseFist()
+        {
+            bool ownerTracked = IsOwnerTracked(menuOwner);
+            bool menuInteraction = menuHovered || menuSelected;
+            bool otherInteraction = externalHoveredPointers.Count > 0
+                || externalSelectedPointers.Count > 0;
+            OpenPalmHand owner = menuOwner == OpeningHand.Left ? left
+                : menuOwner == OpeningHand.Right ? right : null;
+            bool ownerFist = owner != null && ownerTracked
+                && IsFist(owner, menuOwner == OpeningHand.Left);
+            if (!CanAccumulateMenuClose(IsMenuVisible, ownerTracked, ownerFist,
+                menuInteraction, otherInteraction, microphoneMenuLock))
+            {
+                closeFistTimer = 0f;
+                if (menuInteraction || otherInteraction)
+                    interactionDiagnostic = "Fist close paused while UI is being used";
+                return;
+            }
+            closeFistTimer += Time.unscaledDeltaTime;
+            interactionDiagnostic = "Owner fist close " + closeFistTimer.ToString("0.00")
+                + "/" + closeFistHoldDuration.ToString("0.00") + "s";
+            if (closeFistTimer < closeFistHoldDuration) return;
+            OpeningHand closingOwner = menuOwner;
+            lastPointerClick = "Menu closed by owner fist at " + Time.unscaledTime.ToString("0.00") + "s";
+            CloseMenuInternal(closingOwner);
+            closeFistRearmRequired = true;
+            closeFistRearmOwner = closingOwner;
+            fistReleaseTimer = closeFistTimer = 0f;
+        }
+
+        public static bool CanAccumulateMenuClose(bool menuVisible, bool ownerTracked,
+            bool ownerFist, bool menuInteraction, bool otherModalInteraction, bool recordingLocked)
+            => menuVisible && ownerTracked && ownerFist && !menuInteraction
+                && !otherModalInteraction && !recordingLocked;
 
         private static void UpdateFingerRatios(OpenPalmHand hand)
         {
@@ -1202,6 +1260,7 @@ namespace ThinkingSpace.UI
                 lastPointerHover = GetInteractionObjectName(args.Hovered);
                 RecordInteractionEvent("META HOVER", args.PointerId, args.Hovered);
             }
+            else externalHoveredPointers.Add(args.PointerId);
         }
 
         private void HandleCanvasUnhover(PointableCanvasEventArgs args)
@@ -1221,6 +1280,7 @@ namespace ThinkingSpace.UI
                 lastPointerHover = "Released hover: " + GetInteractionObjectName(args.Hovered);
                 RecordInteractionEvent("META UNHOVER", args.PointerId, args.Hovered);
             }
+            else externalHoveredPointers.Remove(args.PointerId);
         }
 
         private void HandleCanvasPress(PointableCanvasEventArgs args)
@@ -1241,6 +1301,7 @@ namespace ThinkingSpace.UI
                 lastPointerPress = GetInteractionObjectName(args.Hovered);
                 RecordInteractionEvent("META SELECT", args.PointerId, args.Hovered);
             }
+            else externalSelectedPointers.Add(args.PointerId);
         }
 
         private void HandleCanvasRelease(PointableCanvasEventArgs args)
@@ -1261,6 +1322,7 @@ namespace ThinkingSpace.UI
                 lastPointerPress = "Released: " + GetInteractionObjectName(args.Hovered);
                 RecordInteractionEvent("META UNSELECT", args.PointerId, args.Hovered);
             }
+            else externalSelectedPointers.Remove(args.PointerId);
         }
 
         private void HandleUnityPointerDown(PointerEventData args)
@@ -1580,6 +1642,9 @@ namespace ThinkingSpace.UI
             menuHovered = menuSelected = menuPoseLocked = false;
             menuVisibilityDiagnostic = "Menu closed";
             menuOwner = OpeningHand.None;
+            closeFistTimer = 0f;
+            externalHoveredPointers.Clear();
+            externalSelectedPointers.Clear();
             ResetPalmButton(true);
             rearmOwner = ownerToRelease;
         }
@@ -1869,6 +1934,8 @@ namespace ThinkingSpace.UI
 
         private void OnDestroy()
         {
+            externalHoveredPointers.Clear();
+            externalSelectedPointers.Clear();
             if (palmMenuButtonView != null)
             {
                 palmMenuButtonView.UnityPointerDown -= HandleUnityPointerDown;
