@@ -46,12 +46,17 @@ MAX_INTENT_REQUESTS_PER_MINUTE = int(os.getenv("MAX_INTENT_REQUESTS_PER_MINUTE",
 CLARIFICATION_EXPIRATION_SECONDS = float(os.getenv("CLARIFICATION_EXPIRATION_SECONDS", "120"))
 MAX_PENDING_CLARIFICATIONS = int(os.getenv("MAX_PENDING_CLARIFICATIONS", "128"))
 ELEVENLABS_TTS_MODEL = os.getenv("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5")
+ELEVENLABS_TTS_FALLBACK_MODEL = os.getenv("ELEVENLABS_TTS_FALLBACK_MODEL", "eleven_flash_v2_5")
+ELEVENLABS_EXPRESSIVE_TTS = os.getenv("ELEVENLABS_EXPRESSIVE_TTS", "false").lower() in {
+    "1", "true", "yes", "on"}
 ELEVENLABS_TIMEOUT_SECONDS = float(os.getenv("ELEVENLABS_TIMEOUT_SECONDS", "20"))
 MAX_TTS_TEXT_CHARACTERS = int(os.getenv("MAX_TTS_TEXT_CHARACTERS", "2000"))
 MAX_TTS_REQUEST_BYTES = int(os.getenv("MAX_TTS_REQUEST_BYTES", str(16 * 1024)))
 MAX_TTS_REQUESTS_PER_MINUTE = int(os.getenv("MAX_TTS_REQUESTS_PER_MINUTE", "20"))
 MAX_TTS_AUDIO_BYTES = int(os.getenv("MAX_TTS_AUDIO_BYTES", str(5 * 1024 * 1024)))
 CONVERSATION_MODEL = os.getenv("OPENAI_CONVERSATION_MODEL", INTENT_MODEL)
+ORBY_HUMOR_ENABLED = os.getenv("ORBY_HUMOR_ENABLED", "true").lower() in {
+    "1", "true", "yes", "on"}
 CONVERSATION_TIMEOUT_SECONDS = float(os.getenv("OPENAI_CONVERSATION_TIMEOUT_SECONDS", "35"))
 MAX_CONVERSATION_REQUEST_BYTES = int(os.getenv("MAX_CONVERSATION_REQUEST_BYTES", str(48 * 1024)))
 MAX_CONVERSATION_REQUESTS_PER_MINUTE = int(os.getenv("MAX_CONVERSATION_REQUESTS_PER_MINUTE", "30"))
@@ -89,9 +94,12 @@ voice_provider = ElevenLabsVoiceProvider(
     model=ELEVENLABS_TTS_MODEL,
     timeout_seconds=ELEVENLABS_TIMEOUT_SECONDS,
     maximum_audio_bytes=MAX_TTS_AUDIO_BYTES,
+    fallback_model=ELEVENLABS_TTS_FALLBACK_MODEL,
+    expressive_enabled=ELEVENLABS_EXPRESSIVE_TTS,
 )
 conversation_orchestrator = ConversationOrchestrator(
-    OpenAIConversationProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=CONVERSATION_MODEL),
+    OpenAIConversationProvider(api_key=os.getenv("OPENAI_API_KEY", ""), model=CONVERSATION_MODEL,
+                               humor_enabled=ORBY_HUMOR_ENABLED),
     timeout_seconds=CONVERSATION_TIMEOUT_SECONDS,
     clarification_store=ConversationClarificationStore(
         expiration_seconds=CLARIFICATION_EXPIRATION_SECONDS, maximum_attempts=2,
@@ -230,8 +238,10 @@ async def synthesize_voice(request: Request,
         return make_voice_error(409, "Another voice request is already active for this session.", voice_request)
     completed = False
     try:
-        audio = await asyncio.wait_for(
-            voice_provider.synthesize(voice_request.text), timeout=ELEVENLABS_TIMEOUT_SECONDS)
+        synthesis = await asyncio.wait_for(
+            voice_provider.synthesize(voice_request.text, voice_request.delivery),
+            timeout=ELEVENLABS_TIMEOUT_SECONDS)
+        audio = synthesis.audio
         if len(audio) > MAX_TTS_AUDIO_BYTES:
             raise VoiceAudioTooLarge("Generated voice audio exceeded the configured limit.")
         if not is_probable_mp3(audio):
@@ -242,6 +252,9 @@ async def synthesize_voice(request: Request,
             "X-ThinkingSpace-Request-ID": voice_request.request_id,
             "X-ThinkingSpace-Session-ID": quote(voice_request.session_id, safe="._:-"),
             "X-ThinkingSpace-Audio-Format": "mp3_44100_128",
+            "X-ThinkingSpace-Voice-Model": synthesis.model,
+            "X-ThinkingSpace-Voice-Fallback": "true" if synthesis.used_fallback else "false",
+            "X-ThinkingSpace-Voice-Cache": voice_provider.cache_identity,
         })
     except VoiceConfigurationError:
         return make_voice_error(503, "Voice service is not configured.", voice_request)
