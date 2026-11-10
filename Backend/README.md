@@ -707,3 +707,34 @@ Code: `mock_providers.py`.
   reads them.
 
 Tests: `tests/test_mock_and_fallback.py`.
+
+## Molecule combine
+
+Combined ideas are drawn as molecules: a larger center idea bonded to two or three smaller source ideas.
+The backend supports this through `/api/ideas/process` with `action: "combine_ideas"`.
+
+| Situation | Request | Response |
+| --- | --- | --- |
+| Two bubbles fuse into a new molecule | `related_idea_ids`: the 2 sources; no `center_idea_id` | New `idea_id`; `updated_existing_idea: false` |
+| A third bubble joins | `related_idea_ids`: all 3 sources; `center_idea_id`: the existing center | Same `idea_id` as the center; `updated_existing_idea: true` |
+| A bubble is pulled out, 2 remain | `related_idea_ids`: the 2 remaining sources; `center_idea_id`: the center | Same `idea_id`; revised content |
+
+Rules enforced by the backend:
+
+- At most 3 sources (`MAX_COMBINE_SOURCES`). A fourth is rejected with HTTP 422 before any model call.
+  By voice, combining more than three ideas returns a clarification asking which ones to use.
+- `center_idea_id` is only valid for `combine_ideas`, cannot also be a source, and must be present in
+  `existing_ideas` so the model can revise its current title and summary.
+- When updating, the model receives the center as `current_combined_idea` and revises it instead of starting over.
+
+Rules left to Unity, because the backend does not store ideas:
+
+- Previous versions of the center (for undo). The backend returns only the new content.
+- Two molecules cannot combine, and bonded sources are locked from expand or challenge.
+- When only one source would remain, dissolve the molecule without calling the backend.
+- A gesture combine has no speech, so send a short fixed `raw_transcript` such as `"Combine these ideas."`.
+- Sending `center_idea_id` needs its own wire request class in `AIRequestJsonSerializer`, so an absent value is
+  omitted rather than serialized as `""`. `ValidateIdeaResponse` and the session store must also accept an
+  updated existing ID instead of treating it as a new idea.
+
+Tests: `tests/test_molecule_combine.py`.
