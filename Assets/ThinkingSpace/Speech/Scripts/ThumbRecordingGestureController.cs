@@ -79,6 +79,7 @@ namespace ThinkingSpace.Speech
         [SerializeField, Min(0f)] private float cooldownDuration = 0.35f;
         [SerializeField, Min(0f)] private float neutralRearmDuration = 0.2f;
         [SerializeField, Min(0f)] private float gestureBreakGracePeriod = 0.12f;
+        [SerializeField, Min(0f)] private float bubbleManipulationReleaseCooldown = 0.35f;
 
         [Header("Thumb Orientation")]
         [SerializeField, Range(5f, 89f)] private float thumbDirectionTolerance = 75f;
@@ -101,12 +102,19 @@ namespace ThinkingSpace.Speech
         private bool debugIndicatorWasActive;
         private RecordingHand appliedRecordingHand;
         private bool sessionActive;
+        private bool bubbleManipulationSuppressed;
+        private float bubbleSuppressionUntil;
 
         public string DiagnosticText { get; private set; }
         public RecordingHand SelectedRecordingHand => selectedRecordingHand;
         public RecordingMode CurrentRecordingMode => recordingMode;
         public bool SessionActive => sessionActive;
         public bool IsMicrophoneRecording => microphoneRecorder != null && microphoneRecorder.IsRecording;
+        public bool IsBubbleManipulationSuppressingGestures => ShouldSuppressRecordingGesture(
+            bubbleManipulationSuppressed, Time.unscaledTime, bubbleSuppressionUntil);
+        public static bool ShouldSuppressRecordingGesture(bool manipulationActive,
+            float currentTime, float suppressionUntil)
+            => manipulationActive || currentTime < suppressionUntil;
         public bool ShouldLockMenuForRecording => recordingMode == RecordingMode.Manual
             ? IsMicrophoneRecording
             : conversationalListening != null
@@ -170,6 +178,12 @@ namespace ThinkingSpace.Speech
                 if (diagnosticsPanel != null)
                     diagnosticsPanel.SetData(DiagnosticText, centerEyeAnchor);
                 return;
+            }
+
+            if (IsBubbleManipulationSuppressingGestures)
+            {
+                CancelPendingGestureForExternalSuppression();
+                selectedGesture = ThumbGesture.None;
             }
 
             if (recordingMode == RecordingMode.Manual && microphoneRecorder != null
@@ -277,6 +291,40 @@ namespace ThinkingSpace.Speech
         }
 
         public ConversationalListeningController ConversationalListening => conversationalListening;
+
+        public void SetBubbleManipulationSuppressed(bool suppressed, float releaseCooldown = -1f)
+        {
+            if (suppressed)
+            {
+                bubbleManipulationSuppressed = true;
+                bubbleSuppressionUntil = 0f;
+                CancelPendingGestureForExternalSuppression();
+                return;
+            }
+            if (!bubbleManipulationSuppressed) return;
+            bubbleManipulationSuppressed = false;
+            bubbleSuppressionUntil = Time.unscaledTime + (releaseCooldown >= 0f
+                ? releaseCooldown : bubbleManipulationReleaseCooldown);
+            CancelPendingGestureForExternalSuppression();
+        }
+
+        public void ClearBubbleManipulationSuppression()
+        {
+            bubbleManipulationSuppressed = false;
+            bubbleSuppressionUntil = 0f;
+            CancelPendingGestureForExternalSuppression();
+        }
+
+        private void CancelPendingGestureForExternalSuppression()
+        {
+            if (state == RecordingGestureState.StartGesturePending)
+                state = RecordingGestureState.Idle;
+            else if (state == RecordingGestureState.StopGesturePending)
+                state = IsMicrophoneRecording ? RecordingGestureState.Recording : RecordingGestureState.Idle;
+            pendingHand = null;
+            pendingTimer = pendingBreakTimer = neutralTimer = 0f;
+            gestureArmed = false;
+        }
 
         public void SetSessionActive(bool active)
         {
@@ -664,6 +712,8 @@ namespace ThinkingSpace.Speech
             text.Append("Recording mode: ").AppendLine(recordingMode.ToString());
             HandBinding selected = SelectedHandBinding;
             text.Append("Selected recording hand: ").AppendLine(selectedRecordingHand.ToString());
+            text.Append("Bubble manipulation suppression: ")
+                .AppendLine(IsBubbleManipulationSuppressingGestures ? "active" : "inactive");
             text.Append("Selected-hand gesture: ").AppendLine(selected.detectedGesture.ToString());
             text.Append("Unselected hand: ")
                 .Append(selectedRecordingHand == RecordingHand.Left ? "Right" : "Left")
@@ -695,6 +745,8 @@ namespace ThinkingSpace.Speech
         private string GetStateGateDiagnostic()
         {
             if (!sessionActive) return "Blocked: no active brainstorming session";
+            if (IsBubbleManipulationSuppressingGestures)
+                return "Blocked by bubble manipulation or release cooldown";
             if (microphoneRecorder != null && microphoneRecorder.State == MicrophoneRecordingState.RequestingPermission)
                 return "Waiting for microphone permission";
             if (microphoneRecorder != null && microphoneRecorder.State == MicrophoneRecordingState.Starting)

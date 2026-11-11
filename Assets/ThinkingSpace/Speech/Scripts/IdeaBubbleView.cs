@@ -5,12 +5,14 @@ using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
 using Oculus.Interaction;
+using Oculus.Interaction.Input;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
     public enum IdeaBubbleVisualState { Idle, Hovered, Open, Selected, Unavailable }
+    public enum BubbleInteractionHand { Unknown, Left, Right }
 
     [DisallowMultipleComponent]
     public sealed class IdeaBubbleView : MonoBehaviour
@@ -20,9 +22,18 @@ namespace ThinkingSpace.Speech
         private Material material;
         private Material outlineMaterial;
         private Renderer outlineRenderer;
+        private GameObject boundsRoot;
+        private readonly Transform[] boundsCorners = new Transform[8];
+        private readonly Renderer[] boundsCornerRenderers = new Renderer[8];
+        private Material boundsLineMaterial, boundsCornerMaterial, boundsAccentMaterial;
         private Button selectionButton;
-        private Action<BrainstormIdeaRecord> selected;
-        private bool hovered, isOpen, isSelected, isMoving, interactionAvailable = true;
+        private Action<BrainstormIdeaRecord, BubbleInteractionHand, int> selected;
+        private Canvas interactionCanvas;
+        private int lastMetaSelectionFrame = -10;
+        private int lastMetaPointerId = int.MinValue;
+        private float lastMetaSelectionTime = float.NegativeInfinity;
+        private bool receivedMetaSelection;
+        private bool hovered, directProximity, isOpen, isSelected, isMoving, interactionAvailable = true;
         private float visualDiameter;
 
         public string IdeaId => idea != null ? idea.IdeaId : string.Empty;
@@ -31,10 +42,12 @@ namespace ThinkingSpace.Speech
         public bool IsOpen => isOpen;
         public bool IsInteractionAvailable => interactionAvailable;
         public IdeaBubbleVisualState VisualState => ResolveVisualState(
-            interactionAvailable, hovered, isOpen, isSelected);
+            interactionAvailable, hovered || directProximity, isOpen, isSelected);
+        public float WorldRadius => visualDiameter * 0.5f * Mathf.Max(Mathf.Abs(transform.lossyScale.x),
+            Mathf.Max(Mathf.Abs(transform.lossyScale.y), Mathf.Abs(transform.lossyScale.z)));
 
         public void Initialize(BrainstormIdeaRecord value, float diameter,
-            Action<BrainstormIdeaRecord> onSelected)
+            Action<BrainstormIdeaRecord, BubbleInteractionHand, int> onSelected)
         {
             idea = value;
             selected = onSelected;
@@ -42,7 +55,18 @@ namespace ThinkingSpace.Speech
             name = "Idea Bubble · " + value.IdeaId;
             BuildSphere(diameter, CategoryColor(value.Category));
             BuildSelectionCanvas(diameter);
+            BuildBoundingBox(diameter);
             RefreshVisualState();
+        }
+
+        private void OnEnable()
+        {
+            PointableCanvasModule.WhenSelected += HandleMetaSelection;
+        }
+
+        private void OnDisable()
+        {
+            PointableCanvasModule.WhenSelected -= HandleMetaSelection;
         }
 
         public void SetInteractionAvailable(bool available)
@@ -76,6 +100,37 @@ namespace ThinkingSpace.Speech
             RefreshVisualState();
         }
 
+        public void SetDirectProximity(bool value)
+        {
+            directProximity = value && interactionAvailable;
+            RefreshVisualState();
+        }
+
+        public void SetBoundingBoxVisible(bool visible)
+        {
+            if (boundsRoot != null) boundsRoot.SetActive(visible && interactionAvailable);
+        }
+
+        public Vector3 GetBoundsCornerWorldPosition(int index)
+            => index >= 0 && index < boundsCorners.Length && boundsCorners[index] != null
+                ? boundsCorners[index].position : transform.position;
+
+        public void SetBoundsHandleState(int hoveredIndex, int acquiredIndex, int oppositeIndex,
+            bool highlightOppositeSide = false)
+        {
+            for (int i = 0; i < boundsCornerRenderers.Length; i++)
+                if (boundsCornerRenderers[i] != null)
+                    boundsCornerRenderers[i].sharedMaterial = i == acquiredIndex || i == oppositeIndex
+                        || (highlightOppositeSide && acquiredIndex >= 0
+                            && IsOppositeSide(acquiredIndex, i))
+                        ? boundsAccentMaterial : i == hoveredIndex ? boundsAccentMaterial : boundsCornerMaterial;
+        }
+
+        public static int OppositeCorner(int index) => index >= 0 && index < 8 ? index ^ 7 : -1;
+        public static bool IsOppositeSide(int firstIndex, int secondIndex)
+            => firstIndex >= 0 && firstIndex < 8 && secondIndex >= 0 && secondIndex < 8
+                && (firstIndex & 1) != (secondIndex & 1);
+
         internal void SetHovered(bool value)
         {
             value &= interactionAvailable;
@@ -104,6 +159,48 @@ namespace ThinkingSpace.Speech
             if (away.sqrMagnitude > 0.0001f)
                 billboard.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
             if (isMoving) RefreshVisualState();
+            float parentScale = Mathf.Max(0.001f, Mathf.Abs(transform.lossyScale.x));
+            billboard.localScale = Vector3.one * Mathf.Max(0.00065f, visualDiameter / 180f) / parentScale;
+        }
+
+        private void BuildBoundingBox(float diameter)
+        {
+            boundsRoot = new GameObject("Resize Bounding Box");
+            boundsRoot.transform.SetParent(transform, false);
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            boundsLineMaterial = new Material(shader) { color = new Color(.3f, .9f, 1f, .9f) };
+            boundsCornerMaterial = new Material(shader) { color = new Color(.18f, .65f, .82f, 1f) };
+            boundsAccentMaterial = new Material(shader) { color = new Color(1f, .72f, .16f, 1f) };
+            float half = diameter * .62f;
+            for (int i = 0; i < 8; i++)
+            {
+                GameObject corner = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                corner.name = "Resize Corner " + i;
+                corner.transform.SetParent(boundsRoot.transform, false);
+                corner.transform.localPosition = new Vector3((i & 1) == 0 ? -half : half,
+                    (i & 2) == 0 ? -half : half, (i & 4) == 0 ? -half : half);
+                corner.transform.localScale = Vector3.one * diameter * .12f;
+                Collider collider = corner.GetComponent<Collider>();
+                if (collider != null) Destroy(collider);
+                boundsCorners[i] = corner.transform;
+                boundsCornerRenderers[i] = corner.GetComponent<Renderer>();
+                boundsCornerRenderers[i].sharedMaterial = boundsCornerMaterial;
+            }
+            int[,] edges = { {0,1},{0,2},{0,4},{1,3},{1,5},{2,3},{2,6},{3,7},
+                {4,5},{4,6},{5,7},{6,7} };
+            for (int edge = 0; edge < 12; edge++)
+            {
+                GameObject lineObject = new GameObject("Resize Edge " + edge);
+                lineObject.transform.SetParent(boundsRoot.transform, false);
+                LineRenderer line = lineObject.AddComponent<LineRenderer>();
+                line.useWorldSpace = false; line.positionCount = 2;
+                line.startWidth = line.endWidth = diameter * .018f;
+                line.sharedMaterial = boundsLineMaterial;
+                line.shadowCastingMode = ShadowCastingMode.Off; line.receiveShadows = false;
+                line.SetPosition(0, boundsCorners[edges[edge,0]].localPosition);
+                line.SetPosition(1, boundsCorners[edges[edge,1]].localPosition);
+            }
+            boundsRoot.SetActive(false);
         }
 
         private void BuildSphere(float diameter, Color color)
@@ -143,6 +240,7 @@ namespace ThinkingSpace.Speech
             root.transform.SetParent(transform, false);
             billboard = root.transform;
             Canvas canvas = root.AddComponent<Canvas>();
+            interactionCanvas = canvas;
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.overrideSorting = true;
             canvas.sortingOrder = 45;
@@ -200,7 +298,62 @@ namespace ThinkingSpace.Speech
 
         private void HandleSelection()
         {
-            if (interactionAvailable) selected?.Invoke(idea);
+            // PointableCanvas emits its handed pointer event before Unity's Button callback.
+            // Ignore that duplicate callback, but retain an explicit unknown-owner fallback for
+            // non-Meta input so selection itself remains accessible in the Editor.
+            if (!interactionAvailable || receivedMetaSelection
+                || Time.frameCount - lastMetaSelectionFrame <= 1) return;
+            selected?.Invoke(idea, BubbleInteractionHand.Unknown, int.MinValue);
+        }
+
+        private void HandleMetaSelection(PointableCanvasEventArgs args)
+        {
+            if (!interactionAvailable || interactionCanvas == null || args == null
+                || args.Canvas != interactionCanvas || !args.PointerId.HasValue) return;
+            int pointerId = args.PointerId.Value;
+            float now = Time.unscaledTime;
+            if (pointerId == lastMetaPointerId && now - lastMetaSelectionTime < 0.2f) return;
+            lastMetaPointerId = pointerId;
+            lastMetaSelectionTime = now;
+            lastMetaSelectionFrame = Time.frameCount;
+            receivedMetaSelection = true;
+            selected?.Invoke(idea, ResolvePointerHand(pointerId), pointerId);
+        }
+
+        internal static BubbleInteractionHand ResolvePointerHand(int pointerId)
+        {
+            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                MonoBehaviour behaviour = behaviours[i];
+                if (!(behaviour is IInteractorView interactor) || interactor.Identifier != pointerId) continue;
+                Transform current = behaviour.transform;
+                while (current != null)
+                {
+                    MonoBehaviour[] components = current.GetComponents<MonoBehaviour>();
+                    for (int componentIndex = 0; componentIndex < components.Length; componentIndex++)
+                    {
+                        if (!(components[componentIndex] is IHand hand)) continue;
+                        try
+                        {
+                            if (hand.Handedness == Handedness.Left) return BubbleInteractionHand.Left;
+                            if (hand.Handedness == Handedness.Right) return BubbleInteractionHand.Right;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            return BubbleInteractionHand.Unknown;
+                        }
+                        catch (NullReferenceException)
+                        {
+                            return BubbleInteractionHand.Unknown;
+                        }
+                    }
+                    current = current.parent;
+                }
+                return BubbleInteractionHand.Unknown;
+            }
+            return BubbleInteractionHand.Unknown;
         }
 
         private void RefreshVisualState()
@@ -242,6 +395,9 @@ namespace ThinkingSpace.Speech
         {
             if (material != null) Destroy(material);
             if (outlineMaterial != null) Destroy(outlineMaterial);
+            if (boundsLineMaterial != null) Destroy(boundsLineMaterial);
+            if (boundsCornerMaterial != null) Destroy(boundsCornerMaterial);
+            if (boundsAccentMaterial != null) Destroy(boundsAccentMaterial);
         }
     }
 
