@@ -44,6 +44,7 @@ namespace ThinkingSpace.Speech
             "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", RegexOptions.CultureInvariant);
 
         public bool IsBlockingRecording => activeOperation != null || awaitingDismissal;
+        public bool IsBlockingLocalBubbleInteraction => awaitingDismissal;
         public event Action<bool> AutomaticTurnCompleted;
         public void SetAutomaticConversationMode(bool enabled) => automaticConversationMode = enabled;
         public bool HasPendingClarification => !string.IsNullOrEmpty(pendingClarificationId);
