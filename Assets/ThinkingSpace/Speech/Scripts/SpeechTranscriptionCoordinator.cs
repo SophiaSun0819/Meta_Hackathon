@@ -53,6 +53,13 @@ namespace ThinkingSpace.Speech
         public bool CanBeginRecording => sessionActive && State == RecordingWorkflowState.Ready
             && !voicePlaybackBlocked && !tutorialRecordingBlocked
             && (aiWorkflow == null || !aiWorkflow.IsBlockingRecording);
+        public bool IsBlockingLocalBubbleInteraction => ShouldBlockLocalBubbleInteraction(State,
+            automaticConversationTurn, activeRequest != null);
+        public static bool ShouldBlockLocalBubbleInteraction(RecordingWorkflowState state,
+            bool automaticConversation, bool transcriptionRequestActive)
+            => state != RecordingWorkflowState.Ready
+                && !(automaticConversation && !transcriptionRequestActive
+                    && state == RecordingWorkflowState.Transcribing);
         public bool IsSessionActive => sessionActive;
         public void SetVoicePlaybackBlocked(bool value) => voicePlaybackBlocked = value;
         public void SetTutorialRecordingBlocked(bool value) => tutorialRecordingBlocked = value;

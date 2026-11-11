@@ -17,6 +17,8 @@ namespace ThinkingSpace.Speech
         private BrainstormIdeaRecord idea;
         private Transform headset, bubble;
         private Canvas canvas;
+        private RayInteractable rayInteractable;
+        private PokeInteractable pokeInteractable;
         private TMP_Text heading, body, pageLabel;
         private Button previous, next, close, delete, cancelDelete, confirmDelete, playSummary, returnBubble;
         private readonly List<string> pages = new List<string>();
@@ -28,12 +30,13 @@ namespace ThinkingSpace.Speech
         private Action<string> returnRequested;
         private string summaryRequestId;
         private int page, slot;
-        private bool hovered, pressed, confirmingDelete, returnAvailable;
+        private bool hovered, pressed, confirmingDelete, returnAvailable, movementHidden;
         private Vector3 stablePosition;
         private Quaternion stableRotation;
         public string IdeaId => idea != null ? idea.IdeaId : string.Empty;
         public int SlotIndex => slot;
         public bool IsInteracting => hovered || pressed;
+        public bool IsMovementHidden => movementHidden;
 
         public void Configure(BrainstormIdeaRecord value, Transform bubbleTransform, Transform headsetTransform,
             int panelSlot, Action<IdeaDetailsPanel> onClosed, Action<IdeaDetailsPanel> onFocused,
@@ -47,7 +50,13 @@ namespace ThinkingSpace.Speech
             returnRequested=onReturnBubble;
         }
 
-        public void FocusPanel() { if (canvas != null) { canvas.gameObject.SetActive(true); canvas.sortingOrder=80+slot; focused?.Invoke(this); } }
+        public void FocusPanel()
+        {
+            if (canvas == null) return;
+            if (!movementHidden) canvas.gameObject.SetActive(true);
+            canvas.sortingOrder=80+slot;
+            focused?.Invoke(this);
+        }
         private void ShowDetails()
         {
             confirmingDelete=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?"Idea Details":idea.Title;
@@ -81,6 +90,27 @@ namespace ThinkingSpace.Speech
         {
             returnAvailable = available;
             if (returnBubble != null) returnBubble.gameObject.SetActive(available && !confirmingDelete);
+        }
+
+        public void SetMovementHidden(bool hidden)
+        {
+            movementHidden = hidden;
+            hovered = pressed = false;
+            if (rayInteractable != null) rayInteractable.enabled = !hidden;
+            if (pokeInteractable != null) pokeInteractable.enabled = !hidden;
+            if (canvas != null)
+            {
+                canvas.enabled = !hidden;
+                canvas.gameObject.SetActive(!hidden);
+            }
+        }
+
+        public void RelocateAfterBubbleMovement(IReadOnlyList<Vector3> occupiedPositions)
+        {
+            if (bubble == null) return;
+            PlaceImmediately();
+            NudgeToAvoid(occupiedPositions);
+            SetMovementHidden(false);
         }
         private void ClosePanel()=>closed?.Invoke(this);
 
@@ -169,8 +199,8 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane=gameObject.AddComponent<PlaneSurface>();plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward,false);
             BoundsClipper clipper=gameObject.AddComponent<BoundsClipper>();clipper.Size=new Vector3(600,400,.01f);
             ClippedPlaneSurface clipped=gameObject.AddComponent<ClippedPlaneSurface>();clipped.InjectAllClippedPlaneSurface(plane,new List<IBoundsClipper>{clipper});
-            RayInteractable ray=gameObject.AddComponent<RayInteractable>();ray.InjectAllRayInteractable(clipped);ray.InjectOptionalPointableElement(pointable);
-            PokeInteractable poke=gameObject.AddComponent<PokeInteractable>();poke.InjectAllPokeInteractable(clipped);poke.InjectOptionalPointableElement(pointable);
+            rayInteractable=gameObject.AddComponent<RayInteractable>();rayInteractable.InjectAllRayInteractable(clipped);rayInteractable.InjectOptionalPointableElement(pointable);
+            pokeInteractable=gameObject.AddComponent<PokeInteractable>();pokeInteractable.InjectAllPokeInteractable(clipped);pokeInteractable.InjectOptionalPointableElement(pointable);
             heading=Text("Heading",rect,36,FontStyles.Bold,TextAlignmentOptions.Center,new Vector2(.06f,.82f),new Vector2(.94f,.96f));
             body=Text("Body",rect,26,FontStyles.Normal,TextAlignmentOptions.TopLeft,new Vector2(.07f,.30f),new Vector2(.93f,.79f));body.textWrappingMode=TextWrappingModes.Normal;body.overflowMode=TextOverflowModes.Ellipsis;
             previous=Button("Previous",rect,new Vector2(.05f,.19f),new Vector2(.27f,.27f));previous.onClick.AddListener(()=>{page=Mathf.Max(0,page-1);Refresh();});
