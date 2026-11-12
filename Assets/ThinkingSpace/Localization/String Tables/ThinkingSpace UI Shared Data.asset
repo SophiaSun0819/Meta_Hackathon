@@ -1,0 +1,632 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b11a58205ec3474ca216360e9fa74a8, type: 3}
+  m_Name: ThinkingSpace UI Shared Data
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.SharedTableData
+  m_TableCollectionName: ThinkingSpace UI
+  m_TableCollectionNameGuidString: fa71fe5253595014e93e9a7396400639
+  m_Entries:
+  - m_Id: 905007104
+    m_Key: app.brainstorm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 938561536
+    m_Key: menu.sessions.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755840
+    m_Key: menu.sessions.empty
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755841
+    m_Key: menu.session.start
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755842
+    m_Key: menu.session.import
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755843
+    m_Key: menu.session.export
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755844
+    m_Key: menu.session.end
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755845
+    m_Key: menu.session.format
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755846
+    m_Key: menu.voice_commands
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755847
+    m_Key: menu.hand_gestures
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755848
+    m_Key: menu.challenge
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755849
+    m_Key: menu.expand
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755850
+    m_Key: menu.connect
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755851
+    m_Key: menu.whiteboard
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755852
+    m_Key: menu.help.voice
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755853
+    m_Key: menu.help.gestures
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755854
+    m_Key: common.close_menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755855
+    m_Key: common.back
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755856
+    m_Key: common.previous
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755857
+    m_Key: common.next
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755858
+    m_Key: common.page_format
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755859
+    m_Key: common.delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755860
+    m_Key: common.cancel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755861
+    m_Key: common.menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755862
+    m_Key: settings.recording_hand
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755863
+    m_Key: settings.left
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755864
+    m_Key: settings.right
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755865
+    m_Key: settings.recording.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755866
+    m_Key: settings.conversational
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755867
+    m_Key: settings.manual
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755868
+    m_Key: settings.subtitles_on
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755869
+    m_Key: settings.subtitles_off
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755870
+    m_Key: settings.edit_name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755871
+    m_Key: settings.replay_tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755872
+    m_Key: settings.wrist.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755873
+    m_Key: settings.wrist.left
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755874
+    m_Key: settings.wrist.right
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755875
+    m_Key: settings.seconds_format
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755876
+    m_Key: session.delete.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755877
+    m_Key: session.delete.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755878
+    m_Key: session.delete.confirm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755879
+    m_Key: transfer.busy
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755880
+    m_Key: transfer.choose_import
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755881
+    m_Key: transfer.picker_unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755882
+    m_Key: transfer.picker_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755883
+    m_Key: transfer.invalid_result
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755884
+    m_Key: transfer.stage_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755885
+    m_Key: transfer.choose_export
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755886
+    m_Key: transfer.export_unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755887
+    m_Key: transfer.export_picker_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755888
+    m_Key: error.session_delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755889
+    m_Key: error.transfer_busy
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805888413696
+    m_Key: settings.interface_language
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162432
+    m_Key: language.english
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162433
+    m_Key: language.spanish
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162434
+    m_Key: language.french
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418156134400
+    m_Key: settings.decrease_silence
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418189688832
+    m_Key: settings.increase_silence
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909399556096
+    m_Key: common.close
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110528
+    m_Key: common.yes
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110529
+    m_Key: common.no
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110530
+    m_Key: common.retry
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110531
+    m_Key: common.confirm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110532
+    m_Key: language.mandarin
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110533
+    m_Key: language.hindi
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110534
+    m_Key: settings.language.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110535
+    m_Key: settings.conversation_mode
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110536
+    m_Key: settings.language.auto
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110537
+    m_Key: settings.language.specific
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110538
+    m_Key: settings.voice_profile
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110539
+    m_Key: settings.voice.auto
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110540
+    m_Key: language.confirm.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110541
+    m_Key: language.confirm.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110542
+    m_Key: language.unsupported_ui
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110543
+    m_Key: recording.complete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110544
+    m_Key: recording.play
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110545
+    m_Key: recording.stop
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110546
+    m_Key: recording.discard
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110547
+    m_Key: recording.rerecord
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110548
+    m_Key: recording.send
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110549
+    m_Key: recording.send_orby
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110550
+    m_Key: transcript.transcribing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110551
+    m_Key: transcript.complete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110552
+    m_Key: transcript.failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110553
+    m_Key: transcript.back
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110554
+    m_Key: idea.play_summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110555
+    m_Key: idea.stop_summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110556
+    m_Key: idea.return
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110557
+    m_Key: idea.delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110558
+    m_Key: idea.confirm_delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110559
+    m_Key: idea.delete_question
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110560
+    m_Key: ai.response
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110561
+    m_Key: ai.clarification
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110562
+    m_Key: ai.record_answer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110563
+    m_Key: state.idle
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110564
+    m_Key: state.listening
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110565
+    m_Key: state.thinking
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110566
+    m_Key: state.speaking
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110567
+    m_Key: state.reviewing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110568
+    m_Key: state.error
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110569
+    m_Key: hud.mic_on
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110570
+    m_Key: hud.mic_off
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110571
+    m_Key: hud.mic_idle
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110572
+    m_Key: hud.speech_detected
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110573
+    m_Key: hud.finishing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110574
+    m_Key: state.paused
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110575
+    m_Key: onboarding.name_prompt
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110576
+    m_Key: onboarding.skip_name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110577
+    m_Key: onboarding.skip_tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110578
+    m_Key: onboarding.space
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110579
+    m_Key: tutorial.open.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110580
+    m_Key: tutorial.open.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110581
+    m_Key: tutorial.session.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110582
+    m_Key: tutorial.session.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110583
+    m_Key: tutorial.listen.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110584
+    m_Key: tutorial.listen.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110585
+    m_Key: tutorial.stop.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110586
+    m_Key: tutorial.stop.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110587
+    m_Key: tutorial.ideas.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110588
+    m_Key: tutorial.ideas.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226720501760
+    m_Key: idea.details
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056192
+    m_Key: idea.summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056193
+    m_Key: idea.category
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056194
+    m_Key: idea.color
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056195
+    m_Key: idea.color_title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056196
+    m_Key: idea.delete_body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056197
+    m_Key: idea.delete_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056198
+    m_Key: idea.color_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056199
+    m_Key: recording.total
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056200
+    m_Key: recording.elapsed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056201
+    m_Key: orby.status
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056202
+    m_Key: orby.finishing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056203
+    m_Key: subtitle.timing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056204
+    m_Key: ai.request_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056205
+    m_Key: ai.clarification_ended
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056206
+    m_Key: ai.invalid_response
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056207
+    m_Key: ai.idea_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056208
+    m_Key: ai.idea_save_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056209
+    m_Key: ai.visual_unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056210
+    m_Key: ai.voice_unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665427922944
+    m_Key: gesture.hold_fist
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477376
+    m_Key: recording.active
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477377
+    m_Key: color.category
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477378
+    m_Key: color.blue
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477379
+    m_Key: color.cyan
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477380
+    m_Key: color.green
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477381
+    m_Key: color.yellow
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477382
+    m_Key: color.orange
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477383
+    m_Key: color.red
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477384
+    m_Key: color.pink
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477385
+    m_Key: color.purple
+    m_Metadata:
+      m_Items: []
+  m_Metadata:
+    m_Items: []
+  m_KeyGenerator:
+    rid: 8957962302558044163
+  references:
+    version: 2
+    RefIds:
+    - rid: 8957962302558044163
+      type: {class: DistributedUIDGenerator, ns: UnityEngine.Localization.Tables, asm: Unity.Localization}
+      data:
+        m_CustomEpoch: 1794465454804

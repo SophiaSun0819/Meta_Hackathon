@@ -1,0 +1,634 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9620f8c34305754d8cc9a7e49e852d9, type: 3}
+  m_Name: ThinkingSpace UI_en
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.StringTable
+  m_LocaleId:
+    m_Code: en
+  m_SharedData: {fileID: 11400000, guid: fa71fe5253595014e93e9a7396400639, type: 2}
+  m_Metadata:
+    m_Items: []
+  m_TableData:
+  - m_Id: 905007104
+    m_Localized: Brainstorm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 938561536
+    m_Localized: Brainstorming Sessions
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755840
+    m_Localized: No sessions yet
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755841
+    m_Localized: Start New Session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755842
+    m_Localized: Import Session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755843
+    m_Localized: Export Session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755844
+    m_Localized: End Session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755845
+    m_Localized: Session {0}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755846
+    m_Localized: Voice Commands
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755847
+    m_Localized: Hand Gestures
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755848
+    m_Localized: Challenge My Idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755849
+    m_Localized: Expand My Idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755850
+    m_Localized: Connect My Ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755851
+    m_Localized: Spawn Whiteboard
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755852
+    m_Localized: Voice command reference will be added with speech recognition.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755853
+    m_Localized: Gesture reference will be expanded as interactions are finalized.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755854
+    m_Localized: Close Menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755855
+    m_Localized: Back
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755856
+    m_Localized: Previous
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755857
+    m_Localized: Next
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755858
+    m_Localized: Page {0} / {1}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755859
+    m_Localized: Delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755860
+    m_Localized: Cancel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755861
+    m_Localized: Menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755862
+    m_Localized: Recording Hand
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755863
+    m_Localized: Left
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755864
+    m_Localized: Right
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755865
+    m_Localized: Recording Settings
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755866
+    m_Localized: Conversational
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755867
+    m_Localized: Manual
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755868
+    m_Localized: Subtitles On
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755869
+    m_Localized: Subtitles Off
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755870
+    m_Localized: Edit Name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755871
+    m_Localized: Replay Tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755872
+    m_Localized: Wrist Menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755873
+    m_Localized: 'Watch: Left'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755874
+    m_Localized: 'Watch: Right'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755875
+    m_Localized: '{0} seconds'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755876
+    m_Localized: Delete Session {0}?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755877
+    m_Localized: Its ideas and conversation history will be removed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755878
+    m_Localized: Delete Session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755879
+    m_Localized: Another document operation is already open.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755880
+    m_Localized: Choose a Thinking Space JSON session to import.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755881
+    m_Localized: Quest document picker is unavailable on this device; no file was
+      accessed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755882
+    m_Localized: Quest document picker could not start; no file was accessed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755883
+    m_Localized: Document picker returned an invalid result.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755884
+    m_Localized: Selected import could not be staged safely.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755885
+    m_Localized: Choose where to save {0}.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755886
+    m_Localized: 'Quest document picker is unavailable. The app-owned export remains
+      at:
+
+      {0}'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755887
+    m_Localized: Quest document picker could not start. The app-owned export was
+      preserved.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755888
+    m_Localized: Session deletion failed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755889
+    m_Localized: Another session transfer is already running.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805888413696
+    m_Localized: Interface Language
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162432
+    m_Localized: English
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162433
+    m_Localized: Spanish
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162434
+    m_Localized: French
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418156134400
+    m_Localized: "\u2212 0.5s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418189688832
+    m_Localized: + 0.5s
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909399556096
+    m_Localized: Close
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110528
+    m_Localized: Yes
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110529
+    m_Localized: No
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110530
+    m_Localized: Retry
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110531
+    m_Localized: Confirm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110532
+    m_Localized: Mandarin
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110533
+    m_Localized: Hindi
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110534
+    m_Localized: Language Settings
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110535
+    m_Localized: Conversation Language
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110536
+    m_Localized: Automatic
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110537
+    m_Localized: Specific Language
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110538
+    m_Localized: Orby Voice
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110539
+    m_Localized: Automatic Voice
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110540
+    m_Localized: Change Interface Language?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110541
+    m_Localized: Change the interface to {0}?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110542
+    m_Localized: That language is available for conversation, but its interface translation
+      is not ready.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110543
+    m_Localized: Recording Complete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110544
+    m_Localized: Play Recording
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110545
+    m_Localized: Stop Playback
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110546
+    m_Localized: Discard
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110547
+    m_Localized: Rerecord
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110548
+    m_Localized: Send to AI
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110549
+    m_Localized: Send to Orby
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110550
+    m_Localized: Transcribing...
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110551
+    m_Localized: Transcription Complete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110552
+    m_Localized: Transcription Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110553
+    m_Localized: Back to Recording
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110554
+    m_Localized: Play Summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110555
+    m_Localized: Stop Summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110556
+    m_Localized: Return
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110557
+    m_Localized: Delete Idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110558
+    m_Localized: Confirm Delete
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110559
+    m_Localized: Delete Idea?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110560
+    m_Localized: AI Response
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110561
+    m_Localized: Orby Needs Clarification
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110562
+    m_Localized: Record Answer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110563
+    m_Localized: Idle
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110564
+    m_Localized: Listening
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110565
+    m_Localized: Thinking
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110566
+    m_Localized: Speaking
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110567
+    m_Localized: Reviewing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110568
+    m_Localized: Error
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110569
+    m_Localized: Mic On
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110570
+    m_Localized: Mic Off
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110571
+    m_Localized: "Mic On \xB7 Idle"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110572
+    m_Localized: Speech Detected
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110573
+    m_Localized: Finishing Thought
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110574
+    m_Localized: Paused
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110575
+    m_Localized: What should Orby call you?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110576
+    m_Localized: Skip Name
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110577
+    m_Localized: Skip Tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110578
+    m_Localized: Space
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110579
+    m_Localized: Open the menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110580
+    m_Localized: Close a fist, then open the same palm upward.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110581
+    m_Localized: Start a session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110582
+    m_Localized: Choose Start New Session before recording ideas.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110583
+    m_Localized: Start listening
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110584
+    m_Localized: Hold a thumbs-up with the selected recording hand.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110585
+    m_Localized: Stop listening
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110586
+    m_Localized: Hold a thumbs-down to finish the recording.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110587
+    m_Localized: Explore ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110588
+    m_Localized: Use Meta pinch and poke interactions to work with idea bubbles.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226720501760
+    m_Localized: Idea Details
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056192
+    m_Localized: Summary
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056193
+    m_Localized: Category
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056194
+    m_Localized: Color
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056195
+    m_Localized: "Bubble Color \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056196
+    m_Localized: "Delete \u201C{0}\u201D? References to it will be removed. Derived
+      ideas are preserved."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056197
+    m_Localized: Delete Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056198
+    m_Localized: Color Change Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056199
+    m_Localized: Total  {0}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056200
+    m_Localized: '{0} elapsed     -{1} remaining'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056201
+    m_Localized: "Orby \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056202
+    m_Localized: "Orby \xB7 Finishing thought\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056203
+    m_Localized: "Approximate timing \xB7 {0}/{1}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056204
+    m_Localized: AI Request Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056205
+    m_Localized: Clarification Ended
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056206
+    m_Localized: Invalid AI Response
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056207
+    m_Localized: Idea Processing Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056208
+    m_Localized: Idea Save Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056209
+    m_Localized: Idea Visual Unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056210
+    m_Localized: Voice Unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665427922944
+    m_Localized: Hold Fist
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477376
+    m_Localized: "\u25CF Recording"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477377
+    m_Localized: Category
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477378
+    m_Localized: Blue
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477379
+    m_Localized: Cyan
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477380
+    m_Localized: Green
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477381
+    m_Localized: Yellow
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477382
+    m_Localized: Orange
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477383
+    m_Localized: Red
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477384
+    m_Localized: Pink
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477385
+    m_Localized: Purple
+    m_Metadata:
+      m_Items: []
+  references:
+    version: 2
+    RefIds: []

@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -34,7 +35,7 @@ namespace ThinkingSpace.Speech
         {
             play = onPlay; send = onSend; discard = onDiscard; rerecord = onRerecord;
             recordingDuration = Mathf.Max(0f, duration);
-            durationText.text = "Total  " + FormatDuration(recordingDuration);
+            durationText.text = ThinkingSpaceLocalizationController.Get("recording.total",FormatDuration(recordingDuration));
             SetPlaybackProgress(0f, recordingDuration);
             SetExportStatus(string.Empty);
             SetPlaying(false);
@@ -55,7 +56,8 @@ namespace ThinkingSpace.Speech
 
         public void SetPlaying(bool value)
         {
-            if (playLabel != null) playLabel.text = value ? "Stop Playback" : "Play Recording";
+            if (playLabel != null) playLabel.text = ThinkingSpaceLocalizationController.Get(
+                value ? "recording.stop" : "recording.play");
         }
 
         public void SetPlaybackProgress(float elapsed, float total)
@@ -66,8 +68,8 @@ namespace ThinkingSpace.Speech
             if (playbackProgressFill != null)
                 playbackProgressFill.fillAmount = recordingDuration > 0f ? current / recordingDuration : 0f;
             if (playbackTimeText != null)
-                playbackTimeText.text = FormatDuration(current) + " elapsed     -" + FormatDuration(remaining) + " remaining";
-            if (durationText != null) durationText.text = "Total  " + FormatDuration(recordingDuration);
+                playbackTimeText.text = ThinkingSpaceLocalizationController.Get("recording.elapsed",FormatDuration(current),FormatDuration(remaining));
+            if (durationText != null) durationText.text = ThinkingSpaceLocalizationController.Get("recording.total",FormatDuration(recordingDuration));
         }
 
         public void SetExportStatus(string message)
@@ -178,6 +180,7 @@ namespace ThinkingSpace.Speech
             discardButton.onClick.AddListener(() => discard?.Invoke());
             rerecordButton.onClick.AddListener(() => rerecord?.Invoke());
             exportButton.onClick.AddListener(() => export?.Invoke());
+            ThinkingSpaceLocalizationController.LocalizeKnownText(root);
         }
 
         private static Button CreateButton(string label, Transform parent, Vector2 min, Vector2 max, out TMP_Text text)

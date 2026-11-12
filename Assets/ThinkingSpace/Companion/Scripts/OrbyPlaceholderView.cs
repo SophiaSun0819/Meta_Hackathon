@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Companion
 {
@@ -184,7 +185,7 @@ namespace ThinkingSpace.Companion
             silenceCountdown = isSilenceCountdown;
             silenceProgress = Mathf.Clamp01(remainingNormalized);
             if (label != null && isSilenceCountdown)
-                label.text = "Orby · Finishing thought…";
+                label.text = ThinkingSpaceLocalizationController.Get("orby.finishing");
         }
         private void HandleStateChanged(OrbyConversationState previous, OrbyConversationState next) => ApplyState(next);
         private void ApplyState(OrbyConversationState state)
@@ -192,7 +193,8 @@ namespace ThinkingSpace.Companion
             currentState = state;
             if (state != OrbyConversationState.SpeechActive)
             { liveAudioLevel = 0f; silenceCountdown = false; }
-            if (label != null) label.text = "Orby · " + state;
+            if (label != null) label.text = ThinkingSpaceLocalizationController.Get(
+                "orby.status",ThinkingSpaceLocalizationController.Get("state."+state.ToString().ToLowerInvariant()));
             if (modelAdapter != null)
                 modelAdapter.ApplyExpression(OrbyModelVisualAdapter.FromConversationState(state));
             if (material == null) return;

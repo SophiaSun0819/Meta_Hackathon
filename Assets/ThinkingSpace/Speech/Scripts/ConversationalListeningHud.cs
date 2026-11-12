@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -54,7 +55,8 @@ namespace ThinkingSpace.Speech
             listeningVisible = enabled;
             initializedMode = true;
             canvas.gameObject.SetActive(true);
-            if (showNotification) ShowNotification(enabled ? "Mic On" : "Mic Off");
+            if (showNotification) ShowNotification(ThinkingSpaceLocalizationController.Get(
+                enabled ? "hud.mic_on" : "hud.mic_off"));
             if (!enabled) SetStatus(MicrophoneStatusDisplayState.MicOff, 0f, 0f, 0f);
         }
 
@@ -63,13 +65,14 @@ namespace ThinkingSpace.Speech
         {
             if (canvas == null) Build();
             if (!canvas.gameObject.activeSelf) canvas.gameObject.SetActive(true);
-            string status = state == MicrophoneStatusDisplayState.MicOff ? "Mic Off"
-                : state == MicrophoneStatusDisplayState.Idle ? "Mic On · Idle"
-                : state == MicrophoneStatusDisplayState.SpeechDetected ? "Speech Detected"
-                : state == MicrophoneStatusDisplayState.FinishingThought ? "Finishing Thought"
-                : state == MicrophoneStatusDisplayState.Thinking ? "Thinking"
-                : state == MicrophoneStatusDisplayState.Speaking ? "Speaking"
-                : "Paused";
+            string key = state == MicrophoneStatusDisplayState.MicOff ? "hud.mic_off"
+                : state == MicrophoneStatusDisplayState.Idle ? "hud.mic_idle"
+                : state == MicrophoneStatusDisplayState.SpeechDetected ? "hud.speech_detected"
+                : state == MicrophoneStatusDisplayState.FinishingThought ? "hud.finishing"
+                : state == MicrophoneStatusDisplayState.Thinking ? "state.thinking"
+                : state == MicrophoneStatusDisplayState.Speaking ? "state.speaking"
+                : "state.paused";
+            string status = ThinkingSpaceLocalizationController.Get(key);
             statusText.text = status;
             statusText.color = state == MicrophoneStatusDisplayState.MicOff
                 ? new Color(1f, 0.35f, 0.35f) : Color.white;

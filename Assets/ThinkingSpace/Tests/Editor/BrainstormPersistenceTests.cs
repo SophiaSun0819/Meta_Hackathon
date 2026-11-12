@@ -287,9 +287,9 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(BrainstormMenuView.IsImportOnMainPage(1),Is.False);
             Assert.That(BrainstormMenuView.IsExportOnSessionPage(0),Is.True);
             Assert.That(BrainstormMenuView.IsExportOnSessionPage(1),Is.False);
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(3));
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(3),Is.EqualTo(3));
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(4),Is.EqualTo(4));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(4));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(3),Is.EqualTo(4));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(4),Is.EqualTo(5));
         }
 
         [Test]

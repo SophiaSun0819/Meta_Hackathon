@@ -23,6 +23,7 @@ namespace ThinkingSpace.Speech
         private bool sessionActive, awaitingDismissal;
         private bool automaticConversationMode;
         private string activeSessionId, pendingClarificationId, pendingOriginalTranscript, pendingAction;
+        private string resolvedResponseLanguage, resolvedVoiceProfileId;
         private string[] pendingCandidateIds = Array.Empty<string>();
         private float clarificationExpiresAt;
 
@@ -207,6 +208,9 @@ namespace ThinkingSpace.Speech
             ConversationProcessResponse response = null;
             AIBackendResult<ConversationProcessResponse> result = null;
             AIIdeaContext[] availableIdeas = BuildIdeaContexts(session);
+            ConversationContextPayload conversationContext = BuildConversationContext(session,
+                availableIdeas, requestId, menuController?.PreferencesStore?.Data?.PreferredName);
+            ApplyLanguagePreferences(conversationContext, menuController?.PreferencesStore?.Data);
             var request = new ConversationProcessRequest
             {
                 request_id = requestId,
@@ -215,8 +219,7 @@ namespace ThinkingSpace.Speech
                 cleaned_transcript = null,
                 transcript_source = "raw",
                 available_ideas = availableIdeas,
-                context = BuildConversationContext(session, availableIdeas, requestId,
-                    menuController?.PreferencesStore?.Data?.PreferredName),
+                context = conversationContext,
                 clarification_id = followUp ? pendingClarificationId : null
             };
             yield return client.ProcessConversation(request, value => result = value);
@@ -226,8 +229,9 @@ namespace ThinkingSpace.Speech
             {
                 if (followUp) ClearClarification();
                 CurrentStage = "Intent request failed";
-                ShowError("AI Request Failed", result != null ? result.Error : "Intent routing returned no result.",
+                ShowError(L("ai.request_failed"), result != null ? result.Error : "Intent routing returned no result.",
                     () => SubmitApprovedTranscript(transcript));
+                SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"conversation_error_fallback");
                 yield break;
             }
             response = result.Response;
@@ -238,7 +242,7 @@ namespace ThinkingSpace.Speech
                     : response.error;
                 ClearClarification();
                 CurrentStage = "Clarification unavailable";
-                ShowError("Clarification Ended", message, null);
+                ShowError(L("ai.clarification_ended"), message, null);
                 yield break;
             }
             string validation = ValidateConversationResponse(response, requestId, activeSessionId,
@@ -248,7 +252,7 @@ namespace ThinkingSpace.Speech
             {
                 if (followUp) ClearClarification();
                 CurrentStage = "Intent validation failed";
-                ShowError("Invalid AI Response", validation, null);
+                ShowError(L("ai.invalid_response"), validation, null);
                 yield break;
             }
             Store.AppendConversation(activeSessionId, "orby", response.spoken_response,
@@ -258,6 +262,8 @@ namespace ThinkingSpace.Speech
             LastClarificationState = response.requires_confirmation
                 ? "Pending " + response.clarification_id : "None";
             LastSuccessfulStage = "Intent response validated";
+            resolvedResponseLanguage = NormalizeResolvedLanguage(response.response_language);
+            resolvedVoiceProfileId = NormalizeResolvedVoiceProfile(response.voice_profile_id);
 
             if (response.requires_confirmation || response.intent_category == "clarification_required")
             {
@@ -275,7 +281,7 @@ namespace ThinkingSpace.Speech
             {
                 CurrentStage = "Cancelled";
                 ClearClarification();
-                ShowMessage("Request Cancelled", response.spoken_response, "Close");
+                ShowMessage("Request Cancelled", response.spoken_response, L("common.close"));
                 ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded("action_cancelled",activeSessionId);
                 CompleteAutomaticTurn(true);
                 yield break;
@@ -322,7 +328,8 @@ namespace ThinkingSpace.Speech
             if (result == null || !result.Success)
             {
                 CurrentStage = "Idea request failed";
-                ShowError("Idea Processing Failed", result != null ? result.Error : "Idea processing returned no result.", null);
+                ShowError(L("ai.idea_failed"), result != null ? result.Error : "Idea processing returned no result.", null);
+                SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"idea_error_fallback");
                 yield break;
             }
             IdeaProcessResponse response = result.Response;
@@ -331,7 +338,7 @@ namespace ThinkingSpace.Speech
             if (!string.IsNullOrEmpty(validation))
             {
                 CurrentStage = "Idea validation failed";
-                ShowError("Invalid Idea Response", validation, null);
+                ShowError(L("ai.invalid_response"), validation, null);
                 yield break;
             }
             var record = new BrainstormIdeaRecord
@@ -346,11 +353,11 @@ namespace ThinkingSpace.Speech
             };
             if (!Store.TryAddIdea(activeSessionId, record))
             {
-                ShowError("Idea Save Failed", "The idea was returned but could not be saved to the active session.", null);
+                ShowError(L("ai.idea_save_failed"), "The idea was returned but could not be saved to the active session.", null);
                 yield break;
             }
             Store.AppendConversation(activeSessionId, "orby", response.spoken_response,
-                "idea_result", requestId);
+                response.source=="fallback"?"idea_fallback_result":"idea_result", requestId);
             LastSuccessfulStage = "Idea saved";
             CurrentStage = "Idea ready";
             ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.ReportEvent("idea_saved_ack_suppressed",false,false,
@@ -358,7 +365,7 @@ namespace ThinkingSpace.Speech
             bool spawned = bubbleManager != null && bubbleManager.ShowSavedIdea(record.IdeaId);
             LastSuccessfulStage = spawned ? "Idea saved and bubble spawned" : "Idea saved; bubble spawn failed";
             if (!spawned)
-                ShowError("Idea Visual Unavailable",
+                ShowError(L("ai.visual_unavailable"),
                     "The idea was saved, but its bubble could not be displayed. Reopening the session will retry restoration.", null);
             string ideaSpeech = BuildIdeaSpeechText(record);
             string voiceRequest = StartIdeaSummaryPlayback(record, success =>
@@ -376,7 +383,7 @@ namespace ThinkingSpace.Speech
             string text=BuildIdeaSpeechText(idea);
             return ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamicTracked(
                 text.Trim(),activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
-                completed,"idea_summary","happy");
+                completed,"idea_summary","happy",resolvedResponseLanguage,resolvedVoiceProfileId);
         }
         private void StopIdeaSummaryPlayback(string requestId)
             => ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.CancelSpeech(requestId);
@@ -395,18 +402,18 @@ namespace ThinkingSpace.Speech
                 string request = ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamicTracked(
                     question, activeSessionId, ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
                     success => CompleteAutomaticSpeech(success, question), "clarification_question",
-                    response.suggested_emotion);
+                    response.suggested_emotion,resolvedResponseLanguage,resolvedVoiceProfileId);
                 if (string.IsNullOrEmpty(request)) CompleteAutomaticSpeech(false, question);
                 return;
             }
             awaitingDismissal = true;
             SetOrby(OrbyConversationState.Reviewing);
-            responsePanel.Show("Orby Needs Clarification",
+            responsePanel.Show(L("ai.clarification"),
                 response.clarification_question ?? response.spoken_response,
-                "Record Answer", DismissForClarification, "Cancel", CancelClarification);
+                L("ai.record_answer"), DismissForClarification, L("common.cancel"), CancelClarification);
             ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.SpeakDynamic(question,activeSessionId,
                 ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,null,"clarification_question",
-                response.suggested_emotion);
+                response.suggested_emotion,resolvedResponseLanguage,resolvedVoiceProfileId);
         }
 
         private void DismissForClarification()
@@ -436,7 +443,7 @@ namespace ThinkingSpace.Speech
                     string request = director?.SpeakDynamicTracked(response.spoken_response,
                         activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,
                         success => CompleteAutomaticSpeech(success, response.spoken_response),"conversation_response",
-                        response.suggested_emotion);
+                        response.suggested_emotion,resolvedResponseLanguage,resolvedVoiceProfileId);
                     if (string.IsNullOrEmpty(request)) CompleteAutomaticSpeech(false, response.spoken_response);
                 }
                 else
@@ -447,10 +454,10 @@ namespace ThinkingSpace.Speech
                 }
                 return;
             }
-            ShowMessage("AI Response", response.spoken_response + parameters, "Close");
+            ShowMessage(L("ai.response"), response.spoken_response + parameters, L("common.close"));
             if(ShouldSpeakSemanticAction(response.proposed_action))director?.SpeakDynamic(response.spoken_response,
                 activeSessionId,ThinkingSpace.Companion.OrbyVoicePriority.AIResponse,null,"conversation_response",
-                response.suggested_emotion);
+                response.suggested_emotion,resolvedResponseLanguage,resolvedVoiceProfileId);
             else director?.ReportEvent("spatial_confirmation_suppressed_unexecuted",false,false,
                 ThinkingSpace.Companion.OrbyVoicePriority.Acknowledgement,activeSessionId);
         }
@@ -479,8 +486,8 @@ namespace ThinkingSpace.Speech
                 return;
             }
             awaitingDismissal = true;
-            responsePanel.Show(title, message + DevelopmentDiagnosticSuffix(), retry != null ? "Retry" : "Close",
-                retry != null ? retry : DismissResponse, retry != null ? "Close" : null,
+            responsePanel.Show(title, message + DevelopmentDiagnosticSuffix(), retry != null ? L("common.retry") : L("common.close"),
+                retry != null ? retry : DismissResponse, retry != null ? L("common.close") : null,
                 retry != null ? DismissResponse : null);
             ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded(
                 title.IndexOf("network",StringComparison.OrdinalIgnoreCase)>=0?"error_network":"error_general",activeSessionId);
@@ -498,9 +505,9 @@ namespace ThinkingSpace.Speech
             if (!playbackSucceeded)
             {
                 CurrentStage = "Response completed; voice unavailable";
-                responsePanel.Show("Voice Unavailable",
+                responsePanel.Show(L("ai.voice_unavailable"),
                     "Orby's response is available as text:\n\n" + (fallbackText ?? string.Empty),
-                    "Close", responsePanel.Hide, null, null);
+                    L("common.close"), responsePanel.Hide, null, null);
                 awaitingDismissal = false;
             }
             CompleteAutomaticTurn(true);
@@ -668,6 +675,30 @@ namespace ThinkingSpace.Speech
             return context;
         }
 
+        public static void ApplyLanguagePreferences(ConversationContextPayload context,
+            ThinkingSpacePreferencesData preferences)
+        {
+            if (context == null || preferences == null) return;
+            string mode = (preferences.ConversationLanguageMode ?? string.Empty).Trim().ToLowerInvariant();
+            string language = ThinkingSpacePreferencesStore.NormalizeConversationLanguage(
+                preferences.ConversationLanguageCode);
+            string profile = ThinkingSpacePreferencesStore.NormalizeVoiceProfile(preferences.VoiceProfileId);
+
+            // No reliable STT language metadata exists in the current final-WAV transcription path.
+            // Keep auto/automatic requests wire-compatible with the older backend by omitting every
+            // language field. Explicit mode is only sent after the multilingual backend is deployed.
+            if (mode != "explicit" || string.IsNullOrEmpty(language)) return;
+            context.response_language_mode = "explicit";
+            context.response_language = language;
+            context.voice_profile_id = string.IsNullOrEmpty(profile) ? "orby-auto" : profile;
+        }
+
+        public static string NormalizeResolvedLanguage(string value)
+            => ThinkingSpacePreferencesStore.NormalizeConversationLanguage(value);
+
+        public static string NormalizeResolvedVoiceProfile(string value)
+            => ThinkingSpacePreferencesStore.NormalizeVoiceProfile(value);
+
         private static string SanitizePreferredName(string value)
         {
             string name = (value ?? string.Empty).Trim();
@@ -736,6 +767,17 @@ namespace ThinkingSpace.Speech
                 && (response.should_create_idea || response.should_execute_action))
                 return "Conversational response contains an unsafe action flag.";
             if (response.parameters == null) return "Conversation parameters are missing.";
+            bool hasLanguage = !string.IsNullOrWhiteSpace(response.response_language);
+            bool hasProfile = !string.IsNullOrWhiteSpace(response.voice_profile_id);
+            if (hasLanguage != hasProfile) return "Conversation language metadata is incomplete.";
+            if (hasLanguage)
+            {
+                string language = NormalizeResolvedLanguage(response.response_language);
+                string profile = NormalizeResolvedVoiceProfile(response.voice_profile_id);
+                if (language == null || profile == null) return "Conversation language metadata is unsupported.";
+                if (!IsVoiceProfileCompatible(language, profile))
+                    return "Conversation language and voice profile do not match.";
+            }
             if ((!string.IsNullOrEmpty(response.parameters.scale)
                     && response.parameters.scale != "smaller" && response.parameters.scale != "larger"
                     && response.parameters.scale != "small" && response.parameters.scale != "medium"
@@ -756,6 +798,16 @@ namespace ThinkingSpace.Speech
             return string.Empty;
         }
 
+        public static bool IsVoiceProfileCompatible(string language,string profile)
+        {
+            if (profile == "orby-auto") return true;
+            return (language == "en" && profile == "orby-en")
+                || (language == "es" && profile == "orby-es")
+                || (language == "fr" && profile == "orby-fr")
+                || (language == "zh-CN" && profile == "orby-zh")
+                || (language == "hi-IN" && profile == "orby-hi");
+        }
+
         private static string ValidateIdeaResponse(IdeaProcessResponse response, string requestId,
             string sessionId, BrainstormSession session)
         {
@@ -774,6 +826,15 @@ namespace ThinkingSpace.Speech
 
         private static string NewRequestId(string prefix)
         { return prefix + "-" + Guid.NewGuid().ToString("N"); }
+        private static string L(string key,params object[] arguments)
+            =>ThinkingSpaceLocalizationController.Get(key,arguments);
+        private void SpeakFallbackIfAvailable(string text,string eventName)
+        {
+            if(string.IsNullOrWhiteSpace(text)||string.IsNullOrEmpty(activeSessionId))return;
+            OrbyVoiceDirector.Instance?.SpeakDynamic(text,activeSessionId,
+                OrbyVoicePriority.Acknowledgement,null,eventName,"concerned",
+                resolvedResponseLanguage,resolvedVoiceProfileId);
+        }
         private void OnDisable() => CancelAndClear();
     }
 }

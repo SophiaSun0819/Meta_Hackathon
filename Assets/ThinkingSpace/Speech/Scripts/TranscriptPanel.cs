@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -43,11 +44,11 @@ namespace ThinkingSpace.Speech
         public void ShowTranscribing(string recordingIdentifier, Action back)
         {
             Show();
-            heading.text = "Transcribing...";
+            heading.text = L("transcript.transcribing");
             SetPagedBody("Sending completed recording to the transcription service.\n\nRequest: " + recordingIdentifier);
             retryButton.gameObject.SetActive(false);
             closeAction = back;
-            closeLabel.text = "Back to Recording";
+            closeLabel.text = L("transcript.back");
             closeButton.gameObject.SetActive(back != null);
             closeButton.interactable = back != null;
         }
@@ -55,14 +56,14 @@ namespace ThinkingSpace.Speech
         public void ShowTranscript(string transcript, Action confirm, Action back)
         {
             Show();
-            heading.text = "Transcription Complete";
+            heading.text = L("transcript.complete");
             SetPagedBody(transcript);
             retryAction = confirm;
-            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Send to Orby";
+            retryButton.GetComponentInChildren<TMP_Text>(true).text = L("recording.send_orby");
             retryButton.gameObject.SetActive(confirm != null);
             retryButton.interactable = confirm != null;
             closeAction = back;
-            closeLabel.text = "Back to Recording";
+            closeLabel.text = L("transcript.back");
             closeButton.gameObject.SetActive(true);
             closeButton.interactable = true;
         }
@@ -70,14 +71,14 @@ namespace ThinkingSpace.Speech
         public void ShowError(string message, Action retry, Action back)
         {
             Show();
-            heading.text = "Transcription Failed";
+            heading.text = L("transcript.failed");
             SetPagedBody(message + "\n\nThe completed recording is still available in memory.");
             retryAction = retry;
-            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Retry";
+            retryButton.GetComponentInChildren<TMP_Text>(true).text = L("common.retry");
             closeAction = back;
             retryButton.gameObject.SetActive(retry != null);
             retryButton.interactable = retry != null;
-            closeLabel.text = "Back to Recording";
+            closeLabel.text = L("transcript.back");
             closeButton.gameObject.SetActive(back != null);
             closeButton.interactable = back != null;
         }
@@ -89,11 +90,11 @@ namespace ThinkingSpace.Speech
             heading.text = string.IsNullOrWhiteSpace(headingText) ? "Request Failed" : headingText;
             SetPagedBody(message + "\n\nThe completed recording is still available in memory.");
             retryAction = retry;
-            retryButton.GetComponentInChildren<TMP_Text>(true).text = "Retry";
+            retryButton.GetComponentInChildren<TMP_Text>(true).text = L("common.retry");
             retryButton.gameObject.SetActive(retry != null);
             retryButton.interactable = retry != null;
             closeAction = discard;
-            closeLabel.text = "Discard";
+            closeLabel.text = L("recording.discard");
             closeButton.gameObject.SetActive(discard != null);
             closeButton.interactable = discard != null;
         }
@@ -105,7 +106,7 @@ namespace ThinkingSpace.Speech
             SetPagedBody(message);
             retryButton.gameObject.SetActive(false);
             closeAction = closed;
-            closeLabel.text = "Close";
+            closeLabel.text = L("common.close");
             closeButton.gameObject.SetActive(closed != null);
             closeButton.interactable = closed != null;
         }
@@ -123,6 +124,8 @@ namespace ThinkingSpace.Speech
             canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
+
+        private static string L(string key)=>ThinkingSpaceLocalizationController.Get(key);
 
         private void SetPagedBody(string value)
         {
@@ -157,7 +160,8 @@ namespace ThinkingSpace.Speech
         private void RefreshPage()
         {
             if (body != null) body.text = pages.Count > 0 ? pages[currentPage] : string.Empty;
-            if (pageIndicator != null) pageIndicator.text = "Page " + (currentPage + 1) + " / " + Mathf.Max(1, pages.Count);
+            if (pageIndicator != null) pageIndicator.text = ThinkingSpaceLocalizationController.Get(
+                "common.page_format",currentPage+1,Mathf.Max(1,pages.Count));
             if (previousButton != null) previousButton.interactable = currentPage > 0;
             if (nextButton != null) nextButton.interactable = currentPage < pages.Count - 1;
         }

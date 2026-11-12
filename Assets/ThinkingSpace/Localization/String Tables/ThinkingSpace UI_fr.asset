@@ -1,0 +1,637 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9620f8c34305754d8cc9a7e49e852d9, type: 3}
+  m_Name: ThinkingSpace UI_fr
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.StringTable
+  m_LocaleId:
+    m_Code: fr
+  m_SharedData: {fileID: 11400000, guid: fa71fe5253595014e93e9a7396400639, type: 2}
+  m_Metadata:
+    m_Items: []
+  m_TableData:
+  - m_Id: 905007104
+    m_Localized: "Id\xE9ation"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 938561536
+    m_Localized: "Sessions d'id\xE9ation"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755840
+    m_Localized: Aucune session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755841
+    m_Localized: Nouvelle session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755842
+    m_Localized: Importer une session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755843
+    m_Localized: Exporter la session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755844
+    m_Localized: Terminer la session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755845
+    m_Localized: Session {0}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755846
+    m_Localized: Commandes vocales
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755847
+    m_Localized: Gestes de la main
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755848
+    m_Localized: "Remettre mon id\xE9e en question"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755849
+    m_Localized: "D\xE9velopper mon id\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755850
+    m_Localized: "Relier mes id\xE9es"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755851
+    m_Localized: "Cr\xE9er un tableau"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755852
+    m_Localized: "Le guide des commandes vocales sera ajout\xE9 avec la reconnaissance
+      vocale."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755853
+    m_Localized: "Le guide des gestes sera compl\xE9t\xE9 \xE0 mesure que les interactions
+      seront finalis\xE9es."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755854
+    m_Localized: Fermer le menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755855
+    m_Localized: Retour
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755856
+    m_Localized: "Pr\xE9c\xE9dent"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755857
+    m_Localized: Suivant
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755858
+    m_Localized: Page {0} / {1}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755859
+    m_Localized: Supprimer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755860
+    m_Localized: Annuler
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755861
+    m_Localized: Menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755862
+    m_Localized: Main d'enregistrement
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755863
+    m_Localized: Gauche
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755864
+    m_Localized: Droite
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755865
+    m_Localized: "Param\xE8tres d'enregistrement"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755866
+    m_Localized: Conversationnel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755867
+    m_Localized: Manuel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755868
+    m_Localized: "Sous-titres activ\xE9s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755869
+    m_Localized: "Sous-titres d\xE9sactiv\xE9s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755870
+    m_Localized: Modifier le nom
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755871
+    m_Localized: Revoir le tutoriel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755872
+    m_Localized: Menu au poignet
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755873
+    m_Localized: 'Montre : gauche'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755874
+    m_Localized: 'Montre : droite'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755875
+    m_Localized: '{0} secondes'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755876
+    m_Localized: Supprimer la session {0} ?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755877
+    m_Localized: "Ses id\xE9es et son historique de conversation seront supprim\xE9s."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755878
+    m_Localized: Supprimer la session
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755879
+    m_Localized: "Une autre op\xE9ration de document est d\xE9j\xE0 ouverte."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755880
+    m_Localized: "Choisissez une session JSON Thinking Space \xE0 importer."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755881
+    m_Localized: "Le s\xE9lecteur de documents Quest est indisponible ; aucun fichier
+      n'a \xE9t\xE9 consult\xE9."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755882
+    m_Localized: "Le s\xE9lecteur de documents Quest n'a pas pu d\xE9marrer ; aucun
+      fichier n'a \xE9t\xE9 consult\xE9."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755883
+    m_Localized: "Le s\xE9lecteur de documents a renvoy\xE9 un r\xE9sultat non valide."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755884
+    m_Localized: "L'importation s\xE9lectionn\xE9e n'a pas pu \xEAtre pr\xE9par\xE9e
+      en toute s\xE9curit\xE9."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755885
+    m_Localized: "Choisissez o\xF9 enregistrer {0}."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755886
+    m_Localized: "Le s\xE9lecteur de documents Quest est indisponible. L'exportation
+      de l'application reste dans :\n{0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755887
+    m_Localized: "Le s\xE9lecteur de documents Quest n'a pas pu d\xE9marrer. L'exportation
+      de l'application a \xE9t\xE9 conserv\xE9e."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755888
+    m_Localized: "La suppression de la session a \xE9chou\xE9."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755889
+    m_Localized: "Un autre transfert de session est d\xE9j\xE0 en cours."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805888413696
+    m_Localized: Langue de l'interface
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162432
+    m_Localized: Anglais
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162433
+    m_Localized: Espagnol
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162434
+    m_Localized: "Fran\xE7ais"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418156134400
+    m_Localized: "\u2212 0,5 s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418189688832
+    m_Localized: + 0,5 s
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909399556096
+    m_Localized: Fermer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110528
+    m_Localized: Oui
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110529
+    m_Localized: Non
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110530
+    m_Localized: "R\xE9essayer"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110531
+    m_Localized: Confirmer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110532
+    m_Localized: Mandarin
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110533
+    m_Localized: Hindi
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110534
+    m_Localized: "Param\xE8tres de langue"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110535
+    m_Localized: Langue de conversation
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110536
+    m_Localized: Automatique
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110537
+    m_Localized: "Langue sp\xE9cifique"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110538
+    m_Localized: Voix d'Orby
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110539
+    m_Localized: Voix automatique
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110540
+    m_Localized: Changer la langue de l'interface ?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110541
+    m_Localized: Changer l'interface en {0} ?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110542
+    m_Localized: Cette langue est disponible pour la conversation, mais son interface
+      n'est pas encore traduite.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110543
+    m_Localized: "Enregistrement termin\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110544
+    m_Localized: Lire l'enregistrement
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110545
+    m_Localized: "Arr\xEAter la lecture"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110546
+    m_Localized: Supprimer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110547
+    m_Localized: "R\xE9enregistrer"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110548
+    m_Localized: "Envoyer \xE0 l'IA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110549
+    m_Localized: "Envoyer \xE0 Orby"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110550
+    m_Localized: Transcription...
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110551
+    m_Localized: "Transcription termin\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110552
+    m_Localized: "\xC9chec de la transcription"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110553
+    m_Localized: "Retour \xE0 l'enregistrement"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110554
+    m_Localized: "Lire le r\xE9sum\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110555
+    m_Localized: "Arr\xEAter le r\xE9sum\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110556
+    m_Localized: Renvoyer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110557
+    m_Localized: "Supprimer l'id\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110558
+    m_Localized: Confirmer la suppression
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110559
+    m_Localized: "Supprimer l'id\xE9e ?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110560
+    m_Localized: "R\xE9ponse de l'IA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110561
+    m_Localized: "Orby a besoin d'une pr\xE9cision"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110562
+    m_Localized: "Enregistrer la r\xE9ponse"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110563
+    m_Localized: En attente
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110564
+    m_Localized: "\xC0 l'\xE9coute"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110565
+    m_Localized: "R\xE9flexion"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110566
+    m_Localized: Parle
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110567
+    m_Localized: "R\xE9vision"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110568
+    m_Localized: Erreur
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110569
+    m_Localized: "Micro activ\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110570
+    m_Localized: "Micro d\xE9sactiv\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110571
+    m_Localized: "Micro \xB7 En attente"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110572
+    m_Localized: "Parole d\xE9tect\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110573
+    m_Localized: "Fin de la pens\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110574
+    m_Localized: En pause
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110575
+    m_Localized: Comment Orby doit-elle vous appeler ?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110576
+    m_Localized: Ignorer le nom
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110577
+    m_Localized: Ignorer le tutoriel
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110578
+    m_Localized: Espace
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110579
+    m_Localized: Ouvrir le menu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110580
+    m_Localized: "Fermez le poing, puis ouvrez la m\xEAme paume vers le haut."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110581
+    m_Localized: "D\xE9marrer une session"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110582
+    m_Localized: "Choisissez Nouvelle session avant d'enregistrer des id\xE9es."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110583
+    m_Localized: "Activer l'\xE9coute"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110584
+    m_Localized: "Maintenez le pouce lev\xE9 avec la main d'enregistrement."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110585
+    m_Localized: "Arr\xEAter l'\xE9coute"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110586
+    m_Localized: "Maintenez le pouce baiss\xE9 pour terminer l'enregistrement."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110587
+    m_Localized: "Explorer les id\xE9es"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110588
+    m_Localized: Utilisez les interactions de pincement et de toucher Meta pour manipuler
+      les bulles.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226720501760
+    m_Localized: "D\xE9tails de l'id\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056192
+    m_Localized: "R\xE9sum\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056193
+    m_Localized: "Cat\xE9gorie"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056194
+    m_Localized: Couleur
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056195
+    m_Localized: "Couleur de bulle \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056196
+    m_Localized: "Supprimer \xAB {0} \xBB ? Ses r\xE9f\xE9rences seront retir\xE9es.
+      Les id\xE9es d\xE9riv\xE9es seront conserv\xE9es."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056197
+    m_Localized: "\xC9chec de la suppression"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056198
+    m_Localized: "\xC9chec du changement de couleur"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056199
+    m_Localized: Total  {0}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056200
+    m_Localized: "{0} \xE9coul\xE9     -{1} restant"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056201
+    m_Localized: "Orby \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056202
+    m_Localized: "Orby \xB7 Termine sa r\xE9flexion\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056203
+    m_Localized: "Dur\xE9e approximative \xB7 {0}/{1}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056204
+    m_Localized: "\xC9chec de la requ\xEAte IA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056205
+    m_Localized: "Clarification termin\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056206
+    m_Localized: "R\xE9ponse IA non valide"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056207
+    m_Localized: "\xC9chec du traitement de l'id\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056208
+    m_Localized: "\xC9chec de l'enregistrement de l'id\xE9e"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056209
+    m_Localized: "Visuel de l'id\xE9e indisponible"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056210
+    m_Localized: Voix indisponible
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665427922944
+    m_Localized: Maintenez le poing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477376
+    m_Localized: "\u25CF Enregistrement"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477377
+    m_Localized: "Cat\xE9gorie"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477378
+    m_Localized: Bleu
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477379
+    m_Localized: Cyan
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477380
+    m_Localized: Vert
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477381
+    m_Localized: Jaune
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477382
+    m_Localized: Orange
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477383
+    m_Localized: Rouge
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477384
+    m_Localized: Rose
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477385
+    m_Localized: Violet
+    m_Metadata:
+      m_Items: []
+  references:
+    version: 2
+    RefIds: []

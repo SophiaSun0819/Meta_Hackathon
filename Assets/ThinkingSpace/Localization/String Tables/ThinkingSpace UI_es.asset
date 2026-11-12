@@ -1,0 +1,635 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e9620f8c34305754d8cc9a7e49e852d9, type: 3}
+  m_Name: ThinkingSpace UI_es
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.StringTable
+  m_LocaleId:
+    m_Code: es
+  m_SharedData: {fileID: 11400000, guid: fa71fe5253595014e93e9a7396400639, type: 2}
+  m_Metadata:
+    m_Items: []
+  m_TableData:
+  - m_Id: 905007104
+    m_Localized: Ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 938561536
+    m_Localized: Sesiones de ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755840
+    m_Localized: "A\xFAn no hay sesiones"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755841
+    m_Localized: "Nueva sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755842
+    m_Localized: "Importar sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755843
+    m_Localized: "Exportar sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755844
+    m_Localized: "Finalizar sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755845
+    m_Localized: "Sesi\xF3n {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755846
+    m_Localized: Comandos de voz
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755847
+    m_Localized: Gestos de mano
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755848
+    m_Localized: Cuestionar mi idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755849
+    m_Localized: Ampliar mi idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755850
+    m_Localized: Conectar mis ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755851
+    m_Localized: Crear pizarra
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755852
+    m_Localized: "La gu\xEDa de comandos de voz se a\xF1adir\xE1 con el reconocimiento
+      de voz."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755853
+    m_Localized: "La gu\xEDa de gestos se ampliar\xE1 al finalizar las interacciones."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755854
+    m_Localized: "Cerrar men\xFA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755855
+    m_Localized: "Atr\xE1s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755856
+    m_Localized: Anterior
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755857
+    m_Localized: Siguiente
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755858
+    m_Localized: "P\xE1gina {0} / {1}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755859
+    m_Localized: Eliminar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755860
+    m_Localized: Cancelar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755861
+    m_Localized: "Men\xFA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755862
+    m_Localized: "Mano de grabaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755863
+    m_Localized: Izquierda
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755864
+    m_Localized: Derecha
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755865
+    m_Localized: "Ajustes de grabaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755866
+    m_Localized: Conversacional
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755867
+    m_Localized: Manual
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755868
+    m_Localized: "Subt\xEDtulos activados"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755869
+    m_Localized: "Subt\xEDtulos desactivados"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755870
+    m_Localized: Editar nombre
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755871
+    m_Localized: Repetir tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755872
+    m_Localized: "Men\xFA de mu\xF1eca"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755873
+    m_Localized: 'Reloj: izquierda'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755874
+    m_Localized: 'Reloj: derecha'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755875
+    m_Localized: '{0} segundos'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755876
+    m_Localized: "\xBFEliminar la sesi\xF3n {0}?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755877
+    m_Localized: "Se eliminar\xE1n sus ideas y el historial de conversaci\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755878
+    m_Localized: "Eliminar sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755879
+    m_Localized: "Ya hay otra operaci\xF3n de documento abierta."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755880
+    m_Localized: "Elige una sesi\xF3n JSON de Thinking Space para importar."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755881
+    m_Localized: "El selector de documentos de Quest no est\xE1 disponible; no se
+      accedi\xF3 a ning\xFAn archivo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755882
+    m_Localized: "No se pudo iniciar el selector de documentos de Quest; no se accedi\xF3
+      a ning\xFAn archivo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755883
+    m_Localized: "El selector de documentos devolvi\xF3 un resultado no v\xE1lido."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755884
+    m_Localized: "La importaci\xF3n seleccionada no se pudo preparar de forma segura."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755885
+    m_Localized: "Elige d\xF3nde guardar {0}."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755886
+    m_Localized: "El selector de documentos de Quest no est\xE1 disponible. La exportaci\xF3n
+      de la aplicaci\xF3n permanece en:\n{0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755887
+    m_Localized: "No se pudo iniciar el selector de documentos de Quest. Se conserv\xF3
+      la exportaci\xF3n de la aplicaci\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755888
+    m_Localized: "No se pudo eliminar la sesi\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 942755889
+    m_Localized: "Ya hay otra transferencia de sesi\xF3n en curso."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805888413696
+    m_Localized: Idioma de la interfaz
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162432
+    m_Localized: "Ingl\xE9s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162433
+    m_Localized: "Espa\xF1ol"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 805926162434
+    m_Localized: "Franc\xE9s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418156134400
+    m_Localized: "\u2212 0,5 s"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 1418189688832
+    m_Localized: + 0,5 s
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909399556096
+    m_Localized: Cerrar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110528
+    m_Localized: "S\xED"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110529
+    m_Localized: No
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110530
+    m_Localized: Reintentar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110531
+    m_Localized: Confirmar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110532
+    m_Localized: "Mandar\xEDn"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110533
+    m_Localized: Hindi
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110534
+    m_Localized: Ajustes de idioma
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110535
+    m_Localized: "Idioma de conversaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110536
+    m_Localized: "Autom\xE1tico"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110537
+    m_Localized: "Idioma espec\xEDfico"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110538
+    m_Localized: Voz de Orby
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110539
+    m_Localized: "Voz autom\xE1tica"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110540
+    m_Localized: "\xBFCambiar el idioma de la interfaz?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110541
+    m_Localized: "\xBFCambiar la interfaz a {0}?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110542
+    m_Localized: "Ese idioma est\xE1 disponible para conversar, pero la interfaz
+      a\xFAn no est\xE1 traducida."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110543
+    m_Localized: "Grabaci\xF3n completada"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110544
+    m_Localized: "Reproducir grabaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110545
+    m_Localized: "Detener reproducci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110546
+    m_Localized: Descartar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110547
+    m_Localized: Volver a grabar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110548
+    m_Localized: Enviar a la IA
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110549
+    m_Localized: Enviar a Orby
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110550
+    m_Localized: Transcribiendo...
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110551
+    m_Localized: "Transcripci\xF3n completada"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110552
+    m_Localized: "Error de transcripci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110553
+    m_Localized: "Volver a la grabaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110554
+    m_Localized: Reproducir resumen
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110555
+    m_Localized: Detener resumen
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110556
+    m_Localized: Devolver
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110557
+    m_Localized: Eliminar idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110558
+    m_Localized: "Confirmar eliminaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110559
+    m_Localized: "\xBFEliminar la idea?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110560
+    m_Localized: Respuesta de IA
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110561
+    m_Localized: "Orby necesita una aclaraci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110562
+    m_Localized: Grabar respuesta
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110563
+    m_Localized: En espera
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110564
+    m_Localized: Escuchando
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110565
+    m_Localized: Pensando
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110566
+    m_Localized: Hablando
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110567
+    m_Localized: Revisando
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110568
+    m_Localized: Error
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110569
+    m_Localized: "Micr\xF3fono activado"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110570
+    m_Localized: "Micr\xF3fono desactivado"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110571
+    m_Localized: "Micr\xF3fono \xB7 En espera"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110572
+    m_Localized: Voz detectada
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110573
+    m_Localized: Terminando idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110574
+    m_Localized: En pausa
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110575
+    m_Localized: "\xBFC\xF3mo quieres que te llame Orby?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110576
+    m_Localized: Omitir nombre
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110577
+    m_Localized: Omitir tutorial
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110578
+    m_Localized: Espacio
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110579
+    m_Localized: "Abrir el men\xFA"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110580
+    m_Localized: "Cierra el pu\xF1o y luego abre la misma palma hacia arriba."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110581
+    m_Localized: "Iniciar una sesi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110582
+    m_Localized: "Elige Nueva sesi\xF3n antes de grabar ideas."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110583
+    m_Localized: Activar la escucha
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110584
+    m_Localized: "Mant\xE9n el pulgar hacia arriba con la mano de grabaci\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110585
+    m_Localized: Detener la escucha
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110586
+    m_Localized: "Mant\xE9n el pulgar hacia abajo para terminar la grabaci\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110587
+    m_Localized: Explorar ideas
+    m_Metadata:
+      m_Items: []
+  - m_Id: 133909433110588
+    m_Localized: Usa los gestos de pinza y toque de Meta para interactuar con las
+      burbujas.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226720501760
+    m_Localized: Detalles de la idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056192
+    m_Localized: Resumen
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056193
+    m_Localized: "Categor\xEDa"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056194
+    m_Localized: Color
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056195
+    m_Localized: "Color de burbuja \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056196
+    m_Localized: "\xBFEliminar \xAB{0}\xBB? Se quitar\xE1n sus referencias. Las ideas
+      derivadas se conservar\xE1n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056197
+    m_Localized: Error al eliminar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056198
+    m_Localized: Error al cambiar el color
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056199
+    m_Localized: Total  {0}
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056200
+    m_Localized: '{0} transcurrido     -{1} restante'
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056201
+    m_Localized: "Orby \xB7 {0}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056202
+    m_Localized: "Orby \xB7 Terminando idea\u2026"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056203
+    m_Localized: "Tiempo aproximado \xB7 {0}/{1}"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056204
+    m_Localized: Error en la solicitud de IA
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056205
+    m_Localized: "Aclaraci\xF3n finalizada"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056206
+    m_Localized: "Respuesta de IA no v\xE1lida"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056207
+    m_Localized: Error al procesar la idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056208
+    m_Localized: Error al guardar la idea
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056209
+    m_Localized: Visual de idea no disponible
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144226754056210
+    m_Localized: Voz no disponible
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665427922944
+    m_Localized: "Mant\xE9n el pu\xF1o"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477376
+    m_Localized: "\u25CF Grabando"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477377
+    m_Localized: "Categor\xEDa"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477378
+    m_Localized: Azul
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477379
+    m_Localized: Cian
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477380
+    m_Localized: Verde
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477381
+    m_Localized: Amarillo
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477382
+    m_Localized: Naranja
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477383
+    m_Localized: Rojo
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477384
+    m_Localized: Rosa
+    m_Metadata:
+      m_Items: []
+  - m_Id: 144665461477385
+    m_Localized: Morado
+    m_Metadata:
+      m_Items: []
+  references:
+    version: 2
+    RefIds: []

@@ -24,12 +24,21 @@ namespace ThinkingSpace.UI
         public bool FirstReviewOptionsCompleted;
         public bool PersonalizedGreetingCompleted;
         public WristMenuHand WristMenuHand = WristMenuHand.Left;
+        public string InterfaceLanguageCode = ThinkingSpacePreferencesStore.DefaultInterfaceLanguageCode;
+        public string ConversationLanguageMode = ThinkingSpacePreferencesStore.DefaultConversationLanguageMode;
+        public string ConversationLanguageCode = string.Empty;
+        public string VoiceProfileId = ThinkingSpacePreferencesStore.DefaultVoiceProfileId;
     }
 
     public sealed class ThinkingSpacePreferencesStore
     {
-        public const int CurrentSchemaVersion = 4;
+        public const int CurrentSchemaVersion = 5;
         public const string FileName = "preferences-v1.json";
+        public const string DefaultInterfaceLanguageCode = "en";
+        public const string DefaultConversationLanguageMode = "auto";
+        public const string DefaultVoiceProfileId = "orby-auto";
+        public static readonly string[] SupportedConversationLanguages = { "en", "es", "fr", "zh-CN", "hi-IN" };
+        public static readonly string[] SupportedVoiceProfiles = { "orby-auto", "orby-en", "orby-es", "orby-fr", "orby-zh", "orby-hi" };
         public const float MinimumSilenceSeconds = 1f, MaximumSilenceSeconds = 10f, StepSeconds = 0.5f;
         private readonly string directory, path, backupPath;
         public ThinkingSpacePreferencesData Data { get; private set; } = new ThinkingSpacePreferencesData();
@@ -75,6 +84,79 @@ namespace ThinkingSpace.UI
         {
             if (!Enum.IsDefined(typeof(WristMenuHand), value)) return false;
             return Mutate(() => Data.WristMenuHand = value);
+        }
+        public bool SetInterfaceLanguage(string languageCode)
+        {
+            string normalized = NormalizeInterfaceLanguage(languageCode);
+            if (normalized == null) return false;
+            return Mutate(() => Data.InterfaceLanguageCode = normalized);
+        }
+
+        public bool SetConversationLanguage(string mode, string languageCode = null)
+        {
+            string normalizedMode = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            if (normalizedMode != "auto" && normalizedMode != "explicit") return false;
+            string normalizedCode = NormalizeConversationLanguage(languageCode);
+            if (normalizedMode == "explicit" && string.IsNullOrEmpty(normalizedCode)) return false;
+            return Mutate(() =>
+            {
+                Data.ConversationLanguageMode = normalizedMode;
+                Data.ConversationLanguageCode = normalizedMode == "auto" ? string.Empty : normalizedCode;
+            });
+        }
+
+        public bool SetVoiceProfileId(string value)
+        {
+            string normalized = NormalizeVoiceProfile(value);
+            if (normalized == null) return false;
+            return Mutate(() => Data.VoiceProfileId = normalized);
+        }
+
+        public static string NormalizeInterfaceLanguage(string value)
+        {
+            string normalized = (value ?? string.Empty).Trim().Replace('_', '-').ToLowerInvariant();
+            if (normalized == "en" || normalized == "es" || normalized == "fr") return normalized;
+            return null;
+        }
+
+        public static string NormalizeConversationLanguage(string value)
+        {
+            string normalized = (value ?? string.Empty).Trim().Replace('_', '-').ToLowerInvariant();
+            switch (normalized)
+            {
+                case "en": case "es": case "fr": return normalized;
+                case "zh": case "zh-cn": return "zh-CN";
+                case "hi": case "hi-in": return "hi-IN";
+                default: return null;
+            }
+        }
+
+        public static string NormalizeVoiceProfile(string value)
+        {
+            string normalized = string.IsNullOrWhiteSpace(value)
+                ? DefaultVoiceProfileId : value.Trim().ToLowerInvariant();
+            for (int i=0;i<SupportedVoiceProfiles.Length;i++)
+                if (SupportedVoiceProfiles[i] == normalized) return normalized;
+            return null;
+        }
+
+        private static string NormalizeOptionalLanguageCode(string value)
+        {
+            string normalized = (value ?? string.Empty).Trim().Replace('_', '-');
+            if (normalized.Length == 0) return string.Empty;
+            if (normalized.Length > 16 || !char.IsLetter(normalized[0])) return null;
+            for (int i = 0; i < normalized.Length; i++)
+                if (!(char.IsLetter(normalized[i]) || normalized[i] == '-')) return null;
+            return normalized;
+        }
+
+        private static string NormalizeIdentifier(string value, string fallback, int maximumLength)
+        {
+            string normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+            if (normalized.Length > maximumLength) return null;
+            for (int i = 0; i < normalized.Length; i++)
+                if (!(char.IsLetterOrDigit(normalized[i]) || normalized[i] == '-' || normalized[i] == '_')) return null;
+            return normalized;
         }
         public bool SetPreferredName(string value)
         {
@@ -144,6 +226,21 @@ namespace ThinkingSpace.UI
                     loaded.RecordingMode = ThumbRecordingGestureController.RecordingMode.Conversational;
                 if (!Enum.IsDefined(typeof(WristMenuHand), loaded.WristMenuHand))
                     loaded.WristMenuHand = WristMenuHand.Left;
+                loaded.InterfaceLanguageCode = NormalizeInterfaceLanguage(loaded.InterfaceLanguageCode)
+                    ?? DefaultInterfaceLanguageCode;
+                string conversationMode = (loaded.ConversationLanguageMode ?? string.Empty).Trim().ToLowerInvariant();
+                string conversationCode = NormalizeConversationLanguage(loaded.ConversationLanguageCode);
+                if (conversationMode != "explicit" || string.IsNullOrEmpty(conversationCode))
+                {
+                    loaded.ConversationLanguageMode = DefaultConversationLanguageMode;
+                    loaded.ConversationLanguageCode = string.Empty;
+                }
+                else
+                {
+                    loaded.ConversationLanguageMode = "explicit";
+                    loaded.ConversationLanguageCode = conversationCode;
+                }
+                loaded.VoiceProfileId = NormalizeVoiceProfile(loaded.VoiceProfileId) ?? DefaultVoiceProfileId;
                 // Version 1 predates subtitle preferences. Preserve the intended opt-out
                 // behavior instead of treating the absent JSON field as false.
                 if (loaded.SchemaVersion == 1) loaded.SubtitlesEnabled = true;

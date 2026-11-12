@@ -61,6 +61,13 @@ namespace ThinkingSpace.UI
         private Button sessionSubtitlesOnButton,sessionSubtitlesOffButton,sessionEditNameButton,sessionReplayTutorialButton;
         private Button mainWristLeftButton,mainWristRightButton,sessionWristLeftButton,sessionWristRightButton;
         private TMP_Text mainWristLabel,sessionWristLabel;
+        private Button mainEnglishButton,mainSpanishButton,mainFrenchButton;
+        private Button sessionEnglishButton,sessionSpanishButton,sessionFrenchButton;
+        private TMP_Text mainLanguageLabel,sessionLanguageLabel;
+        private readonly List<Button> mainConversationLanguageButtons=new List<Button>();
+        private readonly List<Button> sessionConversationLanguageButtons=new List<Button>();
+        private Button mainConversationAutoButton,sessionConversationAutoButton;
+        private TMP_Text mainConversationLabel,sessionConversationLabel;
         private Button exportSessionButton,importSessionButton;
         private GameObject mainSessionActionRow;
         private TMP_Text mainTransferStatus;
@@ -68,11 +75,16 @@ namespace ThinkingSpace.UI
         private GameObject sessionDeleteConfirmation;
         private TMP_Text sessionDeleteQuestion;
         private Button sessionDeleteCancel, sessionDeleteConfirm;
+        private GameObject languageConfirmation;
+        private TMP_Text languageConfirmationQuestion;
+        private Button languageConfirmationYes,languageConfirmationNo;
         private TMP_Text mainPageIndicator, sessionPageIndicator;
         private int mainPage, mainPageCount, sessionPage;
+        private int currentSessionNumber;
+        private float currentSilenceSeconds=2f;
         private const int SessionsPerPage = 3;
-        private const int SessionPageCount = 4;
-        private const int MainUtilityPageCount = 2;
+        private const int SessionPageCount = 5;
+        private const int MainUtilityPageCount = 3;
 
         public Canvas Canvas { get; private set; }
         public RectTransform CanvasRect => Canvas != null ? Canvas.GetComponent<RectTransform>() : null;
@@ -90,9 +102,77 @@ namespace ThinkingSpace.UI
             CreateAudioSettingsPage();
             CreateSessionAudioSettingsPage();
             CreateWristSettings();
+            CreateLanguageSettings();
+            CreateConversationLanguageSettings(mainPanel,mainCloseButton,mainConversationLanguageButtons,
+                out mainConversationAutoButton,out mainConversationLabel);
+            CreateConversationLanguageSettings(sessionPanel,sessionCloseButton,sessionConversationLanguageButtons,
+                out sessionConversationAutoButton,out sessionConversationLabel);
             CreateSessionTransferActions();
             CreateSessionDeleteConfirmation();
+            CreateLanguageConfirmation();
+            RefreshLocalization();
         }
+
+        private void OnEnable()
+        {
+            ThinkingSpaceLocalizationController.InterfaceLanguageChanged+=HandleLanguageChanged;
+            ThinkingSpaceLocalizationController.InterfaceLanguageConfirmationRequested+=ShowLanguageConfirmation;
+            RefreshLocalization();
+        }
+
+        private void OnDisable(){ThinkingSpaceLocalizationController.InterfaceLanguageChanged-=HandleLanguageChanged;
+            ThinkingSpaceLocalizationController.InterfaceLanguageConfirmationRequested-=ShowLanguageConfirmation;}
+        private void Update(){if(languageConfirmation!=null&&languageConfirmation.activeSelf
+            &&!(ThinkingSpaceLocalizationController.Instance?.HasPendingInterfaceLanguageChange??false))languageConfirmation.SetActive(false);}
+        private void HandleLanguageChanged(string _)=>RefreshLocalization();
+
+        public void RefreshLocalization()
+        {
+            ThinkingSpaceLocalizationController.LocalizeKnownText(gameObject);
+            SetButtonLabel(mainPreviousButton,L("common.previous"));SetButtonLabel(mainNextButton,L("common.next"));
+            SetButtonLabel(sessionPreviousButton,L("common.previous"));SetButtonLabel(sessionNextButton,L("common.next"));
+            SetButtonLabel(conversationalButton,L("settings.conversational"));SetButtonLabel(manualButton,L("settings.manual"));
+            SetButtonLabel(sessionConversationalButton,L("settings.conversational"));SetButtonLabel(sessionManualButton,L("settings.manual"));
+            SetButtonLabel(silenceMinusButton,L("settings.decrease_silence"));SetButtonLabel(silencePlusButton,L("settings.increase_silence"));
+            SetButtonLabel(sessionSilenceMinusButton,L("settings.decrease_silence"));SetButtonLabel(sessionSilencePlusButton,L("settings.increase_silence"));
+            SetButtonLabel(subtitlesOnButton,L("settings.subtitles_on"));SetButtonLabel(subtitlesOffButton,L("settings.subtitles_off"));
+            SetButtonLabel(sessionSubtitlesOnButton,L("settings.subtitles_on"));SetButtonLabel(sessionSubtitlesOffButton,L("settings.subtitles_off"));
+            SetButtonLabel(editNameButton,L("settings.edit_name"));SetButtonLabel(replayTutorialButton,L("settings.replay_tutorial"));
+            SetButtonLabel(sessionEditNameButton,L("settings.edit_name"));SetButtonLabel(sessionReplayTutorialButton,L("settings.replay_tutorial"));
+            SetButtonLabel(mainWristLeftButton,L("settings.wrist.left"));SetButtonLabel(mainWristRightButton,L("settings.wrist.right"));
+            SetButtonLabel(sessionWristLeftButton,L("settings.wrist.left"));SetButtonLabel(sessionWristRightButton,L("settings.wrist.right"));
+            SetButtonLabel(importSessionButton,L("menu.session.import"));SetButtonLabel(exportSessionButton,L("menu.session.export"));
+            SetButtonLabel(mainEnglishButton,L("language.english"));SetButtonLabel(mainSpanishButton,L("language.spanish"));SetButtonLabel(mainFrenchButton,L("language.french"));
+            SetButtonLabel(sessionEnglishButton,L("language.english"));SetButtonLabel(sessionSpanishButton,L("language.spanish"));SetButtonLabel(sessionFrenchButton,L("language.french"));
+            SetButtonLabel(sessionDeleteCancel,L("common.cancel"));SetButtonLabel(sessionDeleteConfirm,L("session.delete.confirm"));
+            SetButtonLabel(languageConfirmationYes,L("common.yes"));SetButtonLabel(languageConfirmationNo,L("common.no"));
+            if(settingsTitle!=null)settingsTitle.text=L("settings.recording.title");
+            if(sessionSettingsTitle!=null)sessionSettingsTitle.text=L("settings.recording.title");
+            if(mainWristLabel!=null)mainWristLabel.text=L("settings.wrist.title");
+            if(sessionWristLabel!=null)sessionWristLabel.text=L("settings.wrist.title");
+            if(mainLanguageLabel!=null)mainLanguageLabel.text=L("settings.interface_language");
+            if(sessionLanguageLabel!=null)sessionLanguageLabel.text=L("settings.interface_language");
+            if(mainConversationLabel!=null)mainConversationLabel.text=L("settings.conversation_mode");
+            if(sessionConversationLabel!=null)sessionConversationLabel.text=L("settings.conversation_mode");
+            SetButtonLabel(mainConversationAutoButton,L("settings.language.auto"));
+            SetButtonLabel(sessionConversationAutoButton,L("settings.language.auto"));
+            RefreshConversationButtonLabels(mainConversationLanguageButtons);
+            RefreshConversationButtonLabels(sessionConversationLanguageButtons);
+            string language=ThinkingSpaceLocalizationController.Instance?.InterfaceLanguageCode??"en";
+            SetButtonSelected(mainEnglishButton,language=="en");SetButtonSelected(mainSpanishButton,language=="es");SetButtonSelected(mainFrenchButton,language=="fr");
+            SetButtonSelected(sessionEnglishButton,language=="en");SetButtonSelected(sessionSpanishButton,language=="es");SetButtonSelected(sessionFrenchButton,language=="fr");
+            if(currentSessionNumber>0&&sessionTitle!=null)sessionTitle.text=L("menu.session.format",currentSessionNumber);
+            if(silenceValueLabel!=null)silenceValueLabel.text=L("settings.seconds_format",currentSilenceSeconds.ToString("0.0"));
+            if(sessionSilenceValueLabel!=null)sessionSilenceValueLabel.text=L("settings.seconds_format",currentSilenceSeconds.ToString("0.0"));
+            for(int i=0;i<runtimeSessionButtons.Count;i++)SetButtonLabel(runtimeSessionButtons[i],L("menu.session.format",ExtractSessionNumber(runtimeSessionButtons[i].name)));
+            for(int i=0;i<runtimeSessionDeleteButtons.Count;i++)SetButtonLabel(runtimeSessionDeleteButtons[i],L("common.delete"));
+            UpdateNavigation(mainPreviousButton,mainNextButton,mainPageIndicator,mainPage,Mathf.Max(1,mainPageCount));
+            UpdateNavigation(sessionPreviousButton,sessionNextButton,sessionPageIndicator,sessionPage,SessionPageCount);
+        }
+
+        private static int ExtractSessionNumber(string value)
+        {int result=0;if(!string.IsNullOrEmpty(value)){string[] parts=value.Split(' ');int.TryParse(parts[parts.Length-1],out result);}return result;}
+        private static string L(string key,params object[] arguments)=>ThinkingSpaceLocalizationController.Get(key,arguments);
 
         public void Bind(
             Action startSession, Action voiceHelp, Action gestureHelp,
@@ -147,8 +227,9 @@ namespace ThinkingSpace.UI
         public void SetAudioPreferences(float silenceSeconds,
             ThumbRecordingGestureController.RecordingMode mode,bool subtitlesEnabled=true)
         {
-            if (silenceValueLabel != null) silenceValueLabel.text = silenceSeconds.ToString("0.0") + " seconds";
-            if (sessionSilenceValueLabel != null) sessionSilenceValueLabel.text = silenceSeconds.ToString("0.0") + " seconds";
+            currentSilenceSeconds=silenceSeconds;
+            if (silenceValueLabel != null) silenceValueLabel.text = L("settings.seconds_format",silenceSeconds.ToString("0.0"));
+            if (sessionSilenceValueLabel != null) sessionSilenceValueLabel.text = L("settings.seconds_format",silenceSeconds.ToString("0.0"));
             SetButtonSelected(conversationalButton, mode == ThumbRecordingGestureController.RecordingMode.Conversational);
             SetButtonSelected(manualButton, mode == ThumbRecordingGestureController.RecordingMode.Manual);
             SetButtonSelected(sessionConversationalButton, mode == ThumbRecordingGestureController.RecordingMode.Conversational);
@@ -178,13 +259,13 @@ namespace ThinkingSpace.UI
                 button.gameObject.SetActive(true);
                 button.name = "Session " + session.Number;
                 TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
-                if (label != null) label.text = "Session " + session.Number;
+                if (label != null) label.text = L("menu.session.format",session.Number);
                 int number = session.Number;
                 BindButton(button, () => reopenSession?.Invoke(number));
                 Button deleteButton = Instantiate(sessionButtonTemplate, row.transform);
                 deleteButton.gameObject.SetActive(true); deleteButton.name = "Delete Session " + number;
                 TMP_Text deleteLabel = deleteButton.GetComponentInChildren<TMP_Text>(true);
-                if (deleteLabel != null) deleteLabel.text = "Delete";
+                if (deleteLabel != null) deleteLabel.text = L("common.delete");
                 LayoutElement deleteLayout = deleteButton.GetComponent<LayoutElement>();
                 if (deleteLayout != null) { deleteLayout.flexibleWidth = .45f; deleteLayout.preferredWidth = 130f; }
                 BindButton(deleteButton, () => ShowDeleteConfirmation(number));
@@ -201,7 +282,8 @@ namespace ThinkingSpace.UI
         public void ShowSession(int sessionNumber, ThumbRecordingGestureController.RecordingHand recordingHand)
         {
             ShowOnly(sessionPanel);
-            sessionTitle.text = "Session " + sessionNumber;
+            currentSessionNumber=sessionNumber;
+            sessionTitle.text = L("menu.session.format",sessionNumber);
             sessionStatus.text = string.Empty;
             SetHandSelection(sessionLeftHandButton, sessionRightHandButton, recordingHand);
             sessionPage = 0;
@@ -251,7 +333,8 @@ namespace ThinkingSpace.UI
             int sessionPageCount = Mathf.Max(1, Mathf.CeilToInt(sessionCount / (float)SessionsPerPage));
             bool settingsPage = mainPage == sessionPageCount;
             bool audioPage = mainPage == sessionPageCount+1;
-            bool sessionPage = !settingsPage && !audioPage;
+            bool languagePage = mainPage == sessionPageCount+2;
+            bool sessionPage = !settingsPage && !audioPage && !languagePage;
             bool firstSessionPage=sessionPage&&IsImportOnMainPage(mainPage);
             if (sessionList != null) sessionList.gameObject.SetActive(sessionPage);
             if(mainSessionActionRow!=null)mainSessionActionRow.SetActive(firstSessionPage);
@@ -272,8 +355,11 @@ namespace ThinkingSpace.UI
             SetActive(subtitlesOnButton,audioPage);SetActive(subtitlesOffButton,audioPage);SetActive(editNameButton,audioPage);SetActive(replayTutorialButton,audioPage);
             if (silenceValueLabel != null) silenceValueLabel.gameObject.SetActive(audioPage);
             if (settingsTitle != null) settingsTitle.gameObject.SetActive(audioPage);
-            SetLabelVisible(mainPanel, "Brainstorming Sessions", sessionPage);
-            SetLabelVisible(mainPanel, "Recording Hand", settingsPage);
+            SetLanguageSettingsVisible(mainEnglishButton,mainSpanishButton,mainFrenchButton,mainLanguageLabel,languagePage);
+            SetConversationSettingsVisible(mainConversationLanguageButtons,mainConversationAutoButton,
+                mainConversationLabel,languagePage);
+            SetLabelVisible(mainPanel, "menu.sessions.title", sessionPage);
+            SetLabelVisible(mainPanel, "settings.recording_hand", settingsPage);
             UpdateNavigation(mainPreviousButton, mainNextButton, mainPageIndicator, mainPage, mainPageCount);
         }
 
@@ -281,21 +367,21 @@ namespace ThinkingSpace.UI
         {
             if (mainPanel == null || mainCloseButton == null) return;
             RectTransform parent = mainPanel.GetComponent<RectTransform>();
-            silenceMinusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silenceMinusButton, "− 0.5s", new Vector2(.08f,.50f), new Vector2(.34f,.62f));
-            silencePlusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silencePlusButton, "+ 0.5s", new Vector2(.66f,.50f), new Vector2(.92f,.62f));
-            conversationalButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(conversationalButton, "Conversational", new Vector2(.08f,.25f), new Vector2(.47f,.38f));
-            manualButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(manualButton, "Manual", new Vector2(.53f,.25f), new Vector2(.92f,.38f));
-            subtitlesOnButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(subtitlesOnButton,"Subtitles On",new Vector2(.08f,.39f),new Vector2(.47f,.48f));
-            subtitlesOffButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(subtitlesOffButton,"Subtitles Off",new Vector2(.53f,.39f),new Vector2(.92f,.48f));
-            editNameButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(editNameButton,"Edit Name",new Vector2(.08f,.12f),new Vector2(.47f,.22f));
-            replayTutorialButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(replayTutorialButton,"Replay Tutorial",new Vector2(.53f,.12f),new Vector2(.92f,.22f));
+            silenceMinusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silenceMinusButton, L("settings.decrease_silence"), new Vector2(.08f,.50f), new Vector2(.34f,.62f));
+            silencePlusButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(silencePlusButton, L("settings.increase_silence"), new Vector2(.66f,.50f), new Vector2(.92f,.62f));
+            conversationalButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(conversationalButton, L("settings.conversational"), new Vector2(.08f,.25f), new Vector2(.47f,.38f));
+            manualButton = Instantiate(mainCloseButton, parent); ConfigureNavigationButton(manualButton, L("settings.manual"), new Vector2(.53f,.25f), new Vector2(.92f,.38f));
+            subtitlesOnButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(subtitlesOnButton,L("settings.subtitles_on"),new Vector2(.08f,.39f),new Vector2(.47f,.48f));
+            subtitlesOffButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(subtitlesOffButton,L("settings.subtitles_off"),new Vector2(.53f,.39f),new Vector2(.92f,.48f));
+            editNameButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(editNameButton,L("settings.edit_name"),new Vector2(.08f,.12f),new Vector2(.47f,.22f));
+            replayTutorialButton=Instantiate(mainCloseButton,parent);ConfigureNavigationButton(replayTutorialButton,L("settings.replay_tutorial"),new Vector2(.53f,.12f),new Vector2(.92f,.22f));
             TMP_Text source = mainCloseButton.GetComponentInChildren<TMP_Text>(true);
             if (source != null)
             {
-                settingsTitle = Instantiate(source, parent); settingsTitle.text = "Recording Settings";
+                settingsTitle = Instantiate(source, parent); settingsTitle.text = L("settings.recording.title");
                 settingsTitle.alignment = TextAlignmentOptions.Center; settingsTitle.raycastTarget = false;
                 SetRect(settingsTitle.rectTransform, new Vector2(.08f,.76f), new Vector2(.92f,.91f));
-                silenceValueLabel = Instantiate(source, parent); silenceValueLabel.text = "2.0 seconds";
+                silenceValueLabel = Instantiate(source, parent); silenceValueLabel.text = L("settings.seconds_format","2.0");
                 silenceValueLabel.alignment = TextAlignmentOptions.Center; silenceValueLabel.raycastTarget = false;
                 SetRect(silenceValueLabel.rectTransform, new Vector2(.35f,.50f), new Vector2(.65f,.62f));
             }
@@ -305,16 +391,16 @@ namespace ThinkingSpace.UI
         {
             if (sessionPanel == null || sessionCloseButton == null) return;
             RectTransform parent=sessionPanel.GetComponent<RectTransform>();
-            sessionSilenceMinusButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSilenceMinusButton,"− 0.5s",new Vector2(.08f,.50f),new Vector2(.34f,.62f));
-            sessionSilencePlusButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSilencePlusButton,"+ 0.5s",new Vector2(.66f,.50f),new Vector2(.92f,.62f));
-            sessionConversationalButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionConversationalButton,"Conversational",new Vector2(.08f,.25f),new Vector2(.47f,.38f));
-            sessionManualButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionManualButton,"Manual",new Vector2(.53f,.25f),new Vector2(.92f,.38f));
-            sessionSubtitlesOnButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSubtitlesOnButton,"Subtitles On",new Vector2(.08f,.39f),new Vector2(.47f,.48f));
-            sessionSubtitlesOffButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSubtitlesOffButton,"Subtitles Off",new Vector2(.53f,.39f),new Vector2(.92f,.48f));
-            sessionEditNameButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionEditNameButton,"Edit Name",new Vector2(.08f,.12f),new Vector2(.47f,.22f));
-            sessionReplayTutorialButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionReplayTutorialButton,"Replay Tutorial",new Vector2(.53f,.12f),new Vector2(.92f,.22f));
+            sessionSilenceMinusButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSilenceMinusButton,L("settings.decrease_silence"),new Vector2(.08f,.50f),new Vector2(.34f,.62f));
+            sessionSilencePlusButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSilencePlusButton,L("settings.increase_silence"),new Vector2(.66f,.50f),new Vector2(.92f,.62f));
+            sessionConversationalButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionConversationalButton,L("settings.conversational"),new Vector2(.08f,.25f),new Vector2(.47f,.38f));
+            sessionManualButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionManualButton,L("settings.manual"),new Vector2(.53f,.25f),new Vector2(.92f,.38f));
+            sessionSubtitlesOnButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSubtitlesOnButton,L("settings.subtitles_on"),new Vector2(.08f,.39f),new Vector2(.47f,.48f));
+            sessionSubtitlesOffButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionSubtitlesOffButton,L("settings.subtitles_off"),new Vector2(.53f,.39f),new Vector2(.92f,.48f));
+            sessionEditNameButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionEditNameButton,L("settings.edit_name"),new Vector2(.08f,.12f),new Vector2(.47f,.22f));
+            sessionReplayTutorialButton=Instantiate(sessionCloseButton,parent);ConfigureNavigationButton(sessionReplayTutorialButton,L("settings.replay_tutorial"),new Vector2(.53f,.12f),new Vector2(.92f,.22f));
             TMP_Text source=sessionCloseButton.GetComponentInChildren<TMP_Text>(true);
-            if(source!=null){sessionSettingsTitle=Instantiate(source,parent);sessionSettingsTitle.text="Recording Settings";sessionSettingsTitle.alignment=TextAlignmentOptions.Center;sessionSettingsTitle.raycastTarget=false;SetRect(sessionSettingsTitle.rectTransform,new Vector2(.08f,.76f),new Vector2(.92f,.91f));sessionSilenceValueLabel=Instantiate(source,parent);sessionSilenceValueLabel.text="2.0 seconds";sessionSilenceValueLabel.alignment=TextAlignmentOptions.Center;sessionSilenceValueLabel.raycastTarget=false;SetRect(sessionSilenceValueLabel.rectTransform,new Vector2(.35f,.50f),new Vector2(.65f,.62f));}
+            if(source!=null){sessionSettingsTitle=Instantiate(source,parent);sessionSettingsTitle.text=L("settings.recording.title");sessionSettingsTitle.alignment=TextAlignmentOptions.Center;sessionSettingsTitle.raycastTarget=false;SetRect(sessionSettingsTitle.rectTransform,new Vector2(.08f,.76f),new Vector2(.92f,.91f));sessionSilenceValueLabel=Instantiate(source,parent);sessionSilenceValueLabel.text=L("settings.seconds_format",2f);sessionSilenceValueLabel.alignment=TextAlignmentOptions.Center;sessionSilenceValueLabel.raycastTarget=false;SetRect(sessionSilenceValueLabel.rectTransform,new Vector2(.35f,.50f),new Vector2(.65f,.62f));}
         }
 
         private void CreateWristSettings()
@@ -323,6 +409,74 @@ namespace ThinkingSpace.UI
                 out mainWristRightButton,out mainWristLabel);
             CreateWristSettings(sessionPanel,sessionCloseButton,out sessionWristLeftButton,
                 out sessionWristRightButton,out sessionWristLabel);
+        }
+
+        private void CreateLanguageSettings()
+        {
+            CreateLanguageSettings(mainPanel,mainCloseButton,out mainEnglishButton,
+                out mainSpanishButton,out mainFrenchButton,out mainLanguageLabel);
+            CreateLanguageSettings(sessionPanel,sessionCloseButton,out sessionEnglishButton,
+                out sessionSpanishButton,out sessionFrenchButton,out sessionLanguageLabel);
+        }
+
+        private static void CreateLanguageSettings(GameObject panel,Button source,out Button english,
+            out Button spanish,out Button french,out TMP_Text label)
+        {
+            english=spanish=french=null;label=null;if(panel==null||source==null)return;
+            RectTransform parent=panel.GetComponent<RectTransform>();
+            english=Instantiate(source,parent);ConfigureNavigationButton(english,L("language.english"),new Vector2(.08f,.59f),new Vector2(.34f,.70f));
+            spanish=Instantiate(source,parent);ConfigureNavigationButton(spanish,L("language.spanish"),new Vector2(.37f,.59f),new Vector2(.63f,.70f));
+            french=Instantiate(source,parent);ConfigureNavigationButton(french,L("language.french"),new Vector2(.66f,.59f),new Vector2(.92f,.70f));
+            BindButton(english,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("en"));
+            BindButton(spanish,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("es"));
+            BindButton(french,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("fr"));
+            TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
+            if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.interface_language");
+                label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
+                SetRect(label.rectTransform,new Vector2(.08f,.76f),new Vector2(.92f,.87f));}
+        }
+
+        private static void CreateConversationLanguageSettings(GameObject panel,Button source,
+            List<Button> languages,out Button automatic,out TMP_Text label)
+        {
+            automatic=null;label=null;if(panel==null||source==null)return;
+            RectTransform parent=panel.GetComponent<RectTransform>();
+            automatic=Instantiate(source,parent);ConfigureNavigationButton(automatic,L("settings.language.auto"),
+                new Vector2(.08f,.36f),new Vector2(.31f,.47f));
+            BindButton(automatic,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetConversationLanguage("auto",null,"orby-auto"));
+            string[] codes={"en","es","fr","zh-CN","hi-IN"};
+            BrainstormMenuController controller=FindFirstObjectByType<BrainstormMenuController>();
+            for(int i=0;i<codes.Length;i++)
+            {
+                string code=codes[i];float width=.84f/codes.Length;float x=.08f+i*width;
+                Button button=Instantiate(source,parent);button.name="Conversation Language "+code;
+                ConfigureNavigationButton(button,ConversationLanguageLabel(code),new Vector2(x,.17f),new Vector2(x+width-.012f,.30f));
+                button.interactable=controller!=null&&controller.MultilingualBackendContractEnabled;
+                BindButton(button,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetConversationLanguage(
+                    "explicit",code,VoiceProfileForLanguage(code)));
+                languages.Add(button);
+            }
+            TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
+            if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.conversation_mode");
+                label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
+                SetRect(label.rectTransform,new Vector2(.34f,.35f),new Vector2(.92f,.49f));}
+        }
+
+        private static string VoiceProfileForLanguage(string code)=>code=="es"?"orby-es":code=="fr"?"orby-fr":
+            code=="zh-CN"?"orby-zh":code=="hi-IN"?"orby-hi":"orby-en";
+        private static string ConversationLanguageLabel(string code)=>code=="es"?L("language.spanish"):
+            code=="fr"?L("language.french"):code=="zh-CN"?L("language.mandarin"):
+            code=="hi-IN"?L("language.hindi"):L("language.english");
+        private static void RefreshConversationButtonLabels(List<Button> buttons)
+        {for(int i=0;i<buttons.Count;i++){string[] codes={"en","es","fr","zh-CN","hi-IN"};if(i<codes.Length)SetButtonLabel(buttons[i],ConversationLanguageLabel(codes[i]));}}
+        private static void SetConversationSettingsVisible(List<Button> buttons,Button automatic,TMP_Text label,bool visible)
+        {SetActive(automatic,visible);for(int i=0;i<buttons.Count;i++)SetActive(buttons[i],visible);if(label!=null)label.gameObject.SetActive(visible);}
+
+        private static void SetLanguageSettingsVisible(Button english,Button spanish,Button french,
+            TMP_Text label,bool visible)
+        {
+            SetActive(english,visible);SetActive(spanish,visible);SetActive(french,visible);
+            if(label!=null)label.gameObject.SetActive(visible);
         }
 
         private void CreateSessionTransferActions()
@@ -335,7 +489,7 @@ namespace ThinkingSpace.UI
             startSessionButton.transform.SetParent(mainSessionActionRow.transform,false);
             importSessionButton=Instantiate(startSessionButton,mainSessionActionRow.transform);
             importSessionButton.name="Import Session";
-            SetButtonLabel(importSessionButton,"Import Session");
+            SetButtonLabel(importSessionButton,L("menu.session.import"));
 
             TMP_Text statusSource=noSessionsLabel!=null?noSessionsLabel.GetComponent<TMP_Text>():null;
             if(statusSource==null)statusSource=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
@@ -358,7 +512,7 @@ namespace ThinkingSpace.UI
             challengeButton.transform.SetParent(sessionActionRow.transform,false);
             exportSessionButton=Instantiate(challengeButton,sessionActionRow.transform);
             exportSessionButton.name="Export Session";
-            SetButtonLabel(exportSessionButton,"Export Session");
+            SetButtonLabel(exportSessionButton,L("menu.session.export"));
         }
 
         private static GameObject CreateHorizontalActionRow(string name,Transform parent,int siblingIndex)
@@ -383,12 +537,12 @@ namespace ThinkingSpace.UI
         {
             left=right=null;label=null;if(panel==null||source==null)return;
             RectTransform parent=panel.GetComponent<RectTransform>();
-            left=Instantiate(source,parent);ConfigureNavigationButton(left,"Watch: Left",
+            left=Instantiate(source,parent);ConfigureNavigationButton(left,L("settings.wrist.left"),
                 new Vector2(.08f,.12f),new Vector2(.47f,.22f));
-            right=Instantiate(source,parent);ConfigureNavigationButton(right,"Watch: Right",
+            right=Instantiate(source,parent);ConfigureNavigationButton(right,L("settings.wrist.right"),
                 new Vector2(.53f,.12f),new Vector2(.92f,.22f));
             TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
-            if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text="Wrist Menu";
+            if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.wrist.title");
                 label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
                 SetRect(label.rectTransform,new Vector2(.08f,.24f),new Vector2(.92f,.34f));}
         }
@@ -402,15 +556,43 @@ namespace ThinkingSpace.UI
             sessionDeleteConfirmation.GetComponent<Image>().color=new Color(.035f,.055f,.09f,.99f);
             TMP_Text source=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
             if(source!=null){sessionDeleteQuestion=Instantiate(source,sessionDeleteConfirmation.transform);sessionDeleteQuestion.alignment=TextAlignmentOptions.Center;sessionDeleteQuestion.raycastTarget=false;SetRect(sessionDeleteQuestion.rectTransform,new Vector2(.08f,.48f),new Vector2(.92f,.82f));}
-            sessionDeleteCancel=Instantiate(mainCloseButton,sessionDeleteConfirmation.transform);ConfigureNavigationButton(sessionDeleteCancel,"Cancel",new Vector2(.08f,.16f),new Vector2(.44f,.32f));
-            sessionDeleteConfirm=Instantiate(mainCloseButton,sessionDeleteConfirmation.transform);ConfigureNavigationButton(sessionDeleteConfirm,"Delete Session",new Vector2(.56f,.16f),new Vector2(.92f,.32f));
+            sessionDeleteCancel=Instantiate(mainCloseButton,sessionDeleteConfirmation.transform);ConfigureNavigationButton(sessionDeleteCancel,L("common.cancel"),new Vector2(.08f,.16f),new Vector2(.44f,.32f));
+            sessionDeleteConfirm=Instantiate(mainCloseButton,sessionDeleteConfirmation.transform);ConfigureNavigationButton(sessionDeleteConfirm,L("session.delete.confirm"),new Vector2(.56f,.16f),new Vector2(.92f,.32f));
             sessionDeleteConfirmation.SetActive(false);
+        }
+
+        private void CreateLanguageConfirmation()
+        {
+            if(CanvasRect==null||mainCloseButton==null)return;
+            languageConfirmation=new GameObject("Interface Language Confirmation",typeof(RectTransform),typeof(Image));
+            languageConfirmation.transform.SetParent(CanvasRect,false);
+            SetRect(languageConfirmation.GetComponent<RectTransform>(),new Vector2(.08f,.25f),new Vector2(.92f,.78f));
+            languageConfirmation.GetComponent<Image>().color=new Color(.035f,.055f,.09f,.99f);
+            TMP_Text source=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
+            if(source!=null){languageConfirmationQuestion=Instantiate(source,languageConfirmation.transform);
+                languageConfirmationQuestion.alignment=TextAlignmentOptions.Center;languageConfirmationQuestion.raycastTarget=false;
+                SetRect(languageConfirmationQuestion.rectTransform,new Vector2(.08f,.48f),new Vector2(.92f,.86f));}
+            languageConfirmationNo=Instantiate(mainCloseButton,languageConfirmation.transform);
+            ConfigureNavigationButton(languageConfirmationNo,L("common.no"),new Vector2(.08f,.14f),new Vector2(.44f,.34f));
+            languageConfirmationYes=Instantiate(mainCloseButton,languageConfirmation.transform);
+            ConfigureNavigationButton(languageConfirmationYes,L("common.yes"),new Vector2(.56f,.14f),new Vector2(.92f,.34f));
+            BindButton(languageConfirmationNo,()=>{ThinkingSpaceLocalizationController.Instance?.CancelPendingInterfaceLanguageChange();languageConfirmation.SetActive(false);});
+            BindButton(languageConfirmationYes,()=>{ThinkingSpaceLocalizationController.Instance?.ConfirmPendingInterfaceLanguageChange();languageConfirmation.SetActive(false);});
+            languageConfirmation.SetActive(false);
+        }
+
+        private void ShowLanguageConfirmation(string code)
+        {
+            if(languageConfirmation==null)return;
+            string name=code=="es"?L("language.spanish"):code=="fr"?L("language.french"):L("language.english");
+            if(languageConfirmationQuestion!=null)languageConfirmationQuestion.text=L("language.confirm.body",name);
+            languageConfirmation.transform.SetAsLastSibling();languageConfirmation.SetActive(true);
         }
 
         private void ShowDeleteConfirmation(int number)
         {
             if(sessionDeleteConfirmation==null)return;
-            sessionDeleteQuestion.text="Delete Session "+number+"?\nIts ideas and conversation history will be removed.";
+            sessionDeleteQuestion.text=L("session.delete.title",number)+"\n"+L("session.delete.body");
             BindButton(sessionDeleteCancel,()=>sessionDeleteConfirmation.SetActive(false));
             BindButton(sessionDeleteConfirm,()=>{sessionDeleteConfirmation.SetActive(false);deleteSession?.Invoke(number);});
             sessionDeleteConfirmation.SetActive(true);
@@ -430,7 +612,8 @@ namespace ThinkingSpace.UI
             bool ideas = sessionPage == 0;
             bool helpAndHand = sessionPage == 1;
             bool audioSettings = sessionPage == 2;
-            bool finish = sessionPage == 3;
+            bool languageSettings = sessionPage == 3;
+            bool finish = sessionPage == 4;
             if(exportSessionButton!=null&&exportSessionButton.transform.parent!=null)
                 exportSessionButton.transform.parent.gameObject.SetActive(IsExportOnSessionPage(sessionPage));
             SetActive(challengeButton, ideas);
@@ -448,7 +631,11 @@ namespace ThinkingSpace.UI
             SetActive(sessionSubtitlesOnButton,audioSettings);SetActive(sessionSubtitlesOffButton,audioSettings);SetActive(sessionEditNameButton,audioSettings);SetActive(sessionReplayTutorialButton,audioSettings);
             if(sessionSilenceValueLabel!=null)sessionSilenceValueLabel.gameObject.SetActive(audioSettings);
             if(sessionSettingsTitle!=null)sessionSettingsTitle.gameObject.SetActive(audioSettings);
-            SetLabelVisible(sessionPanel, "Recording Hand", helpAndHand);
+            SetLanguageSettingsVisible(sessionEnglishButton,sessionSpanishButton,sessionFrenchButton,
+                sessionLanguageLabel,languageSettings);
+            SetConversationSettingsVisible(sessionConversationLanguageButtons,sessionConversationAutoButton,
+                sessionConversationLabel,languageSettings);
+            SetLabelVisible(sessionPanel, "settings.recording_hand", helpAndHand);
             SetActive(endSessionButton, finish);
             SetActive(sessionCloseButton, finish);
             UpdateNavigation(sessionPreviousButton, sessionNextButton, sessionPageIndicator,
@@ -467,13 +654,17 @@ namespace ThinkingSpace.UI
         public static bool IsImportOnMainPage(int page)=>page==0;
         public static bool IsExportOnSessionPage(int page)=>page==0;
 
-        private static void SetLabelVisible(GameObject panel, string exactText, bool visible)
+        private static void SetLabelVisible(GameObject panel, string key, bool visible)
         {
             if (panel == null) return;
             TMP_Text[] labels = panel.GetComponentsInChildren<TMP_Text>(true);
             for (int i = 0; i < labels.Length; i++)
-                if (labels[i] != null && labels[i].text.Trim() == exactText)
-                    labels[i].gameObject.SetActive(visible);
+                if (labels[i] != null)
+                {
+                    ThinkingSpaceLocalizedText localized=labels[i].GetComponent<ThinkingSpaceLocalizedText>();
+                    if ((localized!=null&&localized.StringKey==key)||labels[i].text.Trim()==L(key))
+                        labels[i].gameObject.SetActive(visible);
+                }
         }
 
         private static void DisableScrolling(GameObject panel)
@@ -500,8 +691,8 @@ namespace ThinkingSpace.UI
             next = Instantiate(styleSource, panelRect);
             previous.name = "Previous Page Button";
             next.name = "Next Page Button";
-            ConfigureNavigationButton(previous, "Previous", new Vector2(0.05f, 0.02f), new Vector2(0.3f, 0.11f));
-            ConfigureNavigationButton(next, "Next", new Vector2(0.7f, 0.02f), new Vector2(0.95f, 0.11f));
+            ConfigureNavigationButton(previous, L("common.previous"), new Vector2(0.05f, 0.02f), new Vector2(0.3f, 0.11f));
+            ConfigureNavigationButton(next, L("common.next"), new Vector2(0.7f, 0.02f), new Vector2(0.95f, 0.11f));
             BindButton(previous, () => changed?.Invoke(-1));
             BindButton(next, () => changed?.Invoke(1));
 
@@ -510,7 +701,7 @@ namespace ThinkingSpace.UI
             {
                 indicator = Instantiate(sourceLabel, panelRect);
                 indicator.name = "Page Indicator";
-                indicator.text = "Page 1 / 1";
+                indicator.text = L("common.page_format",1,1);
                 indicator.alignment = TextAlignmentOptions.Center;
                 indicator.raycastTarget = false;
                 RectTransform rect = indicator.rectTransform;
@@ -540,7 +731,7 @@ namespace ThinkingSpace.UI
         {
             if (previous != null) previous.interactable = page > 0;
             if (next != null) next.interactable = page < pageCount - 1;
-            if (indicator != null) indicator.text = "Page " + (page + 1) + " / " + pageCount;
+            if (indicator != null) indicator.text = L("common.page_format",page+1,pageCount);
         }
 
         private static void BindButton(Button button, Action action)

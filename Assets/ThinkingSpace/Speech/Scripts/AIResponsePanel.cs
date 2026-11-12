@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -81,7 +82,8 @@ namespace ThinkingSpace.Speech
         private void RefreshPage()
         {
             body.text = pages.Count > 0 ? pages[page] : string.Empty;
-            pageIndicator.text = "Page " + (page + 1) + " / " + Mathf.Max(1, pages.Count);
+            pageIndicator.text = ThinkingSpaceLocalizationController.Get(
+                "common.page_format",page+1,Mathf.Max(1,pages.Count));
             previousButton.interactable = page > 0;
             nextButton.interactable = page < pages.Count - 1;
         }

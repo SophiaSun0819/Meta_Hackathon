@@ -74,13 +74,13 @@ namespace ThinkingSpace.Speech
         }
         private void ShowDetails()
         {
-            confirmingDelete=false;colorPage=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?"Idea Details":idea.Title;
-            SetPages("Summary\n"+idea.Summary+"\n\nCategory\n"+idea.Category); SetNormalControls();
+            confirmingDelete=false;colorPage=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?L("idea.details"):idea.Title;
+            SetPages(L("idea.summary")+"\n"+idea.Summary+"\n\n"+L("idea.category")+"\n"+idea.Category); SetNormalControls();
         }
         private void AskDelete()
         {
-            confirmingDelete=true; heading.text="Delete Idea?";
-            body.text="Delete “"+(idea.Title??"this idea")+"”? References to it will be removed. Derived ideas are preserved.";
+            confirmingDelete=true; heading.text=ThinkingSpaceLocalizationController.Get("idea.delete_question");
+            body.text=L("idea.delete_body",idea.Title??L("idea.details"));
             pageLabel.gameObject.SetActive(false); previous.gameObject.SetActive(false); next.gameObject.SetActive(false);
             close.gameObject.SetActive(false); delete.gameObject.SetActive(false);
             playSummary.gameObject.SetActive(false);
@@ -92,7 +92,7 @@ namespace ThinkingSpace.Speech
         {
             string error=deleteRequested!=null?deleteRequested(this):"Deletion is unavailable.";
             if (string.IsNullOrEmpty(error)) return;
-            heading.text="Delete Failed"; body.text=error; confirmDelete.gameObject.SetActive(false);
+            heading.text=L("idea.delete_failed"); body.text=error; confirmDelete.gameObject.SetActive(false);
         }
         private void SetNormalControls()
         {
@@ -162,7 +162,8 @@ namespace ThinkingSpace.Speech
             summaryRequestId = requestId;
             if (playSummary == null) return;
             TMP_Text label = playSummary.GetComponentInChildren<TMP_Text>(true);
-            if (label != null) label.text = string.IsNullOrEmpty(requestId) ? "Play Summary" : "Stop Summary";
+            if (label != null) label.text = ThinkingSpaceLocalizationController.Get(
+                string.IsNullOrEmpty(requestId) ? "idea.play_summary" : "idea.stop_summary");
             playSummary.interactable = true;
         }
 
@@ -171,18 +172,18 @@ namespace ThinkingSpace.Speech
 
         private void ShowColorPage()
         {
-            colorPage=true;confirmingDelete=false;heading.text="Bubble Color · "+IdeaVisualColorPalette.Normalize(idea.VisualColor);
+            colorPage=true;confirmingDelete=false;heading.text=L("idea.color_title",IdeaVisualColorPalette.Normalize(idea.VisualColor));
             body.gameObject.SetActive(false);pageLabel.gameObject.SetActive(false);previous.gameObject.SetActive(false);next.gameObject.SetActive(false);
             playSummary.gameObject.SetActive(false);returnBubble.gameObject.SetActive(false);delete.gameObject.SetActive(false);
             cancelDelete.gameObject.SetActive(false);confirmDelete.gameObject.SetActive(false);close.gameObject.SetActive(true);
-            color.gameObject.SetActive(true);SetButtonLabel(color,"Back");SetColorButtonsVisible(true);RefreshColorButtons();
+            color.gameObject.SetActive(true);SetButtonLabel(color,L("common.back"));SetColorButtonsVisible(true);RefreshColorButtons();
         }
 
         private void SelectColor(string value)
         {
             string error=colorRequested!=null?colorRequested(this,value):"Color changes are unavailable.";
-            if(!string.IsNullOrEmpty(error)){heading.text="Color Change Failed";return;}
-            idea.VisualColor=IdeaVisualColorPalette.Normalize(value);heading.text="Bubble Color · "+idea.VisualColor;RefreshColorButtons();
+            if(!string.IsNullOrEmpty(error)){heading.text=L("idea.color_failed");return;}
+            idea.VisualColor=IdeaVisualColorPalette.Normalize(value);heading.text=L("idea.color_title",idea.VisualColor);RefreshColorButtons();
         }
 
         private void SetColorButtonsVisible(bool visible)
@@ -192,7 +193,14 @@ namespace ThinkingSpace.Speech
         {
             string selected=IdeaVisualColorPalette.Normalize(idea.VisualColor);
             for(int i=0;i<colorButtons.Count&&i<IdeaVisualColorPalette.Names.Length;i++)
-            {string name=IdeaVisualColorPalette.Names[i];SetButtonLabel(colorButtons[i],name+(selected==name?" ✓":""));}
+            {string name=IdeaVisualColorPalette.Names[i];SetButtonLabel(colorButtons[i],ColorLabel(name)+(selected==name?" ✓":""));}
+        }
+
+        private static string ColorLabel(string value)
+        {
+            if(string.IsNullOrEmpty(value))return string.Empty;
+            string key="color."+value.Trim().ToLowerInvariant();
+            return L(key);
         }
 
         private static void SetButtonLabel(Button button,string value)
@@ -312,7 +320,8 @@ namespace ThinkingSpace.Speech
                 pages.Add(text.Substring(offset,count).Trim());offset+=count;}
             if(pages.Count==0)pages.Add(string.Empty);page=0;Refresh();
         }
-        private void Refresh(){if(confirmingDelete)return;body.text=pages[page];pageLabel.text="Page "+(page+1)+" / "+pages.Count;previous.interactable=page>0;next.interactable=page<pages.Count-1;}
+        private void Refresh(){if(confirmingDelete)return;body.text=pages[page];pageLabel.text=L("common.page_format",page+1,pages.Count);previous.interactable=page>0;next.interactable=page<pages.Count-1;}
+        private static string L(string key,params object[] arguments)=>ThinkingSpaceLocalizationController.Get(key,arguments);
 
         private void Build()
         {
@@ -347,6 +356,7 @@ namespace ThinkingSpace.Speech
                 Image image=palette.targetGraphic as Image;if(image!=null)image.color=IdeaVisualColorPalette.Resolve(choice,new Color(.12f,.2f,.3f));
                 colorButtons.Add(palette);
             }
+            ThinkingSpaceLocalizationController.LocalizeKnownText(gameObject);
         }
 
         private void BuildBorder(RectTransform parent)

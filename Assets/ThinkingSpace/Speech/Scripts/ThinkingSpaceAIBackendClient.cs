@@ -29,6 +29,7 @@ namespace ThinkingSpace.Speech
         public string most_recent_idea_id;
         public string preferred_name;
         public string current_mode = "conversational";
+        public string input_language, response_language, response_language_mode, voice_profile_id;
     }
 
     [Serializable] public sealed class ConversationProcessRequest
@@ -51,6 +52,7 @@ namespace ThinkingSpace.Speech
         public string[] candidate_idea_ids;
         public bool should_create_idea, should_execute_action;
         public string status, error;
+        public string response_language, voice_profile_id;
     }
 
     [Serializable] public sealed class IntentRouteResponse
@@ -78,7 +80,7 @@ namespace ThinkingSpace.Speech
         public string contract_version, request_id, session_id, action, idea_id;
         public string title, summary, category;
         public string[] related_idea_ids;
-        public string spoken_response, status, error;
+        public string spoken_response, status, error, source, fallback_spoken_response;
     }
 
     public sealed class AIBackendResult<T>
@@ -88,6 +90,7 @@ namespace ThinkingSpace.Speech
         public string Error;
         public long HttpStatus;
         public float DurationSeconds;
+        public string FallbackSpokenResponse;
     }
 
     public static class AIRequestJsonSerializer
@@ -131,6 +134,36 @@ namespace ThinkingSpace.Speech
             public string most_recent_idea_id, preferred_name, current_mode;
         }
 
+        [Serializable] private sealed class ConversationContextWithoutRecentLanguageWire
+        {
+            public ConversationTurnPayload[] recent_turns;
+            public string preferred_name, current_mode, input_language, response_language,
+                response_language_mode, voice_profile_id;
+        }
+
+        [Serializable] private sealed class ConversationContextWithRecentLanguageWire
+        {
+            public ConversationTurnPayload[] recent_turns;
+            public string most_recent_idea_id, preferred_name, current_mode, input_language,
+                response_language, response_language_mode, voice_profile_id;
+        }
+
+        [Serializable] private sealed class ConversationLanguageWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentLanguageWire context;
+            public string clarification_id;
+        }
+
+        [Serializable] private sealed class ConversationRecentLanguageWireRequest
+        {
+            public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentLanguageWire context;
+            public string clarification_id;
+        }
+
         [Serializable] private sealed class InitialConversationWithoutRecentWireRequest
         {
             public string request_id, session_id, raw_transcript, transcript_source;
@@ -167,12 +200,42 @@ namespace ThinkingSpace.Speech
             ConversationContextPayload context = value.context ?? new ConversationContextPayload();
             context.recent_turns = context.recent_turns ?? Array.Empty<ConversationTurnPayload>();
             bool hasRecent = !string.IsNullOrWhiteSpace(context.most_recent_idea_id);
+            bool hasLanguage = !string.IsNullOrWhiteSpace(context.input_language)
+                || !string.IsNullOrWhiteSpace(context.response_language)
+                || !string.IsNullOrWhiteSpace(context.response_language_mode)
+                || !string.IsNullOrWhiteSpace(context.voice_profile_id);
             var withoutRecent = new ConversationContextWithoutRecentWire
             { recent_turns = context.recent_turns, preferred_name = context.preferred_name,
               current_mode = context.current_mode };
             var withRecent = new ConversationContextWithRecentWire
             { recent_turns = context.recent_turns, most_recent_idea_id = context.most_recent_idea_id,
               preferred_name = context.preferred_name, current_mode = context.current_mode };
+            if (hasLanguage)
+            {
+                var language = new ConversationContextWithoutRecentLanguageWire
+                { recent_turns=context.recent_turns, preferred_name=context.preferred_name,
+                  current_mode=context.current_mode, input_language=context.input_language,
+                  response_language=context.response_language,
+                  response_language_mode=context.response_language_mode,
+                  voice_profile_id=context.voice_profile_id };
+                var recentLanguage = new ConversationContextWithRecentLanguageWire
+                { recent_turns=context.recent_turns, most_recent_idea_id=context.most_recent_idea_id,
+                  preferred_name=context.preferred_name, current_mode=context.current_mode,
+                  input_language=context.input_language, response_language=context.response_language,
+                  response_language_mode=context.response_language_mode,
+                  voice_profile_id=context.voice_profile_id };
+                return hasRecent
+                    ? JsonUtility.ToJson(new ConversationRecentLanguageWireRequest
+                    { request_id=value.request_id, session_id=value.session_id,
+                      raw_transcript=value.raw_transcript, transcript_source=value.transcript_source,
+                      available_ideas=ideas, context=recentLanguage,
+                      clarification_id=string.IsNullOrEmpty(value.clarification_id)?null:value.clarification_id })
+                    : JsonUtility.ToJson(new ConversationLanguageWireRequest
+                    { request_id=value.request_id, session_id=value.session_id,
+                      raw_transcript=value.raw_transcript, transcript_source=value.transcript_source,
+                      available_ideas=ideas, context=language,
+                      clarification_id=string.IsNullOrEmpty(value.clarification_id)?null:value.clarification_id });
+            }
             if (string.IsNullOrEmpty(value.clarification_id))
                 return hasRecent
                     ? JsonUtility.ToJson(new InitialConversationWithRecentWireRequest
@@ -406,7 +469,10 @@ namespace ThinkingSpace.Speech
                     LastValidationFieldPath = "Backend response did not include a field path";
                     LastValidationCategory = "remote_schema_validation";
                 }
-                completed?.Invoke(Failure<TResponse>(message, request.responseCode, elapsed));
+                AIBackendResult<TResponse> failure=Failure<TResponse>(message,request.responseCode,elapsed);
+                failure.FallbackSpokenResponse=ExtractFallbackSpeech(request.downloadHandler!=null
+                    ?request.downloadHandler.text:null);
+                completed?.Invoke(failure);
             }
             request.Dispose();
         }
@@ -465,7 +531,14 @@ namespace ThinkingSpace.Speech
             return string.IsNullOrEmpty(fallback) ? "AI backend request failed." : fallback;
         }
 
-        [Serializable] private sealed class BackendError { public string error, detail; }
+        private static string ExtractFallbackSpeech(string json)
+        {
+            if(string.IsNullOrEmpty(json))return null;
+            try{return JsonUtility.FromJson<BackendError>(json)?.fallback_spoken_response;}
+            catch(Exception){return null;}
+        }
+
+        [Serializable] private sealed class BackendError { public string error, detail, fallback_spoken_response; }
 
         private static string ValidatePayload<TRequest>(TRequest payload, out string fieldPath,
             out string category)

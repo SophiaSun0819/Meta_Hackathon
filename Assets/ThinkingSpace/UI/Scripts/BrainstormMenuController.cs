@@ -117,6 +117,11 @@ namespace ThinkingSpace.UI
         [SerializeField, Min(0.05f)] private float duplicateClickGuard = 0.2f;
         [SerializeField] private TMP_FontAsset menuFont;
 
+        [Header("Backend Capabilities")]
+        [Tooltip("Enable only after the multilingual conversation backend contract is deployed and verified.")]
+        [SerializeField] private bool multilingualBackendContractEnabled;
+        public bool MultilingualBackendContractEnabled=>multilingualBackendContractEnabled;
+
         [Header("Open Palm Diagnostics")]
         [SerializeField] private bool showOpenPalmDiagnostics;
         [SerializeField] private bool showInteractionDiagnostics;
@@ -291,6 +296,7 @@ namespace ThinkingSpace.UI
 #endif
         }
         private ThinkingSpacePreferencesStore preferencesStore;
+        private ThinkingSpaceLocalizationController localizationController;
         private IdeaBubbleManager bubbleManager;
         private AirSwipeGestureRecognizer airSwipeRecognizer;
         private ThinkingSpaceSessionTransferService sessionTransfer;
@@ -309,6 +315,7 @@ namespace ThinkingSpace.UI
             if (sessionStore == null) sessionStore = BrainstormSessionStore.CreateForApplication();
             if(sessionTransfer==null)sessionTransfer=ThinkingSpaceSessionTransferService.CreateForApplication(sessionStore);
             if (preferencesStore == null) preferencesStore = ThinkingSpacePreferencesStore.CreateForApplication();
+            localizationController=ThinkingSpaceLocalizationController.Ensure(preferencesStore);
             if (recordingGestureController == null)
                 recordingGestureController = GetComponent<ThumbRecordingGestureController>();
             bubbleManager=GetComponent<IdeaBubbleManager>();
@@ -835,6 +842,7 @@ namespace ThinkingSpace.UI
             authoredView.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
                 preferencesStore.Data.RecordingMode,preferencesStore.Data.SubtitlesEnabled);
             authoredView.SetWristMenuHand(preferencesStore.Data.WristMenuHand);
+            authoredView.RefreshLocalization();
             authoredView.SetFrontMarkerVisible(false);
             authoredView.gameObject.SetActive(false);
         }
@@ -1452,7 +1460,7 @@ namespace ThinkingSpace.UI
             fistProgressText.fontSize = 18f;
             fistProgressText.alignment = TextAlignmentOptions.Center;
             fistProgressText.color = Color.white;
-            fistProgressText.text = "Hold Fist";
+            fistProgressText.text = ThinkingSpaceLocalizationController.Get("gesture.hold_fist");
             fistProgressRoot.SetActive(false);
         }
 
@@ -2078,59 +2086,59 @@ namespace ThinkingSpace.UI
         private void BuildMainScreen()
         {
             ResizePanel(650f + sessionStore.Sessions.Count * 68f);
-            AddHeading("Brainstorm", 46f);
-            AddLabel("Brainstorming Sessions", 29f);
-            if (sessionStore.Sessions.Count == 0) AddLabel("No sessions yet", 24f, new Color(0.7f, 0.75f, 0.82f));
+            AddHeading(L("app.brainstorm"), 46f);
+            AddLabel(L("menu.sessions.title"), 29f);
+            if (sessionStore.Sessions.Count == 0) AddLabel(L("menu.sessions.empty"), 24f, new Color(0.7f, 0.75f, 0.82f));
             else
             {
                 foreach (BrainstormSession session in sessionStore.Sessions)
                 {
                     int number = session.Number;
-                    AddButton("Session " + number, () => ReopenSession(number));
+                    AddButton(L("menu.session.format",number), () => ReopenSession(number));
                 }
             }
-            AddButton("Start New Session", StartNewSession, true);
-            AddButton("Import Session",RequestImportSession);
-            AddButton("Voice Commands", () => OpenHelp(MenuScreen.VoiceHelp));
-            AddButton("Hand Gestures", () => OpenHelp(MenuScreen.GestureHelp));
+            AddButton(L("menu.session.start"), StartNewSession, true);
+            AddButton(L("menu.session.import"),RequestImportSession);
+            AddButton(L("menu.voice_commands"), () => OpenHelp(MenuScreen.VoiceHelp));
+            AddButton(L("menu.hand_gestures"), () => OpenHelp(MenuScreen.GestureHelp));
             AddRecordingHandSelector();
-            AddButton("Close Menu", CloseMenu);
+            AddButton(L("common.close_menu"), CloseMenu);
         }
 
         private void BuildSessionScreen()
         {
             ResizePanel(840f);
             int number = sessionStore.ActiveSession != null ? sessionStore.ActiveSession.Number : 0;
-            AddHeading("Session " + number, 44f);
-            AddButton("Challenge My Idea", () => ShowPlaceholder("Challenge My Idea — Coming Soon"));
-            AddButton("Expand My Idea", () => ShowPlaceholder("Expand My Idea — Coming Soon"));
-            AddButton("Connect My Ideas", () => ShowPlaceholder("Connect My Ideas — Coming Soon"));
-            AddButton("Spawn Whiteboard", () => ShowPlaceholder("Whiteboard — Coming Soon"));
-            AddButton("Export Session",RequestExportSession);
-            AddButton("Voice Commands", () => OpenHelp(MenuScreen.VoiceHelp));
-            AddButton("Hand Gestures", () => OpenHelp(MenuScreen.GestureHelp));
+            AddHeading(L("menu.session.format",number), 44f);
+            AddButton(L("menu.challenge"), () => ShowPlaceholder(L("menu.challenge")));
+            AddButton(L("menu.expand"), () => ShowPlaceholder(L("menu.expand")));
+            AddButton(L("menu.connect"), () => ShowPlaceholder(L("menu.connect")));
+            AddButton(L("menu.whiteboard"), () => ShowPlaceholder(L("menu.whiteboard")));
+            AddButton(L("menu.session.export"),RequestExportSession);
+            AddButton(L("menu.voice_commands"), () => OpenHelp(MenuScreen.VoiceHelp));
+            AddButton(L("menu.hand_gestures"), () => OpenHelp(MenuScreen.GestureHelp));
             AddRecordingHandSelector();
-            AddButton("End Session", EndSession);
-            AddButton("Close Menu", CloseMenu);
+            AddButton(L("menu.session.end"), EndSession);
+            AddButton(L("common.close_menu"), CloseMenu);
         }
 
         private void BuildHelpScreen(MenuScreen screen)
         {
             ResizePanel(270f);
             bool voice = screen == MenuScreen.VoiceHelp;
-            AddHeading(voice ? "Voice Commands" : "Hand Gestures", 42f);
+            AddHeading(voice ? L("menu.voice_commands") : L("menu.hand_gestures"), 42f);
             AddLabel(voice
-                ? "Voice command reference will be added with speech recognition."
-                : "Gesture reference will be expanded as interactions are finalized.", 26f);
-            AddButton("Back", () => ShowScreen(helpReturnScreen));
+                ? L("menu.help.voice")
+                : L("menu.help.gestures"), 26f);
+            AddButton(L("common.back"), () => ShowScreen(helpReturnScreen));
         }
 
         private void AddRecordingHandSelector()
         {
-            AddLabel("Recording Hand", 27f);
-            AddButton("Left" + (recordingGestureController.SelectedRecordingHand == ThumbRecordingGestureController.RecordingHand.Left ? "  ✓" : string.Empty),
+            AddLabel(L("settings.recording_hand"), 27f);
+            AddButton(L("settings.left") + (recordingGestureController.SelectedRecordingHand == ThumbRecordingGestureController.RecordingHand.Left ? "  ✓" : string.Empty),
                 () => SetRecordingHand(ThumbRecordingGestureController.RecordingHand.Left));
-            AddButton("Right" + (recordingGestureController.SelectedRecordingHand == ThumbRecordingGestureController.RecordingHand.Right ? "  ✓" : string.Empty),
+            AddButton(L("settings.right") + (recordingGestureController.SelectedRecordingHand == ThumbRecordingGestureController.RecordingHand.Right ? "  ✓" : string.Empty),
                 () => SetRecordingHand(ThumbRecordingGestureController.RecordingHand.Right));
         }
 
@@ -2179,7 +2187,7 @@ namespace ThinkingSpace.UI
             if (!sessionStore.TryDeleteSession(number))
             {
                 authoredView?.SetSessionStatus(string.IsNullOrEmpty(sessionStore.LastPersistenceError)
-                    ? "Session deletion failed." : sessionStore.LastPersistenceError);
+                    ? L("error.session_delete") : sessionStore.LastPersistenceError);
                 return;
             }
             OrbyVoiceDirector.Instance?.RemoveSessionCache(target.SessionId);
@@ -2189,7 +2197,7 @@ namespace ThinkingSpace.UI
 
         public SessionTransferResult ExportCurrentSession(string format)
         {
-            if(sessionTransferBusy)return SessionTransferResult.Fail("Another session transfer is already running.");
+            if(sessionTransferBusy)return SessionTransferResult.Fail(L("error.transfer_busy"));
             sessionTransferBusy=true;
             try
             {
@@ -2203,7 +2211,7 @@ namespace ThinkingSpace.UI
 
         public SessionTransferResult ImportSession(string fileReference,bool confirmed=false)
         {
-            if(sessionTransferBusy)return SessionTransferResult.Fail("Another session transfer is already running.");
+            if(sessionTransferBusy)return SessionTransferResult.Fail(L("error.transfer_busy"));
             sessionTransferBusy=true;
             try
             {
@@ -2227,20 +2235,20 @@ namespace ThinkingSpace.UI
 
         private void RequestExportSession()
         {
-            if(safTransferPending){authoredView?.SetTransferStatus("Another document operation is already open.");return;}
+            if(safTransferPending){authoredView?.SetTransferStatus(L("transfer.busy"));return;}
             SessionTransferResult prepared=ExportCurrentSession("json");
             if(!prepared.Success)return;
             if(!AndroidSafSessionDocumentBridge.IsSupported)
-            {authoredView?.SetTransferStatus("Quest document picker is unavailable. The app-owned export remains at:\n"+prepared.FilePath);return;}
+            {authoredView?.SetTransferStatus(L("transfer.export_unavailable",prepared.FilePath));return;}
             safTransferPending=true;
-            authoredView?.SetTransferStatus("Choose where to save "+Path.GetFileName(prepared.FilePath)+".");
+            authoredView?.SetTransferStatus(L("transfer.choose_export",Path.GetFileName(prepared.FilePath)));
             if(!AndroidSafSessionDocumentBridge.BeginExport(gameObject.name,prepared.FilePath,Path.GetFileName(prepared.FilePath)))
-            {safTransferPending=false;authoredView?.SetTransferStatus("Quest document picker could not start. The app-owned export was preserved.");}
+            {safTransferPending=false;authoredView?.SetTransferStatus(L("transfer.export_picker_failed"));}
         }
 
         private void RequestImportSession()
         {
-            if(safTransferPending){authoredView?.SetTransferStatus("Another document operation is already open.");return;}
+            if(safTransferPending){authoredView?.SetTransferStatus(L("transfer.busy"));return;}
             if(!string.IsNullOrEmpty(pendingSafImportFile))
             {
                 string fileName=Path.GetFileName(pendingSafImportFile);
@@ -2251,23 +2259,23 @@ namespace ThinkingSpace.UI
                 return;
             }
             if(!AndroidSafSessionDocumentBridge.IsSupported)
-            {authoredView?.SetTransferStatus("Quest document picker is unavailable on this device; no file was accessed.");return;}
+            {authoredView?.SetTransferStatus(L("transfer.picker_unavailable"));return;}
             safTransferPending=true;
-            authoredView?.SetTransferStatus("Choose a Thinking Space JSON session to import.");
+            authoredView?.SetTransferStatus(L("transfer.choose_import"));
             if(!AndroidSafSessionDocumentBridge.BeginImport(gameObject.name,sessionTransfer.ImportDirectory))
-            {safTransferPending=false;authoredView?.SetTransferStatus("Quest document picker could not start; no file was accessed.");}
+            {safTransferPending=false;authoredView?.SetTransferStatus(L("transfer.picker_failed"));}
         }
 
         public void OnSafDocumentResult(string payload)
         {
             safTransferPending=false;
             if(!AndroidSafSessionDocumentBridge.TryParseResult(payload,out SafDocumentResult result))
-            {authoredView?.SetTransferStatus("Document picker returned an invalid result.");return;}
+            {authoredView?.SetTransferStatus(L("transfer.invalid_result"));return;}
             if(result.Operation=="import"&&result.Success)
             {
                 string candidate=Path.GetFileName(result.FilePath);
                 if(string.IsNullOrEmpty(candidate))
-                {authoredView?.SetTransferStatus("Selected import could not be staged safely.");return;}
+                {authoredView?.SetTransferStatus(L("transfer.stage_failed"));return;}
                 pendingSafImportFile=candidate;
             }
             authoredView?.SetTransferStatus(result.Message);
@@ -2381,6 +2389,35 @@ namespace ThinkingSpace.UI
         [ContextMenu("Development/Palm Menu/Test Separate Toggle Click")]
         public void DevelopmentTestToggle() => DevelopmentSimulateMenuButtonCallback();
 #endif
+
+        public bool SetInterfaceLanguage(string languageCode)
+        {
+            if(localizationController==null)
+                localizationController=ThinkingSpaceLocalizationController.Ensure(preferencesStore);
+            if(localizationController==null||!localizationController.SetInterfaceLanguage(languageCode))return false;
+            authoredView?.RefreshLocalization();
+            if(authoredView==null&&menuCanvas!=null&&menuCanvas.gameObject.activeInHierarchy)
+                ShowScreen(currentScreen);
+            if(palmButtonLabel!=null)palmButtonLabel.text=L("common.menu");
+            return true;
+        }
+
+        public bool SetConversationLanguage(string mode,string languageCode,string voiceProfileId)
+        {
+            if(preferencesStore==null)preferencesStore=ThinkingSpacePreferencesStore.CreateForApplication();
+            if(!multilingualBackendContractEnabled&&!string.Equals(mode,"auto",StringComparison.OrdinalIgnoreCase))
+            {interactionDiagnostic="Explicit conversation languages require the multilingual backend deployment.";return false;}
+            if(!preferencesStore.SetConversationLanguage(mode,languageCode))return false;
+            if(!preferencesStore.SetVoiceProfileId(voiceProfileId))return false;
+            authoredView?.RefreshLocalization();
+            interactionDiagnostic="Conversation language: "+preferencesStore.Data.ConversationLanguageMode+
+                " · "+(string.IsNullOrEmpty(preferencesStore.Data.ConversationLanguageCode)?"backend default":preferencesStore.Data.ConversationLanguageCode)+
+                " · voice "+preferencesStore.Data.VoiceProfileId;
+            return true;
+        }
+
+        private static string L(string key,params object[] arguments)
+            =>ThinkingSpaceLocalizationController.Get(key,arguments);
 
         private void AddHeading(string text, float size) => AddLabel(text, size, Color.white, 76f, FontStyles.Bold);
 
