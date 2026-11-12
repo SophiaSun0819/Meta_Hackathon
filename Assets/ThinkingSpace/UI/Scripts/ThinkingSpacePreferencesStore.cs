@@ -6,6 +6,7 @@ using ThinkingSpace.Speech;
 namespace ThinkingSpace.UI
 {
     public enum StartupBehavior { PreserveCurrentBehavior }
+    public enum WristMenuHand { Left, Right }
 
     [Serializable]
     public sealed class ThinkingSpacePreferencesData
@@ -22,11 +23,12 @@ namespace ThinkingSpace.UI
         public bool FirstSessionTutorialCompleted;
         public bool FirstReviewOptionsCompleted;
         public bool PersonalizedGreetingCompleted;
+        public WristMenuHand WristMenuHand = WristMenuHand.Left;
     }
 
     public sealed class ThinkingSpacePreferencesStore
     {
-        public const int CurrentSchemaVersion = 3;
+        public const int CurrentSchemaVersion = 4;
         public const string FileName = "preferences-v1.json";
         public const float MinimumSilenceSeconds = 1f, MaximumSilenceSeconds = 10f, StepSeconds = 0.5f;
         private readonly string directory, path, backupPath;
@@ -69,6 +71,11 @@ namespace ThinkingSpace.UI
         }
 
         public bool SetSubtitlesEnabled(bool value) => Mutate(() => Data.SubtitlesEnabled = value);
+        public bool SetWristMenuHand(WristMenuHand value)
+        {
+            if (!Enum.IsDefined(typeof(WristMenuHand), value)) return false;
+            return Mutate(() => Data.WristMenuHand = value);
+        }
         public bool SetPreferredName(string value)
         {
             string sanitized = (value ?? string.Empty).Trim();
@@ -135,6 +142,8 @@ namespace ThinkingSpace.UI
                 loaded.SilenceDurationSeconds = ClampSilence(loaded.SilenceDurationSeconds);
                 if (!Enum.IsDefined(typeof(ThumbRecordingGestureController.RecordingMode), loaded.RecordingMode))
                     loaded.RecordingMode = ThumbRecordingGestureController.RecordingMode.Conversational;
+                if (!Enum.IsDefined(typeof(WristMenuHand), loaded.WristMenuHand))
+                    loaded.WristMenuHand = WristMenuHand.Left;
                 // Version 1 predates subtitle preferences. Preserve the intended opt-out
                 // behavior instead of treating the absent JSON field as false.
                 if (loaded.SchemaVersion == 1) loaded.SubtitlesEnabled = true;

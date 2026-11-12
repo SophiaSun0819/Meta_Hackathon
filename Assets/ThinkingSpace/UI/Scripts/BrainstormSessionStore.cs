@@ -8,9 +8,27 @@ namespace ThinkingSpace.UI
     [Serializable] public sealed class BrainstormIdeaRecord
     {
         public string IdeaId = string.Empty, Title = string.Empty, Summary = string.Empty, Category = string.Empty;
+        public string VisualColor = IdeaVisualColorPalette.Default;
         public string SourceTranscript = string.Empty, CreatedUtc = string.Empty;
         public List<string> RelatedIdeaIds = new List<string>();
         public BubbleTransformRecord Bubble = new BubbleTransformRecord();
+    }
+    public static class IdeaVisualColorPalette
+    {
+        public const string Default="Default";
+        public static readonly string[] Names={Default,"Blue","Cyan","Green","Yellow","Orange","Red","Pink","Purple"};
+        public static bool IsSupported(string value)
+        {if(string.IsNullOrEmpty(value))return true;for(int i=0;i<Names.Length;i++)if(string.Equals(Names[i],value,StringComparison.OrdinalIgnoreCase))return true;return false;}
+        public static string Normalize(string value)
+        {if(string.IsNullOrEmpty(value))return Default;for(int i=0;i<Names.Length;i++)if(string.Equals(Names[i],value,StringComparison.OrdinalIgnoreCase))return Names[i];return Default;}
+        public static Color Resolve(string value,Color category)
+        {
+            switch(Normalize(value))
+            {case "Blue":return new Color(.14f,.42f,1f);case "Cyan":return new Color(.05f,.88f,1f);
+            case "Green":return new Color(.16f,.85f,.38f);case "Yellow":return new Color(1f,.86f,.12f);
+            case "Orange":return new Color(1f,.48f,.08f);case "Red":return new Color(1f,.16f,.14f);
+            case "Pink":return new Color(1f,.20f,.62f);case "Purple":return new Color(.64f,.25f,1f);default:return category;}
+        }
     }
     [Serializable] public sealed class IdeaRelationshipRecord
     {
@@ -53,7 +71,7 @@ namespace ThinkingSpace.UI
 
     public sealed class BrainstormSessionStore
     {
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
         public const string SaveFileName = "sessions-v1.json";
         [Serializable] private sealed class SaveDocument
         {
@@ -113,7 +131,9 @@ namespace ThinkingSpace.UI
         {
             if (ActiveSession == null || idea == null || string.IsNullOrEmpty(idea.IdeaId)
                 || ActiveSession.SessionId != sessionId
-                || ActiveSession.Ideas.Exists(item => item.IdeaId == idea.IdeaId)) return false;
+                || ActiveSession.Ideas.Exists(item => item.IdeaId == idea.IdeaId)
+                ||!IdeaVisualColorPalette.IsSupported(idea.VisualColor)) return false;
+            idea.VisualColor=IdeaVisualColorPalette.Normalize(idea.VisualColor);
             if (string.IsNullOrEmpty(idea.CreatedUtc)) idea.CreatedUtc = DateTime.UtcNow.ToString("O");
             if (idea.RelatedIdeaIds == null) idea.RelatedIdeaIds = new List<string>();
             if (idea.Bubble == null) idea.Bubble = new BubbleTransformRecord();
@@ -150,6 +170,59 @@ namespace ThinkingSpace.UI
             return false;
         }
 
+        public bool TryImportSession(string originalCreatedUtc,IReadOnlyList<BrainstormIdeaRecord> importedIdeas,
+            IReadOnlyList<IdeaRelationshipRecord> importedRelationships,
+            IReadOnlyList<ConversationRecord> importedConversation,out BrainstormSession imported)
+        {
+            imported=null;
+            BrainstormSession previousActive=ActiveSession;
+            int previousNext=nextSessionNumber;
+            string now=DateTime.UtcNow.ToString("O");
+            BrainstormSession candidate=new BrainstormSession("session-"+Guid.NewGuid().ToString("N"),
+                nextSessionNumber++,string.IsNullOrEmpty(originalCreatedUtc)?now:originalCreatedUtc,now);
+            try
+            {
+                if(importedIdeas!=null)for(int i=0;i<importedIdeas.Count;i++)
+                    candidate.Ideas.Add(CloneIdea(importedIdeas[i]));
+                if(importedRelationships!=null)for(int i=0;i<importedRelationships.Count;i++)
+                    candidate.Relationships.Add(CloneRelationship(importedRelationships[i]));
+                if(importedConversation!=null)for(int i=0;i<importedConversation.Count;i++)
+                    candidate.Conversation.Add(CloneConversation(importedConversation[i]));
+                sessions.Add(candidate);ActiveSession=candidate;
+                if(Save()){imported=candidate;return true;}
+            }
+            catch(Exception exception)
+            {LastPersistenceError="Session import failed: "+exception.Message;Debug.LogWarning(LastPersistenceError);}
+            sessions.Remove(candidate);ActiveSession=previousActive;nextSessionNumber=previousNext;
+            return false;
+        }
+
+        private static BrainstormIdeaRecord CloneIdea(BrainstormIdeaRecord source)
+        {
+            if(source==null)throw new InvalidDataException("Imported idea is null.");
+            BubbleTransformRecord bubble=source.Bubble??new BubbleTransformRecord();
+            return new BrainstormIdeaRecord{IdeaId=source.IdeaId,Title=source.Title,Summary=source.Summary,
+                Category=source.Category,SourceTranscript=source.SourceTranscript,CreatedUtc=source.CreatedUtc,
+                VisualColor=IdeaVisualColorPalette.Normalize(source.VisualColor),
+                RelatedIdeaIds=source.RelatedIdeaIds==null?new List<string>():new List<string>(source.RelatedIdeaIds),
+                Bubble=new BubbleTransformRecord{Position=bubble.Position,Rotation=bubble.Rotation,Scale=bubble.Scale}};
+        }
+
+        private static IdeaRelationshipRecord CloneRelationship(IdeaRelationshipRecord source)
+        {
+            if(source==null)throw new InvalidDataException("Imported relationship is null.");
+            return new IdeaRelationshipRecord{SourceIdeaId=source.SourceIdeaId,
+                TargetIdeaId=source.TargetIdeaId,RelationshipType=source.RelationshipType};
+        }
+
+        private static ConversationRecord CloneConversation(ConversationRecord source)
+        {
+            if(source==null)throw new InvalidDataException("Imported conversation record is null.");
+            return new ConversationRecord{MessageId=source.MessageId,Speaker=source.Speaker,Text=source.Text,
+                CreatedUtc=source.CreatedUtc,MessageType=source.MessageType,RelatedRequestId=source.RelatedRequestId,
+                RelatedIdeaIds=source.RelatedIdeaIds==null?new List<string>():new List<string>(source.RelatedIdeaIds)};
+        }
+
         public bool AppendConversation(string sessionId, string speaker, string text,
             string messageType, string relatedRequestId, IEnumerable<string> relatedIdeaIds = null)
         {
@@ -181,6 +254,16 @@ namespace ThinkingSpace.UI
             idea.Bubble.Rotation = rotation;
             idea.Bubble.Scale = scale;
             return Save();
+        }
+
+        public bool TryUpdateIdeaVisualColor(string sessionId,string ideaId,string visualColor)
+        {
+            if(ActiveSession==null||ActiveSession.SessionId!=sessionId||string.IsNullOrEmpty(ideaId)
+                ||!IdeaVisualColorPalette.IsSupported(visualColor))return false;
+            BrainstormIdeaRecord idea=ActiveSession.Ideas.Find(item=>item!=null&&item.IdeaId==ideaId);
+            if(idea==null)return false;
+            string previous=idea.VisualColor;idea.VisualColor=IdeaVisualColorPalette.Normalize(visualColor);
+            if(Save())return true;idea.VisualColor=previous;return false;
         }
 
         public bool TryDeleteIdea(string sessionId, string ideaId)
@@ -255,6 +338,9 @@ namespace ThinkingSpace.UI
                 sessions.Clear();
                 sessions.AddRange(document.Sessions.FindAll(item => item != null && item.Number > 0
                     && !string.IsNullOrEmpty(item.SessionId)));
+                for(int i=0;i<sessions.Count;i++)for(int j=0;j<sessions[i].Ideas.Count;j++)
+                    if(sessions[i].Ideas[j]!=null)sessions[i].Ideas[j].VisualColor=
+                        IdeaVisualColorPalette.Normalize(sessions[i].Ideas[j].VisualColor);
                 int highest = 0; for (int i = 0; i < sessions.Count; i++) highest = Math.Max(highest, sessions[i].Number);
                 nextSessionNumber = Math.Max(Math.Max(1, document.NextSessionNumber), highest + 1);
                 OnboardingCompleted = document.OnboardingCompleted;
