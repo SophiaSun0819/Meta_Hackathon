@@ -15,18 +15,36 @@ namespace ThinkingSpace.Speech
         private TMP_Text statusText, timerText, notificationText;
         private Image levelFill, peakMarker;
         private CanvasGroup notificationGroup;
+        private Transform viewer;
         private float notificationStartedAt;
         private bool notificationActive, listeningVisible, initializedMode;
 
-        public void Configure(Transform orby)
+        public void Configure(Transform orby,Transform headset=null)
         {
             if (canvas == null) Build();
+            if(headset!=null)viewer=headset;
             if (orby != null && canvas.transform.parent != orby)
             {
                 canvas.transform.SetParent(orby, false);
                 canvas.transform.localPosition = new Vector3(0f, -0.17f, 0f);
                 canvas.transform.localRotation = Quaternion.identity;
             }
+        }
+
+        private void LateUpdate()
+        {
+            if(canvas==null||!canvas.gameObject.activeInHierarchy)return;
+            if(viewer==null&&Camera.main!=null)viewer=Camera.main.transform;
+            if(viewer==null)return;
+            canvas.transform.rotation=CalculateReadableCanvasRotation(canvas.transform.position,viewer.position);
+        }
+
+        public static Quaternion CalculateReadableCanvasRotation(Vector3 canvasPosition,Vector3 viewerPosition)
+        {
+            Vector3 away=Vector3.ProjectOnPlane(canvasPosition-viewerPosition,Vector3.up);
+            if(away.sqrMagnitude<.000001f)away=Vector3.forward;
+            // Unity world-space Canvas and TMP text are readable from local -Z.
+            return Quaternion.LookRotation(away.normalized,Vector3.up);
         }
 
         public void SetListeningMode(bool enabled, bool showNotification)

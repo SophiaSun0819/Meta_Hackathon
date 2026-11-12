@@ -103,6 +103,8 @@ namespace ThinkingSpace.Speech
         private RecordingHand appliedRecordingHand;
         private bool sessionActive;
         private bool bubbleManipulationSuppressed;
+        private bool menuGestureSuppressed;
+        private float menuSuppressionUntil;
         private float bubbleSuppressionUntil;
 
         public string DiagnosticText { get; private set; }
@@ -110,6 +112,7 @@ namespace ThinkingSpace.Speech
         public RecordingMode CurrentRecordingMode => recordingMode;
         public bool SessionActive => sessionActive;
         public bool IsMicrophoneRecording => microphoneRecorder != null && microphoneRecorder.IsRecording;
+        public bool IsRecordingGestureBusy => state != RecordingGestureState.Idle || IsMicrophoneRecording;
         public bool IsBubbleManipulationSuppressingGestures => ShouldSuppressRecordingGesture(
             bubbleManipulationSuppressed, Time.unscaledTime, bubbleSuppressionUntil);
         public static bool ShouldSuppressRecordingGesture(bool manipulationActive,
@@ -184,6 +187,11 @@ namespace ThinkingSpace.Speech
             {
                 CancelPendingGestureForExternalSuppression();
                 selectedGesture = ThumbGesture.None;
+            }
+            if(menuGestureSuppressed||Time.unscaledTime<menuSuppressionUntil)
+            {
+                CancelPendingGestureForExternalSuppression();
+                selectedGesture=ThumbGesture.None;
             }
 
             if (recordingMode == RecordingMode.Manual && microphoneRecorder != null
@@ -312,6 +320,14 @@ namespace ThinkingSpace.Speech
         {
             bubbleManipulationSuppressed = false;
             bubbleSuppressionUntil = 0f;
+            CancelPendingGestureForExternalSuppression();
+        }
+
+        public void SetMenuGestureSuppressed(bool suppressed,float releaseCooldown=-1f)
+        {
+            menuGestureSuppressed=suppressed;
+            menuSuppressionUntil=suppressed?0f:Time.unscaledTime+(releaseCooldown>=0f
+                ?releaseCooldown:bubbleManipulationReleaseCooldown);
             CancelPendingGestureForExternalSuppression();
         }
 

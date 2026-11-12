@@ -136,6 +136,8 @@ namespace ThinkingSpace.Speech
                 CurrentStage = "Expired clarification cleared; routing as a new request";
             }
             string transcript = rawTranscript;
+            if(!HasPendingClarification&&TryGetDirectGreetingResponse(transcript,out string greeting))
+                return HandleDirectGreeting(transcript,greeting);
             string requestId = NewRequestId("route");
             LastRequestId = requestId;
             CurrentStage = "Routing intent";
@@ -146,6 +148,45 @@ namespace ThinkingSpace.Speech
             awaitingDismissal = false;
             responsePanel.Hide();
             SetOrby(OrbyConversationState.Thinking);
+            return true;
+        }
+
+        private bool HandleDirectGreeting(string transcript,string response)
+        {
+            string requestId=NewRequestId("greeting");LastRequestId=requestId;
+            Store.AppendConversation(activeSessionId,"user",transcript,"approved_transcript",requestId);
+            Store.AppendConversation(activeSessionId,"orby",response,"direct_greeting",requestId);
+            CurrentStage="Direct greeting acknowledged";LastSuccessfulStage=CurrentStage;
+            LastIntentCategory="general_conversation";LastProposedAction="converse";
+            responsePanel.Hide();awaitingDismissal=false;
+            OrbyVoiceDirector director=OrbyVoiceDirector.Instance;
+            if(automaticConversationMode)
+            {
+                string voiceRequest=director?.SpeakDynamicTracked(response,activeSessionId,
+                    OrbyVoicePriority.Acknowledgement,
+                    success=>CompleteAutomaticSpeech(success,response),"direct_greeting","happy");
+                if(string.IsNullOrEmpty(voiceRequest))CompleteAutomaticSpeech(false,response);
+            }
+            else
+            {
+                ShowMessage("Orby",response,"Close");
+                director?.SpeakDynamic(response,activeSessionId,OrbyVoicePriority.Acknowledgement,
+                    null,"direct_greeting","happy");
+            }
+            return true;
+        }
+
+        public static bool TryGetDirectGreetingResponse(string transcript,out string response)
+        {
+            string normalized=Regex.Replace((transcript??string.Empty).Trim().ToLowerInvariant(),
+                "[^\\p{L}\\p{N}]+"," ").Trim();
+            bool nameOnly=normalized=="orby";
+            bool greeting=normalized=="hey orby"||normalized=="hi orby"
+                ||normalized=="hello orby"||normalized=="hey there orby"
+                ||normalized=="good morning orby"||normalized=="good afternoon orby"
+                ||normalized=="good evening orby";
+            if(!nameOnly&&!greeting){response=null;return false;}
+            response=nameOnly?"I'm here. What's on your mind?":"Hey! What's on your mind?";
             return true;
         }
 

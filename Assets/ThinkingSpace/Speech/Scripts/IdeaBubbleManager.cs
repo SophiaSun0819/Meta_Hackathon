@@ -11,6 +11,7 @@ namespace ThinkingSpace.Speech
     public sealed class IdeaBubbleManager : MonoBehaviour
     {
         [SerializeField, Range(0.12f, 0.15f)] private float bubbleDiameter = 0.135f;
+        [SerializeField, Range(0f, 1f)] private float bubbleCategorySaturation = 0.78f;
         [SerializeField] private bool showDevelopmentDiagnostics;
         [Header("Beckon and return")]
         [SerializeField, Range(0.55f, 0.65f)] private float inspectionDistance = 0.60f;
@@ -49,6 +50,10 @@ namespace ThinkingSpace.Speech
         [SerializeField, Range(0.55f, 0.85f)] private float nearCurledChordRatio = 0.74f;
         [SerializeField, Range(0.65f, 0.9f)] private float fistReleaseChordRatio = 0.82f;
         [SerializeField, Range(0.7f, 0.98f)] private float extendedChordRatio = 0.82f;
+        [Header("Details panel manipulation")]
+        [SerializeField, Range(0.025f, 0.10f)] private float panelBorderGrabRange = 0.06f;
+        [SerializeField, Range(0.08f, 0.35f)] private float panelGrabConfirmation = 0.16f;
+        [SerializeField, Range(0.01f, 0.15f)] private float panelDragSmoothTime = 0.045f;
         private readonly Dictionary<string, IdeaBubbleView> visible = new Dictionary<string, IdeaBubbleView>();
         private readonly Dictionary<string, IdeaDetailsPanel> openPanels = new Dictionary<string, IdeaDetailsPanel>();
         private readonly Dictionary<string, BubbleInteractionHand> selectionOwners =
@@ -100,6 +105,11 @@ namespace ThinkingSpace.Speech
         private string resizeReservationIdeaId = string.Empty;
         private float resizeReservationRemaining;
         private int nextInspectionZoneNumber = 1;
+        private IdeaDetailsPanel draggedPanel;
+        private BubbleInteractionHand panelDragOwner = BubbleInteractionHand.Unknown;
+        private string panelGrabCandidateId = string.Empty;
+        private BubbleInteractionHand panelGrabCandidateHand = BubbleInteractionHand.Unknown;
+        private float panelGrabTimer;
 
         public string LastCreatedIdeaId { get; private set; } = "None";
         public string LastRestoredIdeaId { get; private set; } = "None";
@@ -120,6 +130,7 @@ namespace ThinkingSpace.Speech
             }
         }
         public DirectManipulationMode DirectMode => directMode;
+        public bool IsPanelDragging => draggedPanel != null;
 
         public enum DirectManipulationMode { None, GlideToGrip, Grabbed, Resizing }
 
@@ -330,7 +341,7 @@ namespace ThinkingSpace.Speech
             root.transform.localScale = IsFinite(scale) && scale.x > 0.01f && scale.y > 0.01f && scale.z > 0.01f
                 ? scale : Vector3.one;
             IdeaBubbleView bubble = root.AddComponent<IdeaBubbleView>();
-            bubble.Initialize(idea, bubbleDiameter, SelectAndShowDetails);
+            bubble.Initialize(idea, bubbleDiameter, SelectAndShowDetails, bubbleCategorySaturation);
             bubble.SetInteractionAvailable(interactionAvailable);
             visible.Add(idea.IdeaId, bubble);
             return bubble;
@@ -376,9 +387,10 @@ namespace ThinkingSpace.Speech
             root.transform.SetParent(panelRoot, true);
             IdeaDetailsPanel panel = root.AddComponent<IdeaDetailsPanel>();
             openPanels.Add(idea.IdeaId, panel);
-            panel.Configure(idea, visible.TryGetValue(idea.IdeaId, out IdeaBubbleView bubble) ? bubble.transform : null,
+            panel.Configure(idea, visible.TryGetValue(idea.IdeaId, out IdeaBubbleView bubble) ? bubble : null,
                 headset, slot, ClosePanel, HandlePanelFocused, DeleteFromPanel,
-                playIdeaSummary, stopIdeaSummary, RequestReturn);
+                playIdeaSummary, stopIdeaSummary, RequestReturn, HandlePanelDragStateChanged,
+                SetColorFromPanel);
             panel.SetReturnAvailable(inspections.ContainsKey(idea.IdeaId));
             if (movements.TryGetValue(idea.IdeaId, out BubbleMovement activeMovement))
             {
@@ -386,11 +398,20 @@ namespace ThinkingSpace.Speech
                 activeMovement.hiddenPanelInstanceId = panel.GetInstanceID();
             }
             if (bubble != null) bubble.SetOpen(true);
-            var occupied = new List<Vector3>();
-            foreach (IdeaDetailsPanel other in openPanels.Values)
-                if (other != null && other != panel) occupied.Add(other.transform.position);
-            panel.NudgeToAvoid(occupied);
+            panel.NudgeToAvoid(CollectVisiblePanelPositions(idea.IdeaId));
             return true;
+        }
+
+        private string SetColorFromPanel(IdeaDetailsPanel panel,string visualColor)
+        {
+            if(panel==null||Store?.ActiveSession==null||Store.ActiveSession.SessionId!=activeSessionId)
+                return "The active session changed; color was not saved.";
+            if(!IdeaVisualColorPalette.IsSupported(visualColor))return "That color is not supported.";
+            if(!Store.TryUpdateIdeaVisualColor(activeSessionId,panel.IdeaId,visualColor))
+                return string.IsNullOrEmpty(Store.LastPersistenceError)?"The color could not be saved.":Store.LastPersistenceError;
+            if(visible.TryGetValue(panel.IdeaId,out IdeaBubbleView bubble)&&bubble!=null)
+                bubble.SetVisualColor(visualColor);
+            LastSaveResult="Bubble color saved";RefreshDiagnostics();return string.Empty;
         }
 
         private int FirstAvailablePanelSlot()
@@ -406,6 +427,7 @@ namespace ThinkingSpace.Speech
         private void ClosePanel(IdeaDetailsPanel panel)
         {
             if (panel == null) return;
+            if (panel == draggedPanel) EndPanelDrag();
             string ideaId = panel.IdeaId;
             openPanels.Remove(ideaId);
             selectionOwners.Remove(ideaId);
@@ -421,6 +443,7 @@ namespace ThinkingSpace.Speech
         {
             if (panel == null || Store?.ActiveSession == null || Store.ActiveSession.SessionId != activeSessionId)
                 return "The active session changed; the idea was not deleted.";
+            if (panel == draggedPanel) EndPanelDrag();
             string ideaId = panel.IdeaId;
             if (!Store.TryDeleteIdea(activeSessionId, ideaId))
                 return string.IsNullOrEmpty(Store.LastPersistenceError)
@@ -480,6 +503,7 @@ namespace ThinkingSpace.Speech
 
         private void ClearPanels()
         {
+            EndPanelDrag();
             foreach (string ideaId in openPanels.Keys)
                 if (visible.TryGetValue(ideaId, out IdeaBubbleView bubble) && bubble != null)
                     bubble.SetOpen(false);
@@ -512,6 +536,7 @@ namespace ThinkingSpace.Speech
                     if (bubble != null) bubble.SetInteractionAvailable(available);
                 if (!available)
                 {
+                    EndPanelDrag();
                     FinishDirectManipulation(true);
                     HideAllBoundingBoxes();
                     ResetGestureRecognition();
@@ -522,12 +547,89 @@ namespace ThinkingSpace.Speech
             gestureCooldownRemaining = Mathf.Max(0f, gestureCooldownRemaining - Time.unscaledDeltaTime);
             if (interactionAvailable && movements.Count == 0)
             {
-                UpdateDirectManipulation();
-                if (directMode == DirectManipulationMode.None) UpdateFingertipNearSelection();
+                bool panelReserved = UpdatePanelManipulation();
+                if (!panelReserved) UpdateDirectManipulation();
+                else if (directMode != DirectManipulationMode.None) FinishDirectManipulation(true);
+                if (!panelReserved && directMode == DirectManipulationMode.None) UpdateFingertipNearSelection();
                 else ResetNearSelectionEntries();
-                if (directMode == DirectManipulationMode.None && gestureCooldownRemaining <= 0f)
+                if (!panelReserved && directMode == DirectManipulationMode.None && gestureCooldownRemaining <= 0f)
                     UpdateBeckonGestures();
             }
+        }
+
+        private bool UpdatePanelManipulation()
+        {
+            bool leftValid=TryGetManipulationHand(leftBeckon,out Vector3 leftPalm,
+                out bool leftFist,out bool leftOpen);
+            bool rightValid=TryGetManipulationHand(rightBeckon,out Vector3 rightPalm,
+                out bool rightFist,out bool rightOpen);
+
+            if(draggedPanel!=null)
+            {
+                bool valid=panelDragOwner==BubbleInteractionHand.Left?leftValid:rightValid;
+                bool release=panelDragOwner==BubbleInteractionHand.Left?leftOpen:rightOpen;
+                Vector3 palm=panelDragOwner==BubbleInteractionHand.Left?leftPalm:rightPalm;
+                if(!valid||release){EndPanelDrag();return true;}
+                draggedPanel.UpdateBorderDrag(palm,panelDragSmoothTime);
+                return true;
+            }
+
+            IdeaDetailsPanel nearest=null; BubbleInteractionHand owner=BubbleInteractionHand.Unknown;
+            Vector3 ownerPalm=Vector3.zero; float best=float.PositiveInfinity;
+            foreach(IdeaDetailsPanel panel in openPanels.Values)
+            {
+                if(panel==null||panel.IsMovementHidden||panel.IsPressed)continue;
+                float left=leftValid?panel.DistanceToBorder(leftPalm):float.PositiveInfinity;
+                float right=rightValid?panel.DistanceToBorder(rightPalm):float.PositiveInfinity;
+                float distance=Mathf.Min(left,right);
+                panel.SetBorderProximity(distance<=panelBorderGrabRange);
+                if(distance>=best||distance>panelBorderGrabRange)continue;
+                best=distance;nearest=panel;
+                if(left<=right){owner=BubbleInteractionHand.Left;ownerPalm=leftPalm;}
+                else{owner=BubbleInteractionHand.Right;ownerPalm=rightPalm;}
+            }
+            if(nearest==null){ResetPanelGrabCandidate();return false;}
+
+            bool fist=owner==BubbleInteractionHand.Left?leftFist:rightFist;
+            if(!fist){ResetPanelGrabCandidate();return true;}
+            if(panelGrabCandidateId!=nearest.IdeaId||panelGrabCandidateHand!=owner)
+            {
+                panelGrabCandidateId=nearest.IdeaId;panelGrabCandidateHand=owner;panelGrabTimer=0f;
+            }
+            panelGrabTimer+=Time.unscaledDeltaTime;
+            if(panelGrabTimer<panelGrabConfirmation)return true;
+            if(directMode!=DirectManipulationMode.None)FinishDirectManipulation(true);
+            draggedPanel=nearest;panelDragOwner=owner;nearest.BeginBorderDrag(ownerPalm);
+            recordingGestureController?.SetBubbleManipulationSuppressed(true,
+                microphoneGestureReleaseCooldown);
+            HideAllBoundingBoxes();ResetPanelGrabCandidate();
+            return true;
+        }
+
+        private void HandlePanelDragStateChanged(IdeaDetailsPanel panel,bool active)
+        {
+            if(active&&panel!=null)SetActivePanel(panel.IdeaId);
+            lastPanelMovementEvent=(active?"Panel drag started: ":"Panel drag ended: ")
+                +(panel!=null?panel.IdeaId:"None");
+            RefreshDiagnostics();
+        }
+
+        private void EndPanelDrag()
+        {
+            if(draggedPanel!=null)draggedPanel.EndBorderDrag();
+            draggedPanel=null;panelDragOwner=BubbleInteractionHand.Unknown;
+            ResetPanelGrabCandidate();
+            foreach(IdeaDetailsPanel panel in openPanels.Values)
+                if(panel!=null)panel.SetBorderProximity(false);
+            recordingGestureController?.SetBubbleManipulationSuppressed(false,
+                microphoneGestureReleaseCooldown);
+            gestureCooldownRemaining=Mathf.Max(gestureCooldownRemaining,microphoneGestureReleaseCooldown);
+        }
+
+        private void ResetPanelGrabCandidate()
+        {
+            panelGrabCandidateId=string.Empty;panelGrabCandidateHand=BubbleInteractionHand.Unknown;
+            panelGrabTimer=0f;
         }
 
         private void ResolveInteractionOwners()
@@ -853,6 +955,7 @@ namespace ThinkingSpace.Speech
             directPanelInstanceId = 0;
             if (openPanels.TryGetValue(ideaId, out IdeaDetailsPanel panel) && panel != null)
             {
+                if (panel == draggedPanel) EndPanelDrag();
                 directPanelInstanceId = panel.GetInstanceID();
                 panel.SetMovementHidden(true);
                 lastPanelMovementEvent = "Hidden for direct manipulation: " + ideaId;
@@ -1163,6 +1266,7 @@ namespace ThinkingSpace.Speech
             int hiddenPanelInstanceId = 0;
             if (openPanels.TryGetValue(bubble.IdeaId, out IdeaDetailsPanel panel) && panel != null)
             {
+                if (panel == draggedPanel) EndPanelDrag();
                 hiddenPanelInstanceId = panel.GetInstanceID();
                 panel.SetMovementHidden(true);
                 lastPanelMovementEvent = "Hidden for movement: " + bubble.IdeaId;
@@ -1306,6 +1410,9 @@ namespace ThinkingSpace.Speech
             var occupied = new List<Vector3>();
             foreach (KeyValuePair<string, IdeaDetailsPanel> pair in openPanels)
                 if (pair.Key != excludingIdeaId && pair.Value != null && !pair.Value.IsMovementHidden)
+                    occupied.Add(pair.Value.transform.position);
+            foreach (KeyValuePair<string, IdeaBubbleView> pair in visible)
+                if (pair.Key != excludingIdeaId && pair.Value != null)
                     occupied.Add(pair.Value.transform.position);
             return occupied;
         }

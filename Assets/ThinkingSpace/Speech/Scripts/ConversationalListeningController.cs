@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using System.Collections.Generic;
 using ThinkingSpace.Companion;
 
 namespace ThinkingSpace.Speech
@@ -145,10 +146,12 @@ namespace ThinkingSpace.Speech
         private ConversationalListeningHud hud;
         private AdaptiveVoiceActivityDetector detector;
         private bool sessionActive, ownsCapture, speechWasDetected, shutdownAfterUtterance;
+        private readonly HashSet<string> externalPauseReasons=new HashSet<string>(System.StringComparer.Ordinal);
         private int generation;
         private float captureStartedAt;
 
         public bool ListeningEnabled { get; private set; }
+        public bool IsExternallyPaused => externalPauseReasons.Count>0;
         public bool OwnsCapture => ownsCapture;
         public bool SpeechWasDetected => speechWasDetected;
         public ConversationalListeningState State { get; private set; } = ConversationalListeningState.Off;
@@ -221,6 +224,30 @@ namespace ThinkingSpace.Speech
             OrbyVoiceDirector.Instance?.PlayPrerecorded("mic_on");
         }
 
+        public void SetExternalPause(string reason,bool paused)
+        {
+            if(string.IsNullOrWhiteSpace(reason))return;
+            ResolveOrby();
+            if(paused)
+            {
+                if(!externalPauseReasons.Add(reason))return;
+                orby?.AcquirePause(reason);
+                State=ConversationalListeningState.Suspended;
+                WorkflowBlocker="Paused: "+reason;
+            }
+            else
+            {
+                if(!externalPauseReasons.Remove(reason))return;
+                orby?.ReleasePause(reason);
+                if(externalPauseReasons.Count==0)
+                {
+                    State=ListeningEnabled?ConversationalListeningState.WaitingForCapture
+                        :ConversationalListeningState.Off;
+                    WorkflowBlocker=ListeningEnabled?"None":"Listening disabled";
+                }
+            }
+        }
+
         public void DisableListening(string reason = "Disabled by thumbs-down", bool cancelActiveSpeech = false)
         {
             bool wasEnabled = ListeningEnabled;
@@ -265,6 +292,12 @@ namespace ThinkingSpace.Speech
             UpdateHud();
             if ((!ListeningEnabled && !shutdownAfterUtterance) || !sessionActive
                 || recorder == null || coordinator == null) return;
+            if(IsExternallyPaused&&!speechWasDetected)
+            {
+                State=ConversationalListeningState.Suspended;
+                WorkflowBlocker="Externally paused";
+                return;
+            }
             if (orby != null && orby.State == OrbyConversationState.Speaking)
             {
                 if (ownsCapture && speechWasDetected)
@@ -419,7 +452,8 @@ namespace ThinkingSpace.Speech
         {
             if (orby == null) orby = FindFirstObjectByType<OrbyConversationStateController>();
             if (orbyView == null) orbyView = FindFirstObjectByType<OrbyPlaceholderView>();
-            if (hud != null && orbyView != null) hud.Configure(orbyView.transform);
+            if (hud != null && orbyView != null) hud.Configure(orbyView.transform,
+                Camera.main!=null?Camera.main.transform:null);
         }
 
         private void UpdateHud()

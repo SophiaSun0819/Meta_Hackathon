@@ -59,6 +59,11 @@ namespace ThinkingSpace.UI
         private Button sessionSilenceMinusButton, sessionSilencePlusButton, sessionConversationalButton, sessionManualButton;
         private Button subtitlesOnButton,subtitlesOffButton,editNameButton,replayTutorialButton;
         private Button sessionSubtitlesOnButton,sessionSubtitlesOffButton,sessionEditNameButton,sessionReplayTutorialButton;
+        private Button mainWristLeftButton,mainWristRightButton,sessionWristLeftButton,sessionWristRightButton;
+        private TMP_Text mainWristLabel,sessionWristLabel;
+        private Button exportSessionButton,importSessionButton;
+        private GameObject mainSessionActionRow;
+        private TMP_Text mainTransferStatus;
         private TMP_Text sessionSilenceValueLabel, sessionSettingsTitle;
         private GameObject sessionDeleteConfirmation;
         private TMP_Text sessionDeleteQuestion;
@@ -67,6 +72,7 @@ namespace ThinkingSpace.UI
         private int mainPage, mainPageCount, sessionPage;
         private const int SessionsPerPage = 3;
         private const int SessionPageCount = 4;
+        private const int MainUtilityPageCount = 2;
 
         public Canvas Canvas { get; private set; }
         public RectTransform CanvasRect => Canvas != null ? Canvas.GetComponent<RectTransform>() : null;
@@ -83,6 +89,8 @@ namespace ThinkingSpace.UI
                 out sessionNextButton, out sessionPageIndicator, ChangeSessionPage);
             CreateAudioSettingsPage();
             CreateSessionAudioSettingsPage();
+            CreateWristSettings();
+            CreateSessionTransferActions();
             CreateSessionDeleteConfirmation();
         }
 
@@ -92,7 +100,8 @@ namespace ThinkingSpace.UI
             Action challenge, Action expand, Action connect, Action whiteboard,
             Action endSession, Action backFromHelp,
             Action decreaseSilence, Action increaseSilence, Action conversationalMode, Action manualMode,
-            Action subtitlesOn,Action subtitlesOff,Action editName,Action replayTutorial)
+            Action subtitlesOn,Action subtitlesOff,Action editName,Action replayTutorial,
+            Action wristLeft,Action wristRight,Action exportSession,Action importSession)
         {
             BindButton(startSessionButton, startSession);
             BindButton(mainVoiceButton, voiceHelp);
@@ -122,6 +131,17 @@ namespace ThinkingSpace.UI
             BindButton(sessionManualButton, manualMode);
             BindButton(subtitlesOnButton,subtitlesOn);BindButton(subtitlesOffButton,subtitlesOff);BindButton(editNameButton,editName);BindButton(replayTutorialButton,replayTutorial);
             BindButton(sessionSubtitlesOnButton,subtitlesOn);BindButton(sessionSubtitlesOffButton,subtitlesOff);BindButton(sessionEditNameButton,editName);BindButton(sessionReplayTutorialButton,replayTutorial);
+            BindButton(mainWristLeftButton,wristLeft);BindButton(mainWristRightButton,wristRight);
+            BindButton(sessionWristLeftButton,wristLeft);BindButton(sessionWristRightButton,wristRight);
+            BindButton(exportSessionButton,exportSession);BindButton(importSessionButton,importSession);
+        }
+
+        public void SetWristMenuHand(WristMenuHand hand)
+        {
+            SetButtonSelected(mainWristLeftButton,hand==WristMenuHand.Left);
+            SetButtonSelected(mainWristRightButton,hand==WristMenuHand.Right);
+            SetButtonSelected(sessionWristLeftButton,hand==WristMenuHand.Left);
+            SetButtonSelected(sessionWristRightButton,hand==WristMenuHand.Right);
         }
 
         public void SetAudioPreferences(float silenceSeconds,
@@ -174,7 +194,7 @@ namespace ThinkingSpace.UI
             }
             SetHandSelection(mainLeftHandButton, mainRightHandButton, recordingHand);
             mainPage = 0;
-            mainPageCount = Mathf.Max(1, Mathf.CeilToInt(sessions.Count / (float)SessionsPerPage)) + 2;
+            mainPageCount = CalculateMainPageCount(sessions.Count);
             RefreshMainPage(sessions.Count);
         }
 
@@ -191,6 +211,12 @@ namespace ThinkingSpace.UI
         public void ShowVoiceHelp() => ShowOnly(voiceHelpPanel);
         public void ShowGestureHelp() => ShowOnly(gestureHelpPanel);
         public void SetSessionStatus(string message) => sessionStatus.text = message;
+        public void SetTransferStatus(string message)
+        {
+            string safeMessage=message??string.Empty;
+            if(mainTransferStatus!=null)mainTransferStatus.text=safeMessage;
+            if(sessionStatus!=null)sessionStatus.text=safeMessage;
+        }
 
         public void SetFrontMarkerVisible(bool visible)
         {
@@ -224,10 +250,12 @@ namespace ThinkingSpace.UI
         {
             int sessionPageCount = Mathf.Max(1, Mathf.CeilToInt(sessionCount / (float)SessionsPerPage));
             bool settingsPage = mainPage == sessionPageCount;
-            bool audioPage = mainPage > sessionPageCount;
+            bool audioPage = mainPage == sessionPageCount+1;
             bool sessionPage = !settingsPage && !audioPage;
+            bool firstSessionPage=sessionPage&&IsImportOnMainPage(mainPage);
             if (sessionList != null) sessionList.gameObject.SetActive(sessionPage);
-            if (startSessionButton != null) startSessionButton.gameObject.SetActive(sessionPage);
+            if(mainSessionActionRow!=null)mainSessionActionRow.SetActive(firstSessionPage);
+            if(mainTransferStatus!=null)mainTransferStatus.gameObject.SetActive(firstSessionPage);
             if (noSessionsLabel != null) noSessionsLabel.SetActive(sessionPage && sessionCount == 0 && mainPage == 0);
             for (int i = 0; i < runtimeSessionRows.Count; i++)
                 runtimeSessionRows[i].SetActive(sessionPage
@@ -236,6 +264,8 @@ namespace ThinkingSpace.UI
             SetActive(mainGesturesButton, settingsPage);
             SetActive(mainLeftHandButton, settingsPage);
             SetActive(mainRightHandButton, settingsPage);
+            SetActive(mainWristLeftButton,settingsPage);SetActive(mainWristRightButton,settingsPage);
+            if(mainWristLabel!=null)mainWristLabel.gameObject.SetActive(settingsPage);
             SetActive(mainCloseButton, settingsPage);
             SetActive(silenceMinusButton, audioPage); SetActive(silencePlusButton, audioPage);
             SetActive(conversationalButton, audioPage); SetActive(manualButton, audioPage);
@@ -287,6 +317,82 @@ namespace ThinkingSpace.UI
             if(source!=null){sessionSettingsTitle=Instantiate(source,parent);sessionSettingsTitle.text="Recording Settings";sessionSettingsTitle.alignment=TextAlignmentOptions.Center;sessionSettingsTitle.raycastTarget=false;SetRect(sessionSettingsTitle.rectTransform,new Vector2(.08f,.76f),new Vector2(.92f,.91f));sessionSilenceValueLabel=Instantiate(source,parent);sessionSilenceValueLabel.text="2.0 seconds";sessionSilenceValueLabel.alignment=TextAlignmentOptions.Center;sessionSilenceValueLabel.raycastTarget=false;SetRect(sessionSilenceValueLabel.rectTransform,new Vector2(.35f,.50f),new Vector2(.65f,.62f));}
         }
 
+        private void CreateWristSettings()
+        {
+            CreateWristSettings(mainPanel,mainCloseButton,out mainWristLeftButton,
+                out mainWristRightButton,out mainWristLabel);
+            CreateWristSettings(sessionPanel,sessionCloseButton,out sessionWristLeftButton,
+                out sessionWristRightButton,out sessionWristLabel);
+        }
+
+        private void CreateSessionTransferActions()
+        {
+            if(mainPanel==null||sessionPanel==null||startSessionButton==null
+                ||challengeButton==null||sessionCloseButton==null||sessionList==null)return;
+
+            int mainSibling=startSessionButton.transform.GetSiblingIndex();
+            mainSessionActionRow=CreateHorizontalActionRow("Session Creation and Import",sessionList,mainSibling);
+            startSessionButton.transform.SetParent(mainSessionActionRow.transform,false);
+            importSessionButton=Instantiate(startSessionButton,mainSessionActionRow.transform);
+            importSessionButton.name="Import Session";
+            SetButtonLabel(importSessionButton,"Import Session");
+
+            TMP_Text statusSource=noSessionsLabel!=null?noSessionsLabel.GetComponent<TMP_Text>():null;
+            if(statusSource==null)statusSource=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
+            if(statusSource!=null)
+            {
+                mainTransferStatus=Instantiate(statusSource,sessionList);
+                mainTransferStatus.name="Session Import Status";
+                mainTransferStatus.text=string.Empty;
+                mainTransferStatus.fontSize=Mathf.Min(mainTransferStatus.fontSize,20f);
+                mainTransferStatus.alignment=TextAlignmentOptions.Center;
+                mainTransferStatus.raycastTarget=false;
+                LayoutElement statusLayout=mainTransferStatus.GetComponent<LayoutElement>();
+                if(statusLayout==null)statusLayout=mainTransferStatus.gameObject.AddComponent<LayoutElement>();
+                statusLayout.preferredHeight=42f;
+            }
+
+            Transform sessionContent=challengeButton.transform.parent;
+            int sessionSibling=challengeButton.transform.GetSiblingIndex();
+            GameObject sessionActionRow=CreateHorizontalActionRow("Challenge and Export",sessionContent,sessionSibling);
+            challengeButton.transform.SetParent(sessionActionRow.transform,false);
+            exportSessionButton=Instantiate(challengeButton,sessionActionRow.transform);
+            exportSessionButton.name="Export Session";
+            SetButtonLabel(exportSessionButton,"Export Session");
+        }
+
+        private static GameObject CreateHorizontalActionRow(string name,Transform parent,int siblingIndex)
+        {
+            GameObject row=new GameObject(name,typeof(RectTransform),typeof(HorizontalLayoutGroup),typeof(LayoutElement));
+            row.transform.SetParent(parent,false);row.transform.SetSiblingIndex(siblingIndex);
+            HorizontalLayoutGroup layout=row.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing=8f;layout.childControlWidth=true;layout.childControlHeight=true;
+            layout.childForceExpandWidth=true;layout.childForceExpandHeight=false;
+            LayoutElement element=row.GetComponent<LayoutElement>();element.preferredHeight=56f;
+            return row;
+        }
+
+        private static void SetButtonLabel(Button button,string text)
+        {
+            TMP_Text label=button!=null?button.GetComponentInChildren<TMP_Text>(true):null;
+            if(label!=null)label.text=text;
+        }
+
+        private static void CreateWristSettings(GameObject panel,Button source,out Button left,
+            out Button right,out TMP_Text label)
+        {
+            left=right=null;label=null;if(panel==null||source==null)return;
+            RectTransform parent=panel.GetComponent<RectTransform>();
+            left=Instantiate(source,parent);ConfigureNavigationButton(left,"Watch: Left",
+                new Vector2(.08f,.12f),new Vector2(.47f,.22f));
+            right=Instantiate(source,parent);ConfigureNavigationButton(right,"Watch: Right",
+                new Vector2(.53f,.12f),new Vector2(.92f,.22f));
+            TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
+            if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text="Wrist Menu";
+                label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
+                SetRect(label.rectTransform,new Vector2(.08f,.24f),new Vector2(.92f,.34f));}
+        }
+
         private void CreateSessionDeleteConfirmation()
         {
             if(mainPanel==null||mainCloseButton==null)return;
@@ -325,6 +431,8 @@ namespace ThinkingSpace.UI
             bool helpAndHand = sessionPage == 1;
             bool audioSettings = sessionPage == 2;
             bool finish = sessionPage == 3;
+            if(exportSessionButton!=null&&exportSessionButton.transform.parent!=null)
+                exportSessionButton.transform.parent.gameObject.SetActive(IsExportOnSessionPage(sessionPage));
             SetActive(challengeButton, ideas);
             SetActive(expandButton, ideas);
             SetActive(connectButton, ideas);
@@ -333,6 +441,8 @@ namespace ThinkingSpace.UI
             SetActive(sessionGesturesButton, helpAndHand);
             SetActive(sessionLeftHandButton, helpAndHand);
             SetActive(sessionRightHandButton, helpAndHand);
+            SetActive(sessionWristLeftButton,helpAndHand);SetActive(sessionWristRightButton,helpAndHand);
+            if(sessionWristLabel!=null)sessionWristLabel.gameObject.SetActive(helpAndHand);
             SetActive(sessionSilenceMinusButton,audioSettings);SetActive(sessionSilencePlusButton,audioSettings);
             SetActive(sessionConversationalButton,audioSettings);SetActive(sessionManualButton,audioSettings);
             SetActive(sessionSubtitlesOnButton,audioSettings);SetActive(sessionSubtitlesOffButton,audioSettings);SetActive(sessionEditNameButton,audioSettings);SetActive(sessionReplayTutorialButton,audioSettings);
@@ -349,6 +459,13 @@ namespace ThinkingSpace.UI
         {
             if (button != null) button.gameObject.SetActive(active);
         }
+
+        public static int CalculateMainPageCount(int sessionCount)
+            =>Mathf.Max(1,Mathf.CeilToInt(Mathf.Max(0,sessionCount)/(float)SessionsPerPage))
+                +MainUtilityPageCount;
+
+        public static bool IsImportOnMainPage(int page)=>page==0;
+        public static bool IsExportOnSessionPage(int page)=>page==0;
 
         private static void SetLabelVisible(GameObject panel, string exactText, bool visible)
         {

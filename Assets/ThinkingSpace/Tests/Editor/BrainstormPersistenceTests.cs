@@ -22,6 +22,179 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void WristMenuPokeRequiresContactRearmCooldownAndNoManipulationBlock()
+        {
+            Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,true,.5f,.024f,.35f,false),Is.True);
+            Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.03f,true,.5f,.024f,.35f,false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,false,.5f,.024f,.35f,false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,true,.1f,.024f,.35f,false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,true,.5f,.024f,.35f,true),Is.False);
+        }
+
+        [Test]
+        public void WristMenuPreferenceDefaultsLeftAndPersistsRight()
+        {
+            var preferences=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(preferences.Data.WristMenuHand,Is.EqualTo(WristMenuHand.Left));
+            Assert.That(preferences.SetWristMenuHand(WristMenuHand.Right),Is.True);
+            Assert.That(new ThinkingSpacePreferencesStore(directory).Data.WristMenuHand,
+                Is.EqualTo(WristMenuHand.Right));
+        }
+
+        [Test]
+        public void WristwatchDorsalPoseIsStableForLeftAndRightWithoutCameraFacingFlip()
+        {
+            Vector3 wrist=Vector3.zero,middle=new Vector3(0f,0f,1f),offset=new Vector3(0f,0f,.035f);
+            Assert.That(BrainstormMenuController.TryCalculateDorsalWatchPose(wrist,
+                new Vector3(1f,0f,1f),middle,new Vector3(-1f,0f,1f),-1f,offset,Vector3.zero,
+                out Vector3 leftPosition,out Quaternion leftRotation),Is.True);
+            Assert.That(BrainstormMenuController.TryCalculateDorsalWatchPose(wrist,
+                new Vector3(-1f,0f,1f),middle,new Vector3(1f,0f,1f),1f,offset,Vector3.zero,
+                out Vector3 rightPosition,out Quaternion rightRotation),Is.True);
+            Assert.That(leftPosition.y,Is.GreaterThan(0f));Assert.That(rightPosition.y,Is.GreaterThan(0f));
+            Assert.That(Vector3.Dot(leftRotation*Vector3.back,Vector3.up),Is.GreaterThan(.99f));
+            Assert.That(Vector3.Dot(rightRotation*Vector3.back,Vector3.up),Is.GreaterThan(.99f));
+            Quaternion turn=Quaternion.Euler(0f,120f,0f);
+            BrainstormMenuController.TryCalculateDorsalWatchPose(wrist,turn*new Vector3(1f,0f,1f),
+                turn*middle,turn*new Vector3(-1f,0f,1f),-1f,offset,Vector3.zero,
+                out Vector3 turnedPosition,out _);
+            Assert.That(Vector3.Dot(turnedPosition.normalized,leftPosition.normalized),Is.GreaterThan(.99f));
+        }
+
+        [Test]
+        public void WristwatchVisibilityUsesFacingHysteresisAndRejectsSidewaysOrDownward()
+        {
+            Vector3 towardViewer=Vector3.forward;
+            Assert.That(BrainstormMenuController.IsWristwatchReadable(Vector3.forward,
+                towardViewer,false,50f,70f,-.12f),Is.True);
+            Vector3 betweenThresholds=Quaternion.Euler(0f,60f,0f)*Vector3.forward;
+            Assert.That(BrainstormMenuController.IsWristwatchReadable(betweenThresholds,
+                towardViewer,false,50f,70f,-.12f),Is.False);
+            Assert.That(BrainstormMenuController.IsWristwatchReadable(betweenThresholds,
+                towardViewer,true,50f,70f,-.12f),Is.True);
+            Assert.That(BrainstormMenuController.IsWristwatchReadable(Vector3.right,
+                towardViewer,true,50f,70f,-.12f),Is.False);
+            Assert.That(BrainstormMenuController.IsWristwatchReadable(
+                new Vector3(0f,-.5f,.5f),towardViewer,true,50f,70f,-.12f),Is.False);
+        }
+
+        [Test]
+        public void HistoricalConversationIdeaReferenceSurvivesDeletedIdeaExportValidation()
+        {
+            string now=System.DateTime.UtcNow.ToString("O");
+            var document=new ThinkingSpaceSessionDocument
+            {
+                ExportedUtc=now,SessionId="session-history",SessionTitle="History",SessionNumber=1,
+                CreatedUtc=now,UpdatedUtc=now,
+                Conversation=new System.Collections.Generic.List<ConversationRecord>
+                {
+                    new ConversationRecord{MessageId="message-history",Speaker="user",Text="Historical text",
+                        CreatedUtc=now,MessageType="idea",RelatedRequestId="request-history",
+                        RelatedIdeaIds=new System.Collections.Generic.List<string>{"deleted-idea"}}
+                }
+            };
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),Is.Empty);
+            Assert.That(document.Conversation[0].RelatedIdeaIds,Is.EqualTo(new[]{"deleted-idea"}));
+        }
+
+        [Test]
+        public void HistoricalConversationReferenceStillRejectsMalformedOrDuplicateIdentifiers()
+        {
+            string now=System.DateTime.UtcNow.ToString("O");
+            var message=new ConversationRecord{MessageId="message-history",Speaker="user",Text="History",
+                CreatedUtc=now,MessageType="idea",RelatedRequestId="request-history",
+                RelatedIdeaIds=new System.Collections.Generic.List<string>{"bad id"}};
+            var document=new ThinkingSpaceSessionDocument{ExportedUtc=now,SessionId="session-history",
+                SessionTitle="History",SessionNumber=1,CreatedUtc=now,UpdatedUtc=now,
+                Conversation=new System.Collections.Generic.List<ConversationRecord>{message}};
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),
+                Does.Contain("Conversation[0].related_idea_ids[0]").And.Contain("malformed"));
+            message.RelatedIdeaIds=new System.Collections.Generic.List<string>{"deleted-idea","deleted-idea"};
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),
+                Does.Contain("Conversation[0].related_idea_ids[1]").And.Contain("duplicated"));
+        }
+
+        [Test]
+        public void WristwatchFallbackIsDelayedAndContactCenterIsIndependentOfFingertip()
+        {
+            Assert.That(BrainstormMenuController.ShouldShowWristFallback(.35f,2f),Is.False);
+            Assert.That(BrainstormMenuController.ShouldShowWristFallback(2f,2f),Is.True);
+            Assert.That(BrainstormMenuController.ShouldUseLegacyPalmActivation(true),Is.False);
+            Vector3 center=BrainstormMenuController.CalculateWatchContactCenter(new Vector3(1f,2f,3f),
+                Quaternion.Euler(0f,90f,0f),new Vector3(0f,0f,-.02f));
+            Assert.That(Vector3.Distance(center,new Vector3(.98f,2f,3f)),Is.LessThan(.0001f));
+        }
+
+        [Test]
+        public void WristwatchRejectsTrackingSpikesAndDetachedFacingNeverTranslates()
+        {
+            Assert.That(BrainstormMenuController.IsPlausibleWatchPose(Vector3.zero,Quaternion.identity,
+                new Vector3(.03f,0f,0f),Quaternion.Euler(0f,20f,0f),.12f,65f,out _),Is.True);
+            Assert.That(BrainstormMenuController.IsPlausibleWatchPose(Vector3.zero,Quaternion.identity,
+                new Vector3(.20f,0f,0f),Quaternion.identity,.12f,65f,out string positionReason),Is.False);
+            Assert.That(positionReason,Does.Contain("position jump"));
+            Assert.That(BrainstormMenuController.IsPlausibleWatchPose(Vector3.zero,Quaternion.identity,
+                Vector3.zero,Quaternion.Euler(0f,90f,0f),.12f,65f,out string rotationReason),Is.False);
+            Assert.That(rotationReason,Does.Contain("rotation jump"));
+            Assert.That(BrainstormMenuController.ShouldAutoFaceDetachedMenu(true,true,false,false),Is.True);
+            Assert.That(BrainstormMenuController.ShouldAutoFaceDetachedMenu(true,true,true,false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldAutoFaceDetachedMenu(true,true,false,true),Is.False);
+        }
+
+        [Test]
+        public void BubblePaletteOverrideChangesHueButNeverCategoryOrStatePrecedence()
+        {
+            string category="Education";Color automatic=IdeaBubbleView.ResolveVisualHue(category,"Default");
+            Color purple=IdeaBubbleView.ResolveVisualHue(category,"Purple");
+            Assert.That(Vector3.Distance(new Vector3(automatic.r,automatic.g,automatic.b),
+                new Vector3(purple.r,purple.g,purple.b)),Is.GreaterThan(.1f));
+            var idea=new BrainstormIdeaRecord{Category=category,VisualColor="Purple"};
+            Assert.That(idea.Category,Is.EqualTo(category));
+            Assert.That(IdeaBubbleView.EmissionMultiplier(true,true,IdeaBubbleVisualState.Idle),
+                Is.GreaterThan(IdeaBubbleView.EmissionMultiplier(true,false,IdeaBubbleVisualState.Selected)));
+            Assert.That(IdeaVisualColorPalette.Normalize("Default"),Is.EqualTo("Default"));
+        }
+
+        [Test]
+        public void DetailsPanelFacingRotationKeepsPositionAndTextUpright()
+        {
+            GameObject viewerObject=new GameObject("Viewer");
+            try
+            {
+                viewerObject.transform.position=Vector3.zero;Vector3 panelPosition=new Vector3(1f,2f,1f);
+                Assert.That(IdeaDetailsPanel.TryGetViewerFacingRotation(panelPosition,viewerObject.transform,
+                    Quaternion.identity,out Quaternion rotation),Is.True);
+                Assert.That(Vector3.Dot(rotation*Vector3.up,Vector3.up),Is.GreaterThan(.99f));
+                Assert.That(Vector3.Dot(rotation*Vector3.forward,
+                    Vector3.ProjectOnPlane(panelPosition-viewerObject.transform.position,Vector3.up).normalized),Is.GreaterThan(.99f));
+                Assert.That(panelPosition,Is.EqualTo(new Vector3(1f,2f,1f)));
+            }
+            finally{Object.DestroyImmediate(viewerObject);}
+        }
+
+        [Test]
+        public void AirSwipeEvaluationAcceptsHorizontalAndRejectsDiagonalVerticalAndSlowMotion()
+        {
+            Assert.That(AirSwipeGestureRecognizer.Evaluate(new Vector2(.2f,.03f),.4f,.18f,.25f,.65f,.4f,2f).accepted,Is.True);
+            Assert.That(AirSwipeGestureRecognizer.Evaluate(new Vector2(-.2f,.03f),.4f,.18f,.25f,.65f,.4f,2f).accepted,Is.True);
+            Assert.That(AirSwipeGestureRecognizer.Evaluate(new Vector2(.2f,.14f),.4f,.18f,.25f,.65f,.4f,2f).accepted,Is.False);
+            Assert.That(AirSwipeGestureRecognizer.Evaluate(new Vector2(.03f,.2f),.4f,.18f,.25f,.65f,.4f,2f).accepted,Is.False);
+            Assert.That(AirSwipeGestureRecognizer.Evaluate(new Vector2(.2f,.01f),.7f,.18f,.25f,.65f,.4f,2f).accepted,Is.False);
+        }
+
+        [Test]
+        public void AirSwipeCompensationRemovesSharedHeadsetTranslationAndInteractionGatesSuppress()
+        {
+            Vector3 compensated=AirSwipeGestureRecognizer.CompensatedDelta(Vector3.zero,
+                new Vector3(.2f,0f,.3f),Vector3.zero,new Vector3(0f,0f,.3f));
+            Assert.That(compensated,Is.EqualTo(new Vector3(.2f,0f,0f)));
+            Assert.That(AirSwipeGestureRecognizer.ShouldSuppress(false,false,false,false,false),Is.False);
+            Assert.That(AirSwipeGestureRecognizer.ShouldSuppress(true,false,false,false,false),Is.True);
+            Assert.That(AirSwipeGestureRecognizer.ShouldSuppress(false,false,false,true,false),Is.True);
+            Assert.That(AirSwipeGestureRecognizer.ShouldSuppress(false,false,false,false,true),Is.True);
+        }
+
+        [Test]
         public void PalmMenuToggleRequiresReleaseAndANewPress()
         {
             var gate = new PalmMenuActivationGate();
@@ -81,6 +254,149 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(first.Number, Is.EqualTo(1));
             Assert.That(second.Number, Is.EqualTo(2));
             Assert.That(first.SessionId, Is.Not.EqualTo(second.SessionId));
+        }
+
+        [Test]
+        public void SessionExportImportRoundTripPreservesIdeasRelationshipsAndTransformsWithNewSessionId()
+        {
+            string storePath=Path.Combine(directory,"store"),exports=Path.Combine(directory,"exports"),imports=Path.Combine(directory,"imports");
+            var store=new BrainstormSessionStore(storePath);BrainstormSession original=store.StartNewSession();
+            string now=System.DateTime.UtcNow.ToString("O");
+            Assert.That(store.TryAddIdea(original.SessionId,new BrainstormIdeaRecord{IdeaId="idea-one",Title="First",Summary="Summary",Category="Design",VisualColor="Purple",CreatedUtc=now,
+                Bubble=new BubbleTransformRecord{Position=new Vector3(1f,2f,3f),Rotation=Quaternion.Euler(0f,25f,0f),Scale=new Vector3(.4f,.5f,.6f)}}),Is.True);
+            Assert.That(store.TryAddIdea(original.SessionId,new BrainstormIdeaRecord{IdeaId="idea-two",Title="Second",Summary="Combined",Category="Technology",CreatedUtc=now,
+                RelatedIdeaIds=new System.Collections.Generic.List<string>{"idea-one"},Bubble=new BubbleTransformRecord{Position=new Vector3(-1f,1f,2f),Rotation=Quaternion.identity,Scale=Vector3.one}}),Is.True);
+            var transfer=new ThinkingSpaceSessionTransferService(store,exports,imports);
+            SessionTransferResult exported=transfer.ExportCurrentSession("json");Assert.That(exported.Success,Is.True,exported.Message);
+            Directory.CreateDirectory(imports);string importedFile=Path.Combine(imports,Path.GetFileName(exported.FilePath));File.Copy(exported.FilePath,importedFile);
+            SessionTransferResult imported=transfer.ImportSession(Path.GetFileName(importedFile),true);
+            Assert.That(imported.Success,Is.True,imported.Message);Assert.That(imported.ImportedSession.SessionId,Is.Not.EqualTo(original.SessionId));
+            Assert.That(imported.ImportedSession.Ideas.Count,Is.EqualTo(2));Assert.That(imported.ImportedSession.Relationships.Count,Is.EqualTo(1));
+            Assert.That(imported.ImportedSession.Ideas[0].Bubble.Position,Is.EqualTo(new Vector3(1f,2f,3f)));
+            Assert.That(imported.ImportedSession.Ideas[0].VisualColor,Is.EqualTo("Purple"));
+            Assert.That(imported.ImportedSession.Ideas[1].RelatedIdeaIds,Is.EquivalentTo(new[]{"idea-one"}));
+            Assert.That(store.Sessions.Count,Is.EqualTo(2));
+            string json=File.ReadAllText(exported.FilePath);
+            Assert.That(json,Does.Not.Contain("dev-token").And.Not.Contain("API_KEY").And.Not.Contain("recording.wav"));
+        }
+
+        [Test]
+        public void SessionTransferActionsUseFirstMenuPagesWithoutRedundantUtilityPage()
+        {
+            Assert.That(BrainstormMenuView.IsImportOnMainPage(0),Is.True);
+            Assert.That(BrainstormMenuView.IsImportOnMainPage(1),Is.False);
+            Assert.That(BrainstormMenuView.IsExportOnSessionPage(0),Is.True);
+            Assert.That(BrainstormMenuView.IsExportOnSessionPage(1),Is.False);
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(3));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(3),Is.EqualTo(3));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(4),Is.EqualTo(4));
+        }
+
+        [Test]
+        public void SessionExportRequiresAnActiveSessionWhileImportEntryDoesNot()
+        {
+            string exports=Path.Combine(directory,"exports"),imports=Path.Combine(directory,"imports");
+            var store=new BrainstormSessionStore(Path.Combine(directory,"store"));
+            var transfer=new ThinkingSpaceSessionTransferService(store,exports,imports);
+            SessionTransferResult result=transfer.ExportCurrentSession();
+            Assert.That(result.Success,Is.False);
+            Assert.That(result.Message,Does.Contain("No active session"));
+            Assert.That(BrainstormMenuView.IsImportOnMainPage(0),Is.True);
+        }
+
+        [Test]
+        public void SafResultPayloadParsingIsBoundedAndDelimiterSafe()
+        {
+            string message="Selected Session | safe.json";
+            string path="C:\\staging\\selected-session.json";
+            string payload="import|success|"+System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(message))
+                +"|"+System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(path));
+            Assert.That(AndroidSafSessionDocumentBridge.TryParseResult(payload,out SafDocumentResult result),Is.True);
+            Assert.That(result.Operation,Is.EqualTo("import"));
+            Assert.That(result.Success,Is.True);
+            Assert.That(result.Message,Is.EqualTo(message));
+            Assert.That(result.FilePath,Is.EqualTo(path));
+            Assert.That(AndroidSafSessionDocumentBridge.TryParseResult("invalid",out _),Is.False);
+        }
+
+        [Test]
+        public void StagedImportCleanupCannotEscapeImportDirectory()
+        {
+            string storePath=Path.Combine(directory,"store"),exports=Path.Combine(directory,"exports"),imports=Path.Combine(directory,"imports");
+            Directory.CreateDirectory(imports);
+            var transfer=new ThinkingSpaceSessionTransferService(new BrainstormSessionStore(storePath),exports,imports);
+            string staged="selected-session.json";File.WriteAllText(Path.Combine(imports,staged),"{}");
+            Assert.That(transfer.DeleteStagedImport(staged),Is.True);
+            Assert.That(File.Exists(Path.Combine(imports,staged)),Is.False);
+            Assert.That(transfer.DeleteStagedImport("..\\outside.json"),Is.False);
+        }
+
+        [Test]
+        public void BubbleColorPersistsAndOldSessionsDefaultSafely()
+        {
+            var store=new BrainstormSessionStore(directory);BrainstormSession session=store.StartNewSession();
+            Assert.That(store.TryAddIdea(session.SessionId,new BrainstormIdeaRecord{IdeaId="color-idea",Title="Color",Summary="Summary",Category="Design"}),Is.True);
+            Assert.That(store.TryUpdateIdeaVisualColor(session.SessionId,"color-idea","Orange"),Is.True);
+            var restored=new BrainstormSessionStore(directory);
+            Assert.That(restored.Sessions[0].Ideas[0].VisualColor,Is.EqualTo("Orange"));
+            Assert.That(restored.Sessions[0].Ideas[0].Category,Is.EqualTo("Design"));
+            Assert.That(IdeaVisualColorPalette.Normalize(null),Is.EqualTo("Default"));
+        }
+
+        [Test]
+        public void SchemaTwoSessionWithoutColorMigratesToDefault()
+        {
+            var store=new BrainstormSessionStore(directory);BrainstormSession session=store.StartNewSession();
+            Assert.That(store.TryAddIdea(session.SessionId,new BrainstormIdeaRecord{IdeaId="legacy-color",Title="Legacy",Summary="Summary",Category="Design"}),Is.True);
+            string json=File.ReadAllText(store.PersistencePath)
+                .Replace("\"SchemaVersion\": 3","\"SchemaVersion\": 2")
+                .Replace("\"VisualColor\": \"Default\"","\"LegacyColorField\": \"\"");
+            File.WriteAllText(store.PersistencePath,json);
+            var restored=new BrainstormSessionStore(directory);
+            Assert.That(restored.Sessions[0].Ideas[0].VisualColor,Is.EqualTo("Default"));
+        }
+
+        [Test]
+        public void SessionImportRejectsDuplicateIdeasBrokenReferencesInvalidTransformsAndUnsupportedVersion()
+        {
+            string now=System.DateTime.UtcNow.ToString("O");
+            var document=new ThinkingSpaceSessionDocument{ExportedUtc=now,SessionId="session-source",SessionTitle="Session 1",SessionNumber=1,CreatedUtc=now,UpdatedUtc=now};
+            document.Ideas.Add(new BrainstormIdeaRecord{IdeaId="duplicate",Title="One",Summary="S",Category="C",CreatedUtc=now,Bubble=new BubbleTransformRecord()});
+            document.Ideas.Add(new BrainstormIdeaRecord{IdeaId="duplicate",Title="Two",Summary="S",Category="C",CreatedUtc=now,Bubble=new BubbleTransformRecord()});
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),Does.Contain("duplicated"));
+            document.Ideas.RemoveAt(1);document.Relationships.Add(new IdeaRelationshipRecord{SourceIdeaId="duplicate",TargetIdeaId="missing",RelationshipType="combined_from"});
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),Does.Contain("broken"));
+            document.Relationships.Clear();document.Ideas[0].Bubble.Position=new Vector3(float.NaN,0f,0f);
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),Does.Contain("transform"));
+            document.Ideas[0].Bubble.Position=Vector3.zero;document.FormatVersion=99;
+            Assert.That(ThinkingSpaceSessionTransferService.Validate(document),Does.Contain("unsupported"));
+        }
+
+        [Test]
+        public void SessionImportRejectsUnsafeOversizedAndMalformedFilesWithoutChangingExistingSessions()
+        {
+            string storePath=Path.Combine(directory,"store"),exports=Path.Combine(directory,"exports"),imports=Path.Combine(directory,"imports");
+            var store=new BrainstormSessionStore(storePath);store.StartNewSession();
+            var transfer=new ThinkingSpaceSessionTransferService(store,exports,imports);Directory.CreateDirectory(imports);
+            Assert.That(transfer.ImportSession("..\\outside.json",true).Success,Is.False);
+            File.WriteAllText(Path.Combine(imports,"malformed.json"),"{not-json");
+            Assert.That(transfer.ImportSession("malformed.json",true).Success,Is.False);
+            using(FileStream oversized=File.Create(Path.Combine(imports,"large.json")))oversized.SetLength(ThinkingSpaceSessionTransferService.MaximumFileBytes+1L);
+            Assert.That(transfer.ImportSession("large.json",true).Success,Is.False);
+            Assert.That(store.Sessions.Count,Is.EqualTo(1));
+        }
+
+        [Test]
+        public void FailedImportedSessionSaveRollsBackInMemory()
+        {
+            string storePath=Path.Combine(directory,"store"),exports=Path.Combine(directory,"exports"),imports=Path.Combine(directory,"imports");
+            var sourceStore=new BrainstormSessionStore(storePath);sourceStore.StartNewSession();
+            var transfer=new ThinkingSpaceSessionTransferService(sourceStore,exports,imports);
+            SessionTransferResult exported=transfer.ExportCurrentSession();Directory.CreateDirectory(imports);
+            string importName=Path.GetFileName(exported.FilePath);File.Copy(exported.FilePath,Path.Combine(imports,importName));
+            Directory.Delete(storePath,true);File.WriteAllText(storePath,"block directory creation");
+            Assert.That(transfer.ImportSession(importName,true).Success,Is.False);
+            Assert.That(sourceStore.Sessions.Count,Is.EqualTo(1));
         }
 
         [Test]
@@ -1147,6 +1463,106 @@ namespace ThinkingSpace.Tests.Editor
                 Assert.That(controller.State, Is.EqualTo(OrbyConversationState.Idle));
             }
             Object.DestroyImmediate(root);
+        }
+
+        [Test]
+        public void MenuPauseIsNestedAndDelayedCallbacksCannotOverrideIt()
+        {
+            var root=new GameObject("Orby Pause Test");
+            var controller=root.AddComponent<OrbyConversationStateController>();
+            controller.SetState(OrbyConversationState.Listening);
+            controller.AcquirePause("Main menu visible");
+            controller.AcquirePause("Tutorial");
+            controller.SetState(OrbyConversationState.Thinking);
+            Assert.That(controller.State,Is.EqualTo(OrbyConversationState.Paused));
+            controller.ReleasePause("Main menu visible");
+            Assert.That(controller.State,Is.EqualTo(OrbyConversationState.Paused));
+            controller.ReleasePause("Tutorial");
+            Assert.That(controller.State,Is.EqualTo(OrbyConversationState.Thinking));
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
+        public void LegacyPalmLauncherIsAvailableOnlyForFallbackOrDevelopmentTest()
+        {
+            Assert.That(BrainstormMenuController.ShouldShowTrackingLossFallback(false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldShowTrackingLossFallback(true),Is.True);
+            Assert.That(BrainstormMenuController.ShouldShowRequestedWristFallback(false,false),Is.False);
+            Assert.That(BrainstormMenuController.ShouldShowRequestedWristFallback(true,false),Is.True);
+            Assert.That(BrainstormMenuController.ShouldShowRequestedWristFallback(true,true),Is.False);
+        }
+
+        [Test]
+        public void OrbySpatialFollowIgnoresHeadYawUntilPhysicalDistanceExceedsRadius()
+        {
+            Assert.That(OrbyPlaceholderView.ShouldBeginSpatialFollow(.8f,1.35f),Is.False);
+            Assert.That(OrbyPlaceholderView.ShouldBeginSpatialFollow(1.36f,1.35f),Is.True);
+            Vector3 stableDirection=Vector3.forward;
+            Vector3 first=OrbyPlaceholderView.CalculateFollowTarget(Vector3.zero,stableDirection,.8f,-.1f);
+            Vector3 afterHeadYaw=OrbyPlaceholderView.CalculateFollowTarget(Vector3.zero,stableDirection,.8f,-.1f);
+            Assert.That(afterHeadYaw,Is.EqualTo(first));
+            Vector3 afterWalking=OrbyPlaceholderView.CalculateFollowTarget(new Vector3(1f,0f,0f),
+                stableDirection,.8f,-.1f);
+            Assert.That(afterWalking-first,Is.EqualTo(Vector3.right));
+        }
+
+        [Test]
+        public void OrbyTrackedEyePlacementAndModelFrontCorrectionAreDeterministic()
+        {
+            Assert.That(OrbyPlaceholderView.IsValidTrackedHeadPose(new Vector3(0f,1.6f,0f)),Is.True);
+            Assert.That(OrbyPlaceholderView.IsValidTrackedHeadPose(new Vector3(0f,0f,0f)),Is.False);
+            Vector3 target=OrbyPlaceholderView.CalculateFollowTarget(new Vector3(0f,1.6f,0f),
+                Vector3.forward,.9f,0f);
+            Assert.That(target,Is.EqualTo(new Vector3(0f,1.6f,.9f)));
+            Quaternion labelRotation=OrbyPlaceholderView.CalculateReadableLabelRotation(
+                new Vector3(0f,1.4f,.8f),new Vector3(0f,1.6f,0f));
+            Vector3 labelToViewer=Vector3.ProjectOnPlane(new Vector3(0f,1.6f,0f)
+                -new Vector3(0f,1.4f,.8f),Vector3.up).normalized;
+            Assert.That(Vector3.Dot(labelRotation*Vector3.back,labelToViewer),Is.GreaterThan(.999f));
+            Assert.That(Vector3.Dot(labelRotation*Vector3.up,Vector3.up),Is.GreaterThan(.999f));
+            Quaternion correction=OrbyModelVisualAdapter.LocalFrontCorrection(Vector3.forward);
+            Assert.That(Quaternion.Angle(correction,Quaternion.identity),Is.LessThan(.001f));
+            Quaternion reverse=OrbyModelVisualAdapter.LocalFrontCorrection(Vector3.back);
+            Assert.That(Vector3.Dot(reverse*Vector3.back,Vector3.forward),Is.GreaterThan(.999f));
+        }
+
+        [Test]
+        public void OrbyHybridFollowUsesViewingConeAndBoundedAcceleration()
+        {
+            Assert.That(OrbyPlaceholderView.CalculateHorizontalViewingAngle(Vector3.forward,
+                Vector3.forward),Is.LessThan(.001f));
+            Assert.That(OrbyPlaceholderView.CalculateHorizontalViewingAngle(Vector3.forward,
+                Vector3.right),Is.EqualTo(90f).Within(.001f));
+            Vector3 velocity=Vector3.zero;
+            Vector3 position=OrbyPlaceholderView.StepBoundedFollow(Vector3.zero,
+                new Vector3(10f,0f,0f),ref velocity,1.2f,2.5f,.1f);
+            Assert.That(velocity.magnitude,Is.LessThanOrEqualTo(.251f));
+            Assert.That(position.x,Is.GreaterThan(0f).And.LessThanOrEqualTo(.026f));
+        }
+
+        [Test]
+        public void CompanionMicrophoneHudUsesReadableNonMirroredCanvasFace()
+        {
+            Vector3 canvas=new Vector3(0f,1.3f,.9f),viewer=new Vector3(0f,1.6f,0f);
+            Quaternion rotation=ConversationalListeningHud.CalculateReadableCanvasRotation(canvas,viewer);
+            Vector3 towardViewer=Vector3.ProjectOnPlane(viewer-canvas,Vector3.up).normalized;
+            Assert.That(Vector3.Dot(rotation*Vector3.back,towardViewer),Is.GreaterThan(.999f));
+            Assert.That(Vector3.Dot(rotation*Vector3.up,Vector3.up),Is.GreaterThan(.999f));
+        }
+
+        [Test]
+        public void DirectOrbyGreetingIsNarrowAndDoesNotOverrideCommandsOrTopicQuestions()
+        {
+            Assert.That(ThinkingSpaceAIWorkflowController.TryGetDirectGreetingResponse("Hey Orby",
+                out string greeting),Is.True);
+            Assert.That(greeting,Does.Contain("What's on your mind"));
+            Assert.That(ThinkingSpaceAIWorkflowController.TryGetDirectGreetingResponse("Orby?",
+                out string nameOnly),Is.True);
+            Assert.That(nameOnly,Does.Contain("I'm here"));
+            Assert.That(ThinkingSpaceAIWorkflowController.TryGetDirectGreetingResponse(
+                "Orby, expand my idea",out _),Is.False);
+            Assert.That(ThinkingSpaceAIWorkflowController.TryGetDirectGreetingResponse(
+                "What is Orby?",out _),Is.False);
         }
 
         [Test]

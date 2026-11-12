@@ -14,13 +14,16 @@ namespace ThinkingSpace.Speech
         IPointerDownHandler, IPointerUpHandler
     {
         private const int CharactersPerPage = 500;
+        private const float ViewerFacingSpeed = 8f;
         private BrainstormIdeaRecord idea;
-        private Transform headset, bubble;
+        private Transform headset;
+        private IdeaBubbleView bubble;
         private Canvas canvas;
         private RayInteractable rayInteractable;
         private PokeInteractable pokeInteractable;
         private TMP_Text heading, body, pageLabel;
-        private Button previous, next, close, delete, cancelDelete, confirmDelete, playSummary, returnBubble;
+        private Button previous, next, close, delete, cancelDelete, confirmDelete, playSummary, returnBubble,color;
+        private readonly List<Button> colorButtons=new List<Button>();
         private readonly List<string> pages = new List<string>();
         private Action<IdeaDetailsPanel> closed;
         private Action<IdeaDetailsPanel> focused;
@@ -28,25 +31,37 @@ namespace ThinkingSpace.Speech
         private Func<BrainstormIdeaRecord, Action<bool>, string> playRequested;
         private Action<string> stopRequested;
         private Action<string> returnRequested;
+        private Action<IdeaDetailsPanel, bool> dragStateChanged;
+        private Func<IdeaDetailsPanel,string,string> colorRequested;
         private string summaryRequestId;
         private int page, slot;
-        private bool hovered, pressed, confirmingDelete, returnAvailable, movementHidden;
+        private bool hovered, pressed, confirmingDelete, returnAvailable, movementHidden,colorPage;
+        private bool borderProximity, dragging, hasManualOffset;
         private Vector3 stablePosition;
+        private Vector3 bubbleRelativeOffset, dragHandOffset, dragVelocity;
         private Quaternion stableRotation;
+        private readonly List<Image> borderImages = new List<Image>();
         public string IdeaId => idea != null ? idea.IdeaId : string.Empty;
         public int SlotIndex => slot;
         public bool IsInteracting => hovered || pressed;
+        public bool IsPressed => pressed;
+        public bool IsDragging => dragging;
+        public bool HasManualOffset => hasManualOffset;
         public bool IsMovementHidden => movementHidden;
 
-        public void Configure(BrainstormIdeaRecord value, Transform bubbleTransform, Transform headsetTransform,
+        public void Configure(BrainstormIdeaRecord value, IdeaBubbleView bubbleView, Transform headsetTransform,
             int panelSlot, Action<IdeaDetailsPanel> onClosed, Action<IdeaDetailsPanel> onFocused,
             Func<IdeaDetailsPanel, string> onDelete,
             Func<BrainstormIdeaRecord, Action<bool>, string> onPlaySummary,
-            Action<string> onStopSummary, Action<string> onReturnBubble)
+            Action<string> onStopSummary, Action<string> onReturnBubble,
+            Action<IdeaDetailsPanel, bool> onDragStateChanged = null,
+            Func<IdeaDetailsPanel,string,string> onColorRequested=null)
         {
-            idea=value; bubble=bubbleTransform; headset=headsetTransform; slot=panelSlot;
+            idea=value; bubble=bubbleView; headset=headsetTransform; slot=panelSlot;
             closed=onClosed; focused=onFocused; deleteRequested=onDelete; playRequested=onPlaySummary;
-            stopRequested=onStopSummary; Build(); ShowDetails(); PlaceImmediately(); focused?.Invoke(this);
+            stopRequested=onStopSummary; dragStateChanged=onDragStateChanged;
+            colorRequested=onColorRequested;
+            Build(); ShowDetails(); PlaceImmediately(); focused?.Invoke(this);
             returnRequested=onReturnBubble;
         }
 
@@ -59,7 +74,7 @@ namespace ThinkingSpace.Speech
         }
         private void ShowDetails()
         {
-            confirmingDelete=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?"Idea Details":idea.Title;
+            confirmingDelete=false;colorPage=false; heading.text=string.IsNullOrWhiteSpace(idea.Title)?"Idea Details":idea.Title;
             SetPages("Summary\n"+idea.Summary+"\n\nCategory\n"+idea.Category); SetNormalControls();
         }
         private void AskDelete()
@@ -69,6 +84,7 @@ namespace ThinkingSpace.Speech
             pageLabel.gameObject.SetActive(false); previous.gameObject.SetActive(false); next.gameObject.SetActive(false);
             close.gameObject.SetActive(false); delete.gameObject.SetActive(false);
             playSummary.gameObject.SetActive(false);
+            color.gameObject.SetActive(false);SetColorButtonsVisible(false);
             returnBubble.gameObject.SetActive(false);
             cancelDelete.gameObject.SetActive(true); confirmDelete.gameObject.SetActive(true);
         }
@@ -82,6 +98,7 @@ namespace ThinkingSpace.Speech
         {
             close.gameObject.SetActive(true); delete.gameObject.SetActive(true); pageLabel.gameObject.SetActive(true);
             playSummary.gameObject.SetActive(true);
+            color.gameObject.SetActive(true);SetButtonLabel(color,"Color");SetColorButtonsVisible(false);body.gameObject.SetActive(true);
             previous.gameObject.SetActive(true); next.gameObject.SetActive(true);
             cancelDelete.gameObject.SetActive(false); confirmDelete.gameObject.SetActive(false);
             returnBubble.gameObject.SetActive(returnAvailable);
@@ -95,6 +112,7 @@ namespace ThinkingSpace.Speech
         public void SetMovementHidden(bool hidden)
         {
             movementHidden = hidden;
+            if (hidden && dragging) EndBorderDrag();
             hovered = pressed = false;
             if (rayInteractable != null) rayInteractable.enabled = !hidden;
             if (pokeInteractable != null) pokeInteractable.enabled = !hidden;
@@ -108,8 +126,17 @@ namespace ThinkingSpace.Speech
         public void RelocateAfterBubbleMovement(IReadOnlyList<Vector3> occupiedPositions)
         {
             if (bubble == null) return;
-            PlaceImmediately();
-            NudgeToAvoid(occupiedPositions);
+            if (hasManualOffset)
+            {
+                stablePosition = bubble.transform.position + bubbleRelativeOffset;
+                transform.position = stablePosition;
+                transform.rotation = stableRotation;
+            }
+            else
+            {
+                PlaceImmediately();
+                NudgeToAvoid(occupiedPositions);
+            }
             SetMovementHidden(false);
         }
         private void ClosePanel()=>closed?.Invoke(this);
@@ -139,22 +166,59 @@ namespace ThinkingSpace.Speech
             playSummary.interactable = true;
         }
 
+        private void ToggleColorPage()
+        {if(colorPage)ShowDetails();else ShowColorPage();}
+
+        private void ShowColorPage()
+        {
+            colorPage=true;confirmingDelete=false;heading.text="Bubble Color · "+IdeaVisualColorPalette.Normalize(idea.VisualColor);
+            body.gameObject.SetActive(false);pageLabel.gameObject.SetActive(false);previous.gameObject.SetActive(false);next.gameObject.SetActive(false);
+            playSummary.gameObject.SetActive(false);returnBubble.gameObject.SetActive(false);delete.gameObject.SetActive(false);
+            cancelDelete.gameObject.SetActive(false);confirmDelete.gameObject.SetActive(false);close.gameObject.SetActive(true);
+            color.gameObject.SetActive(true);SetButtonLabel(color,"Back");SetColorButtonsVisible(true);RefreshColorButtons();
+        }
+
+        private void SelectColor(string value)
+        {
+            string error=colorRequested!=null?colorRequested(this,value):"Color changes are unavailable.";
+            if(!string.IsNullOrEmpty(error)){heading.text="Color Change Failed";return;}
+            idea.VisualColor=IdeaVisualColorPalette.Normalize(value);heading.text="Bubble Color · "+idea.VisualColor;RefreshColorButtons();
+        }
+
+        private void SetColorButtonsVisible(bool visible)
+        {for(int i=0;i<colorButtons.Count;i++)if(colorButtons[i]!=null)colorButtons[i].gameObject.SetActive(visible);}
+
+        private void RefreshColorButtons()
+        {
+            string selected=IdeaVisualColorPalette.Normalize(idea.VisualColor);
+            for(int i=0;i<colorButtons.Count&&i<IdeaVisualColorPalette.Names.Length;i++)
+            {string name=IdeaVisualColorPalette.Names[i];SetButtonLabel(colorButtons[i],name+(selected==name?" ✓":""));}
+        }
+
+        private static void SetButtonLabel(Button button,string value)
+        {TMP_Text label=button!=null?button.GetComponentInChildren<TMP_Text>(true):null;if(label!=null)label.text=value;}
+
         private void LateUpdate()
         {
-            if (canvas==null || !canvas.gameObject.activeSelf || hovered || pressed) return;
-            float bob=Mathf.Sin(Time.unscaledTime*1.1f+slot)*.004f;
-            transform.position=stablePosition+Vector3.up*bob;
-            transform.rotation=stableRotation;
+            if(canvas==null||!canvas.gameObject.activeSelf)return;
+            transform.position=stablePosition;
+            if(hovered||pressed||dragging)return;
+            if(TryGetViewerFacingRotation(transform.position,headset,transform.rotation,out Quaternion target))
+            {
+                float blend=1f-Mathf.Exp(-ViewerFacingSpeed*Time.unscaledDeltaTime);
+                stableRotation=Quaternion.Slerp(transform.rotation,target,blend);
+                transform.rotation=stableRotation;
+            }
         }
         private Vector3 DesiredPosition()
         {
             if (headset==null && Camera.main!=null) headset=Camera.main.transform;
-            Vector3 anchor=bubble!=null?bubble.position:transform.position;
+            Vector3 anchor=bubble!=null?bubble.transform.position:transform.position;
             Vector3 toward=headset!=null?Vector3.ProjectOnPlane(headset.position-anchor,Vector3.up).normalized:Vector3.back;
             if(toward.sqrMagnitude<.01f)toward=Vector3.back;
-            Vector3 right=headset!=null?headset.right:Vector3.right;
-            float x=slot%2==0?-.18f:.18f, y=slot<2?.16f:-.16f;
-            return anchor+toward*.22f+right*x+Vector3.up*y;
+            float radius=bubble!=null?bubble.WorldRadius:.07f;
+            const float titleClearance=.08f, panelHalfHeight=.10f, gap=.035f;
+            return anchor+toward*.07f+Vector3.up*(radius+titleClearance+panelHalfHeight+gap);
         }
         private void PlaceImmediately()
         {
@@ -163,21 +227,82 @@ namespace ThinkingSpace.Speech
 
         public void NudgeToAvoid(IReadOnlyList<Vector3> occupied)
         {
-            if (occupied == null) return;
-            for (int attempt=0; attempt<6; attempt++)
+            if (occupied == null || hasManualOffset) return;
+            Vector3 origin=stablePosition;
+            Vector3 right=headset!=null?Vector3.ProjectOnPlane(headset.right,Vector3.up).normalized:Vector3.right;
+            Vector3[] alternatives={Vector3.zero,right*.32f,-right*.32f,Vector3.up*.24f,
+                right*.32f+Vector3.up*.24f,-right*.32f+Vector3.up*.24f};
+            for (int attempt=0; attempt<alternatives.Length; attempt++)
             {
+                stablePosition=origin+alternatives[attempt];
                 bool overlap=false;
                 for(int i=0;i<occupied.Count;i++)
                     if((stablePosition-occupied[i]).sqrMagnitude<.28f*.28f){overlap=true;break;}
                 if(!overlap)break;
-                stablePosition += Vector3.up*.18f;
             }
             transform.position=stablePosition; FaceViewer(); stableRotation=transform.rotation;
         }
+
+        public float DistanceToBorder(Vector3 worldPoint)
+        {
+            RectTransform rect=transform as RectTransform;
+            if(rect==null)return float.PositiveInfinity;
+            Vector3 a=rect.TransformPoint(new Vector3(-300f,-200f,0f));
+            Vector3 b=rect.TransformPoint(new Vector3(300f,-200f,0f));
+            Vector3 c=rect.TransformPoint(new Vector3(300f,200f,0f));
+            Vector3 d=rect.TransformPoint(new Vector3(-300f,200f,0f));
+            return Mathf.Min(DistanceToSegment(worldPoint,a,b),DistanceToSegment(worldPoint,b,c),
+                DistanceToSegment(worldPoint,c,d),DistanceToSegment(worldPoint,d,a));
+        }
+
+        public void SetBorderProximity(bool near)
+        {
+            borderProximity=near;
+            RefreshBorderVisual();
+        }
+
+        public void BeginBorderDrag(Vector3 handPosition)
+        {
+            if(dragging||movementHidden)return;
+            dragging=true; dragVelocity=Vector3.zero; dragHandOffset=stablePosition-handPosition;
+            focused?.Invoke(this); dragStateChanged?.Invoke(this,true); RefreshBorderVisual();
+        }
+
+        public void UpdateBorderDrag(Vector3 handPosition,float smoothTime)
+        {
+            if(!dragging)return;
+            stablePosition=Vector3.SmoothDamp(stablePosition,handPosition+dragHandOffset,
+                ref dragVelocity,Mathf.Max(.001f,smoothTime),Mathf.Infinity,Time.unscaledDeltaTime);
+            transform.position=stablePosition; transform.rotation=stableRotation;
+        }
+
+        public void EndBorderDrag()
+        {
+            if(!dragging)return;
+            dragging=false; dragVelocity=Vector3.zero; hasManualOffset=bubble!=null;
+            if(bubble!=null)bubbleRelativeOffset=stablePosition-bubble.transform.position;
+            dragStateChanged?.Invoke(this,false); RefreshBorderVisual();
+        }
+
+        private static float DistanceToSegment(Vector3 point,Vector3 start,Vector3 end)
+        {
+            Vector3 segment=end-start; float lengthSquared=segment.sqrMagnitude;
+            if(lengthSquared<.000001f)return Vector3.Distance(point,start);
+            float t=Mathf.Clamp01(Vector3.Dot(point-start,segment)/lengthSquared);
+            return Vector3.Distance(point,start+segment*t);
+        }
         private void FaceViewer()
         {
-            if(headset==null)return; Vector3 away=transform.position-headset.position;
-            if(away.sqrMagnitude>.0001f)transform.rotation=Quaternion.LookRotation(away.normalized,Vector3.up);
+            if(TryGetViewerFacingRotation(transform.position,headset,transform.rotation,out Quaternion target))
+                transform.rotation=target;
+        }
+        public static bool TryGetViewerFacingRotation(Vector3 panelPosition,Transform viewer,
+            Quaternion current,out Quaternion target)
+        {
+            target=current;if(viewer==null)return false;
+            Vector3 away=Vector3.ProjectOnPlane(panelPosition-viewer.position,Vector3.up);
+            if(away.sqrMagnitude<.0001f)return false;
+            target=Quaternion.LookRotation(away.normalized,Vector3.up);return true;
         }
         private void SetPages(string value)
         {
@@ -196,6 +321,7 @@ namespace ThinkingSpace.Speech
             gameObject.AddComponent<GraphicRaycaster>();PointableCanvas pointable=gameObject.AddComponent<PointableCanvas>();pointable.InjectAllPointableCanvas(canvas);
             RectTransform rect=GetComponent<RectTransform>();rect.sizeDelta=new Vector2(600,400);rect.localScale=Vector3.one*.0005f;
             Image background=gameObject.AddComponent<Image>();background.color=new Color(.035f,.055f,.09f,.98f);background.raycastTarget=true;
+            BuildBorder(rect);
             PlaneSurface plane=gameObject.AddComponent<PlaneSurface>();plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward,false);
             BoundsClipper clipper=gameObject.AddComponent<BoundsClipper>();clipper.Size=new Vector3(600,400,.01f);
             ClippedPlaneSurface clipped=gameObject.AddComponent<ClippedPlaneSurface>();clipped.InjectAllClippedPlaneSurface(plane,new List<IBoundsClipper>{clipper});
@@ -206,12 +332,45 @@ namespace ThinkingSpace.Speech
             previous=Button("Previous",rect,new Vector2(.05f,.19f),new Vector2(.27f,.27f));previous.onClick.AddListener(()=>{page=Mathf.Max(0,page-1);Refresh();});
             pageLabel=Text("Page",rect,22,FontStyles.Normal,TextAlignmentOptions.Center,new Vector2(.29f,.19f),new Vector2(.71f,.27f));
             next=Button("Next",rect,new Vector2(.73f,.19f),new Vector2(.95f,.27f));next.onClick.AddListener(()=>{page=Mathf.Min(pages.Count-1,page+1);Refresh();});
-            playSummary=Button("Play Summary",rect,new Vector2(.03f,.05f),new Vector2(.25f,.16f));playSummary.onClick.AddListener(ToggleSummaryPlayback);
-            returnBubble=Button("Return",rect,new Vector2(.27f,.05f),new Vector2(.49f,.16f));returnBubble.onClick.AddListener(()=>returnRequested?.Invoke(IdeaId));returnBubble.gameObject.SetActive(false);
-            delete=Button("Delete Idea",rect,new Vector2(.51f,.05f),new Vector2(.73f,.16f));delete.onClick.AddListener(AskDelete);
-            close=Button("Close",rect,new Vector2(.75f,.05f),new Vector2(.97f,.16f));close.onClick.AddListener(ClosePanel);
+            playSummary=Button("Play Summary",rect,new Vector2(.03f,.05f),new Vector2(.20f,.16f));playSummary.onClick.AddListener(ToggleSummaryPlayback);
+            returnBubble=Button("Return",rect,new Vector2(.21f,.05f),new Vector2(.38f,.16f));returnBubble.onClick.AddListener(()=>returnRequested?.Invoke(IdeaId));returnBubble.gameObject.SetActive(false);
+            color=Button("Color",rect,new Vector2(.39f,.05f),new Vector2(.55f,.16f));color.onClick.AddListener(ToggleColorPage);
+            delete=Button("Delete",rect,new Vector2(.56f,.05f),new Vector2(.73f,.16f));delete.onClick.AddListener(AskDelete);
+            close=Button("Close",rect,new Vector2(.74f,.05f),new Vector2(.97f,.16f));close.onClick.AddListener(ClosePanel);
             cancelDelete=Button("Cancel",rect,new Vector2(.06f,.05f),new Vector2(.44f,.16f));cancelDelete.onClick.AddListener(ShowDetails);
             confirmDelete=Button("Confirm Delete",rect,new Vector2(.56f,.05f),new Vector2(.94f,.16f));confirmDelete.onClick.AddListener(ConfirmDelete);
+            for(int i=0;i<IdeaVisualColorPalette.Names.Length;i++)
+            {
+                int row=i/3,column=i%3;Vector2 min=new Vector2(.06f+column*.31f,.64f-row*.15f);
+                Button palette=Button(IdeaVisualColorPalette.Names[i],rect,min,min+new Vector2(.27f,.11f));
+                string choice=IdeaVisualColorPalette.Names[i];palette.onClick.AddListener(()=>SelectColor(choice));
+                Image image=palette.targetGraphic as Image;if(image!=null)image.color=IdeaVisualColorPalette.Resolve(choice,new Color(.12f,.2f,.3f));
+                colorButtons.Add(palette);
+            }
+        }
+
+        private void BuildBorder(RectTransform parent)
+        {
+            CreateBorderEdge("Top Border",parent,new Vector2(0f,.965f),new Vector2(1f,1f));
+            CreateBorderEdge("Bottom Border",parent,new Vector2(0f,0f),new Vector2(1f,.035f));
+            CreateBorderEdge("Left Border",parent,new Vector2(0f,.035f),new Vector2(.023f,.965f));
+            CreateBorderEdge("Right Border",parent,new Vector2(.977f,.035f),new Vector2(1f,.965f));
+            RefreshBorderVisual();
+        }
+
+        private void CreateBorderEdge(string edgeName,RectTransform parent,Vector2 min,Vector2 max)
+        {
+            GameObject edge=new GameObject(edgeName,typeof(RectTransform),typeof(Image));
+            edge.transform.SetParent(parent,false); RectTransform rect=edge.GetComponent<RectTransform>();
+            rect.anchorMin=min;rect.anchorMax=max;rect.offsetMin=rect.offsetMax=Vector2.zero;
+            Image image=edge.GetComponent<Image>();image.raycastTarget=false;borderImages.Add(image);
+        }
+
+        private void RefreshBorderVisual()
+        {
+            Color color=dragging?new Color(.35f,.95f,1f,1f):borderProximity
+                ?new Color(.2f,.75f,1f,.95f):new Color(.08f,.32f,.48f,.72f);
+            for(int i=0;i<borderImages.Count;i++)if(borderImages[i]!=null)borderImages[i].color=color;
         }
         public void OnPointerEnter(PointerEventData _)=>hovered=true; public void OnPointerExit(PointerEventData _)=>hovered=false;
         public void OnPointerDown(PointerEventData _){pressed=true;focused?.Invoke(this);} public void OnPointerUp(PointerEventData _)=>pressed=false;

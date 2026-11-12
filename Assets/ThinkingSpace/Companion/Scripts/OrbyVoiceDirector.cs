@@ -26,6 +26,7 @@ namespace ThinkingSpace.Companion
         private ThinkingSpacePreferencesStore preferences;private BrainstormMenuController menu;private Request current;private string activeSessionId="";
         private bool tutorialBlock,paused;private float listeningIdleSince=-1f,lastReminder=-1000f;
         private float playbackStartedAt,lastObservedTime,nextDiagnosticUpdate,nextInstanceAudit,lastPauseAt,lastResumeDuration,maxFrameMilliseconds,ttsRequestStartedAt,lastTtsSeconds,lastDecodeSeconds,lastTimeToPlaybackSeconds;private string lastStopReason="Not started",lastMime="None",lastDecode="Not attempted",lastCacheStatus="Not checked",lastEndpoint="None",lastEvent="None",lastSubmission="None",lastFailure="None",lastRequestId="None",lastRequestSession="none",lastLifecycle="Initialized",lastLifecycleException="None",lastVoiceModel="Unknown",lastVoiceFallback="false",lastServerCacheIdentity="Unknown";private long lastHttpStatus;private int lastByteCount,activeNetworkRequests,directorInstances,workflowInstances,recorderInstances;
+        private bool audioPausedForConversation;
         private AudioListener cachedListener;private QuestMicrophoneRecorder recorder;
         public bool IsSpeaking=>current!=null||source!=null&&source.isPlaying;
         public bool TutorialRecordingBlocked=>tutorialBlock;
@@ -100,6 +101,11 @@ namespace ThinkingSpace.Companion
             while(queue.Count>0)
             {
                 Resolve();
+                while(stateController!=null&&stateController.IsPaused)
+                {
+                    lastStopReason="Voice queued while conversation state is paused";
+                    RefreshDiagnostics(lastStopReason);yield return null;Resolve();
+                }
                 while(ShouldDeferForQualifiedCapture(listening!=null&&listening.OwnsCapture,
                     listening!=null&&listening.SpeechWasDetected))
                 {
@@ -117,11 +123,25 @@ namespace ThinkingSpace.Companion
                 float loadDeadline=Time.realtimeSinceStartup+5f;
                 while(clip.loadState==AudioDataLoadState.Loading&&Time.realtimeSinceStartup<loadDeadline)yield return null;
                 if(clip.loadState==AudioDataLoadState.Failed){lastStopReason="AudioClip data load failed";RefreshDiagnostics(lastStopReason);Finish(false);continue;}
+                while(stateController!=null&&stateController.IsPaused)
+                {
+                    lastStopReason="Decoded voice waiting for conversation pause to end";
+                    RefreshDiagnostics(lastStopReason);yield return null;Resolve();
+                }
                 Resolve();workflow?.SetVoicePlaybackBlocked(true);stateController?.SetState(OrbyConversationState.Speaking);
                 string subtitleText=OrbySubtitleView.StripTtsOnlyTags(current.Text);subtitles.Show(subtitleText,preferences.Data.SubtitlesEnabled,clip.length);source.enabled=true;source.mute=false;source.volume=1f;source.pitch=1f;source.clip=clip;source.Play();playbackStartedAt=Time.realtimeSinceStartup;lastTimeToPlaybackSeconds=ttsRequestStartedAt>0?playbackStartedAt-ttsRequestStartedAt:0;lastObservedTime=source.time;lastStopReason="Playing";RefreshDiagnostics("Play invoked");SpeakingStarted?.Invoke(current.Id,subtitleText);
                 yield return null;
                 if(!source.isPlaying){lastStopReason="AudioSource did not enter isPlaying after Play";RefreshDiagnostics(lastStopReason);Finish(false);continue;}
-                while(source.isPlaying&&!paused)yield return null;
+                while(!paused)
+                {
+                    bool conversationPaused=stateController!=null&&stateController.IsPaused;
+                    if(conversationPaused&&!audioPausedForConversation)
+                    {source.Pause();audioPausedForConversation=true;lastStopReason="Playback paused by conversation state";RefreshDiagnostics(lastStopReason);}
+                    else if(!conversationPaused&&audioPausedForConversation)
+                    {source.UnPause();audioPausedForConversation=false;lastStopReason="Playback resumed after conversation pause";RefreshDiagnostics(lastStopReason);}
+                    if(!conversationPaused&&!audioPausedForConversation&&!source.isPlaying)break;
+                    yield return null;Resolve();
+                }
                 if(paused){source.Stop();lastStopReason="Application paused or lost focus";}else lastStopReason="Playback completed";Finish(!paused);
             }
             worker=null;
@@ -147,7 +167,7 @@ namespace ThinkingSpace.Companion
         private IEnumerator LoadClip(string path,Action<AudioClip> completed)
         {float started=Time.realtimeSinceStartup;using(UnityWebRequest request=UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri,AudioType.MPEG)){request.timeout=15;DownloadHandlerAudioClip handler=request.downloadHandler as DownloadHandlerAudioClip;if(handler!=null)handler.streamAudio=false;lastDecode="Loading MP3";yield return request.SendWebRequest();lastDecodeSeconds=Time.realtimeSinceStartup-started;if(request.result!=UnityWebRequest.Result.Success){lastDecode="Failed: "+request.error;lastStopReason="Cached MP3 decode failed: "+request.error;RefreshDiagnostics(lastStopReason);completed(null);}else{AudioClip clip=DownloadHandlerAudioClip.GetContent(request);lastDecode=clip!=null?"Decoded · "+clip.length.ToString("0.00")+"s":"Decoder returned null";RefreshDiagnostics(lastDecode);completed(clip);}}}
         private void Finish(bool success)
-        {string id=current?.Id;string key=current?.CacheKey;AudioClip played=source!=null?source.clip:null;bool dynamic=current!=null&&current.Clip==null;if(!string.IsNullOrEmpty(key))pendingKeys.Remove(key);current?.Completed?.Invoke(success);SpeakingFinished?.Invoke(id,success);current=null;if(source!=null)source.clip=null;if(dynamic&&played!=null)Destroy(played);subtitles.Hide();RefreshDiagnostics(lastStopReason);Resolve();workflow?.SetVoicePlaybackBlocked(false);if(!tutorialBlock)stateController?.SetState(listening!=null&&listening.ListeningEnabled?OrbyConversationState.Listening:OrbyConversationState.Idle);}
+        {string id=current?.Id;string key=current?.CacheKey;AudioClip played=source!=null?source.clip:null;bool dynamic=current!=null&&current.Clip==null;if(!string.IsNullOrEmpty(key))pendingKeys.Remove(key);current?.Completed?.Invoke(success);SpeakingFinished?.Invoke(id,success);current=null;audioPausedForConversation=false;if(source!=null)source.clip=null;if(dynamic&&played!=null)Destroy(played);subtitles.Hide();RefreshDiagnostics(lastStopReason);Resolve();workflow?.SetVoicePlaybackBlocked(false);if(!tutorialBlock)stateController?.SetState(listening!=null&&listening.ListeningEnabled?OrbyConversationState.Listening:OrbyConversationState.Idle);}
         private void StopCurrent(bool success){if(source!=null)source.Stop();if(current!=null)Finish(success);}
         private void AbortCurrent(bool success){StopAllCoroutines();activeNetworkRequests=0;worker=null;StopCurrent(success);if(queue.Count>0&&!paused)worker=StartCoroutine(ProcessQueue());}
         private void Update()
