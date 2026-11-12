@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -15,6 +16,7 @@ namespace ThinkingSpace.UI
     [DisallowMultipleComponent]
     public sealed class BrainstormMenuController : MonoBehaviour
     {
+        private const string OrbyMenuPauseReason="Main menu visible";
         public event Action PalmMenuOpened;
         public event Action<BrainstormSession> SessionActivated;
         private enum MenuScreen { Main, Session, VoiceHelp, GestureHelp }
@@ -30,7 +32,6 @@ namespace ThinkingSpace.UI
         [Header("Authored UI Test")]
         [SerializeField] private bool debugShowAuthoredMenuAtHeadset;
         [SerializeField] private Vector3 authoredTestHeadsetOffset = new Vector3(0f, -0.03f, 0.55f);
-        [SerializeField] private bool debugShowPalmMenuButtonAtHeadset;
         [SerializeField] private Vector3 palmButtonTestHeadsetOffset = new Vector3(0f, -0.12f, 0.5f);
 
         [Header("Open Palm")]
@@ -49,6 +50,42 @@ namespace ThinkingSpace.UI
         [SerializeField] private Vector3 menuOffsetFromHand = new Vector3(0f, 0.1f, 0.03f);
         [SerializeField, Min(0.01f)] private float followSmoothTime = 0.08f;
         [SerializeField, Min(0.1f)] private float facingSmoothSpeed = 10f;
+
+        [Header("Wristwatch Menu")]
+        [SerializeField] private Vector3 wristWatchOffset = new Vector3(0f,-0.01f,0.035f);
+        [SerializeField] private Vector3 wristWatchRotationOffset;
+        [SerializeField, Range(-1f,1f)] private float leftWristDorsalSign = -1f;
+        [SerializeField, Range(-1f,1f)] private float rightWristDorsalSign = 1f;
+        [SerializeField, Range(0.005f,0.12f)] private float wristPositionSmoothTime = 0.025f;
+        [SerializeField, Range(5f,40f)] private float wristRotationSmoothSpeed = 22f;
+        [SerializeField, Range(0.05f,1f)] private float wristTrackingHoldDuration = 0.35f;
+        [SerializeField, Range(1f,5f)] private float wristFallbackDelay = 2.0f;
+        [SerializeField] private Vector3 watchContactLocalOffset = new Vector3(0f,0f,-0.032f);
+        [SerializeField] private Vector3 attachedMenuOffset = new Vector3(0f,0.17f,0.035f);
+        [SerializeField, Range(0.01f,0.06f)] private float watchContactRadius = 0.038f;
+        [SerializeField, Range(0.02f,0.10f)] private float watchReleaseRadius = 0.065f;
+        [SerializeField, Range(0.1f,0.8f)] private float watchToggleCooldown = 0.35f;
+        [SerializeField, Range(0.02f,0.16f)] private float menuFrameGrabRange = 0.105f;
+        [SerializeField, Range(0.08f,0.35f)] private float menuGrabConfirmation = 0.16f;
+        [SerializeField, Range(0.01f,0.15f)] private float menuDragSmoothTime = 0.045f;
+        [SerializeField, Range(0.03f,0.30f)] private float maximumWatchPositionJump = 0.12f;
+        [SerializeField, Range(20f,120f)] private float maximumWatchRotationJump = 65f;
+        [SerializeField, Range(20f,80f)] private float watchVisibilityEnterAngle = 50f;
+        [SerializeField, Range(30f,89f)] private float watchVisibilityExitAngle = 70f;
+        [SerializeField, Range(-0.5f,0.5f)] private float watchMinimumDorsalUpDot = -0.12f;
+        [SerializeField, Range(0f,0.5f)] private float watchVisibilityStabilityDelay = 0.12f;
+        [SerializeField, Range(0f,0.8f)] private float menuInteractionReleaseCooldown = 0.25f;
+
+        [Header("Air Swipe Prototype")]
+        [SerializeField, Min(0.05f)] private float swipeHorizontalTravel = 0.18f;
+        [SerializeField, Min(0.05f)] private float swipeMinimumDuration = 0.25f;
+        [SerializeField, Min(0.1f)] private float swipeMaximumDuration = 0.65f;
+        [SerializeField, Min(0.05f)] private float swipeMinimumSpeed = 0.40f;
+        [SerializeField, Min(1f)] private float swipeHorizontalDominance = 2f;
+        [SerializeField, Min(0f)] private float swipeCooldown = 0.50f;
+        [SerializeField, Range(0.5f,0.98f)] private float swipeExtendedFingerRatio = 0.82f;
+        [SerializeField, Range(2,4)] private int swipeRequiredExtendedFingers = 3;
+        [SerializeField] private bool showAirSwipeDiagnostics;
 
         [Header("Palm Menu Button")]
         [SerializeField, Min(0.05f)] private float palmButtonHoldDuration = 0.2f;
@@ -139,8 +176,6 @@ namespace ThinkingSpace.UI
         private Material progressFillMaterial;
         private GameObject frontTestRoot;
         private bool authoredTestWasVisible;
-        private bool palmButtonTestWasVisible;
-        private bool palmButtonDebugOpenedMenu;
         private MenuScreen currentScreen = MenuScreen.Main;
         private MenuScreen helpReturnScreen = MenuScreen.Main;
         private OpeningHand buttonOwner;
@@ -189,7 +224,6 @@ namespace ThinkingSpace.UI
         private bool menuSelected;
         private readonly HashSet<int?> externalHoveredPointers = new HashSet<int?>();
         private readonly HashSet<int?> externalSelectedPointers = new HashSet<int?>();
-        private bool debugButtonPosePlaced;
         private Vector3 debugButtonFrozenPosition;
         private Quaternion debugButtonFrozenRotation;
         private int interactionEventSequence;
@@ -200,6 +234,31 @@ namespace ThinkingSpace.UI
         private readonly PalmMenuActivationGate toggleGate = new PalmMenuActivationGate();
         private string lastToggleGateResult = "No toggle attempted";
         private HandNormalVisualization leftNormalVisual, rightNormalVisual;
+        private enum MenuPlacementState { Closed, Attached, Detached, Dragging }
+        private MenuPlacementState menuPlacementState;
+        private GameObject wristWatchRoot;
+        private Transform wristWatchButton;
+        private Material wristBodyMaterial,wristButtonMaterial;
+        private Renderer wristButtonRenderer;
+        private bool watchPokeArmed=true,watchFallbackVisible;
+        private bool manualWristFallbackRequested;
+        private string wristFallbackDiagnostic="Automatic fallback disabled";
+        private bool oppositePokeTrackingValid;
+        private float lastWatchToggle=-10f,watchTrackingLoss;
+        private bool watchPoseInitialized;
+        private Vector3 watchPositionVelocity,watchContactCenter;
+        private bool watchOrientationVisible;
+        private float watchOrientationTimer,menuInteractionSuppressedUntil;
+        private Vector3 lastReliableWatchTargetPosition;
+        private Quaternion lastReliableWatchTargetRotation;
+        private bool hasReliableWatchTarget;
+        private int rejectedWatchPoseCount;
+        private string watchPoseDiagnostic="Not sampled";
+        private OpeningHand menuDragOwner;
+        private float menuGrabTimer;
+        private Vector3 menuDragPositionOffset,menuDragVelocity;
+        private Quaternion menuDragRotationOffset;
+        private readonly List<Image> menuGrabFrame=new List<Image>();
 
         private sealed class HandNormalVisualization
         {
@@ -216,7 +275,9 @@ namespace ThinkingSpace.UI
             + " · owner=" + menuOwner + " · button=" + buttonState + "/" + buttonOwner
             + " · gate=" + toggleGate.ConsumedGeneration + "/" + toggleGate.InteractionGeneration
             + " held=" + toggleGate.PointerHeld + " · " + lastToggleGateResult
-            + " · " + menuVisibilityDiagnostic;
+            + " · " + menuVisibilityDiagnostic+" · watch="+watchPoseDiagnostic
+            + " · fallback="+wristFallbackDiagnostic
+            + " · rejected="+rejectedWatchPoseCount;
         public void SetDevelopmentDiagnosticsVisible(bool visible)
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -230,6 +291,12 @@ namespace ThinkingSpace.UI
 #endif
         }
         private ThinkingSpacePreferencesStore preferencesStore;
+        private IdeaBubbleManager bubbleManager;
+        private AirSwipeGestureRecognizer airSwipeRecognizer;
+        private ThinkingSpaceSessionTransferService sessionTransfer;
+        private bool sessionTransferBusy;
+        private bool safTransferPending;
+        private string pendingSafImportFile=string.Empty;
 
         private static readonly Color PanelColor = new Color(0.035f, 0.055f, 0.09f, 0.97f);
         private static readonly Color ButtonColor = new Color(0.11f, 0.2f, 0.32f, 1f);
@@ -240,9 +307,11 @@ namespace ThinkingSpace.UI
             // MonoBehaviour field initializers run during Unity object construction, where
             // Application.persistentDataPath is forbidden. Resolve it on the main thread here.
             if (sessionStore == null) sessionStore = BrainstormSessionStore.CreateForApplication();
+            if(sessionTransfer==null)sessionTransfer=ThinkingSpaceSessionTransferService.CreateForApplication(sessionStore);
             if (preferencesStore == null) preferencesStore = ThinkingSpacePreferencesStore.CreateForApplication();
             if (recordingGestureController == null)
                 recordingGestureController = GetComponent<ThumbRecordingGestureController>();
+            bubbleManager=GetComponent<IdeaBubbleManager>();
             if (recordingGestureController == null)
             {
                 enabled = false;
@@ -268,7 +337,10 @@ namespace ThinkingSpace.UI
             EnsureMetaCanvasEventSystem();
             if (authoredMenuPrefab != null) BuildAuthoredMenu();
             else BuildCanvas();
-            BuildPalmMenuButton();
+            BuildMenuGrabFrame();
+            BuildWristTrackingFallbackButton();
+            BuildWristWatch();
+            ConfigureAirSwipePrototype();
             BuildDiagnostics();
             if (authoredView == null) BuildFrontTestLabel();
         }
@@ -292,7 +364,6 @@ namespace ThinkingSpace.UI
         private void Update()
         {
             if (UpdateAuthoredMenuTestMode()) return;
-            if (UpdatePalmButtonTestMode()) return;
             bool microphoneRecording = recordingGestureController != null
                 && recordingGestureController.ShouldLockMenuForRecording;
             if (microphoneRecording)
@@ -310,6 +381,11 @@ namespace ThinkingSpace.UI
             {
                 microphoneMenuLock = false;
                 ResetPalmButton(true);
+            }
+            if(!ShouldUseLegacyPalmActivation(wristWatchRoot!=null))
+            {
+                UpdateWristMenu();
+                return;
             }
             ResetFrameMetrics(left);
             ResetFrameMetrics(right);
@@ -751,9 +827,14 @@ namespace ThinkingSpace.UI
                 () => InvokeGuarded(() => ChangeSubtitles(true)),
                 () => InvokeGuarded(() => ChangeSubtitles(false)),
                 () => InvokeGuarded(EditPreferredName),
-                () => InvokeGuarded(ReplayTutorial));
+                () => InvokeGuarded(ReplayTutorial),
+                () => InvokeGuarded(() => SetWristMenuHand(WristMenuHand.Left)),
+                () => InvokeGuarded(() => SetWristMenuHand(WristMenuHand.Right)),
+                () => InvokeGuarded(RequestExportSession),
+                () => InvokeGuarded(RequestImportSession));
             authoredView.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
                 preferencesStore.Data.RecordingMode,preferencesStore.Data.SubtitlesEnabled);
+            authoredView.SetWristMenuHand(preferencesStore.Data.WristMenuHand);
             authoredView.SetFrontMarkerVisible(false);
             authoredView.gameObject.SetActive(false);
         }
@@ -788,8 +869,358 @@ namespace ThinkingSpace.UI
         {if(preferencesStore==null||!preferencesStore.SetSubtitlesEnabled(value))return;OrbyVoiceDirector.Instance?.SetSubtitlesEnabled(value);authoredView?.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,preferencesStore.Data.RecordingMode,value);}
         private void EditPreferredName()=>FindFirstObjectByType<OrbyOnboardingController>()?.EditPreferredName();
         private void ReplayTutorial()=>FindFirstObjectByType<OrbyOnboardingController>()?.ReplayTutorial();
+        private void SetWristMenuHand(WristMenuHand hand)
+        {
+            if(preferencesStore==null||!preferencesStore.SetWristMenuHand(hand))return;
+            authoredView?.SetWristMenuHand(hand);CloseMenuInternal(OpeningHand.None);
+            watchPokeArmed=true;watchTrackingLoss=0f;watchPoseInitialized=false;
+            hasReliableWatchTarget=false;watchPositionVelocity=Vector3.zero;oppositePokeTrackingValid=false;
+        }
 
-        private void BuildPalmMenuButton()
+        private void BuildWristWatch()
+        {
+            wristWatchRoot=new GameObject("Thinking Space Wristwatch");
+            GameObject body=GameObject.CreatePrimitive(PrimitiveType.Cube);body.name="Watch Body";
+            body.transform.SetParent(wristWatchRoot.transform,false);body.transform.localScale=new Vector3(.055f,.035f,.012f);
+            Destroy(body.GetComponent<Collider>());
+            GameObject button=GameObject.CreatePrimitive(PrimitiveType.Cylinder);button.name="Menu Poke Button";
+            button.transform.SetParent(wristWatchRoot.transform,false);button.transform.localPosition=new Vector3(0f,0f,-.011f);
+            button.transform.localRotation=Quaternion.Euler(90f,0f,0f);button.transform.localScale=new Vector3(.021f,.004f,.021f);
+            Destroy(button.GetComponent<Collider>());wristWatchButton=button.transform;wristButtonRenderer=button.GetComponent<Renderer>();
+            Shader shader=Shader.Find("Universal Render Pipeline/Lit");if(shader==null)shader=Shader.Find("Standard");
+            wristBodyMaterial=new Material(shader){name="Wristwatch Body Runtime"};
+            wristButtonMaterial=new Material(shader){name="Wristwatch Button Runtime"};
+            wristBodyMaterial.color=new Color(.025f,.045f,.075f,1f);
+            wristButtonMaterial.color=new Color(.08f,.7f,1f,1f);
+            body.GetComponent<Renderer>().sharedMaterial=wristBodyMaterial;
+            wristButtonRenderer.sharedMaterial=wristButtonMaterial;
+            wristWatchRoot.SetActive(false);SetPalmButtonVisible(false);
+        }
+
+        private void BuildMenuGrabFrame()
+        {
+            if(canvasRect==null)return;
+            CreateMenuFrameEdge("Top Grab Frame",new Vector2(0f,.975f),new Vector2(1f,1f));
+            CreateMenuFrameEdge("Bottom Grab Frame",new Vector2(0f,0f),new Vector2(1f,.025f));
+            CreateMenuFrameEdge("Left Grab Frame",new Vector2(0f,.025f),new Vector2(.018f,.975f));
+            CreateMenuFrameEdge("Right Grab Frame",new Vector2(.982f,.025f),new Vector2(1f,.975f));
+            SetMenuFrameColor(new Color(.08f,.32f,.48f,.72f));
+        }
+
+        private void CreateMenuFrameEdge(string edgeName,Vector2 min,Vector2 max)
+        {
+            GameObject edge=new GameObject(edgeName,typeof(RectTransform),typeof(Image));
+            edge.transform.SetParent(canvasRect,false);RectTransform rect=edge.GetComponent<RectTransform>();
+            rect.anchorMin=min;rect.anchorMax=max;rect.offsetMin=rect.offsetMax=Vector2.zero;
+            Image image=edge.GetComponent<Image>();image.raycastTarget=false;menuGrabFrame.Add(image);
+        }
+
+        private void SetMenuFrameColor(Color color)
+        {for(int i=0;i<menuGrabFrame.Count;i++)if(menuGrabFrame[i]!=null)menuGrabFrame[i].color=color;}
+
+        private void UpdateWristMenu()
+        {
+            ResetFrameMetrics(left);ResetFrameMetrics(right);
+            OpeningHand wristHand=preferencesStore!=null&&preferencesStore.Data.WristMenuHand==WristMenuHand.Right
+                ?OpeningHand.Right:OpeningHand.Left;
+            OpenPalmHand wrist=wristHand==OpeningHand.Left?left:right;
+            OpenPalmHand opposite=wristHand==OpeningHand.Left?right:left;
+            float priorTrackingLoss=watchTrackingLoss;
+            bool wristValid=UpdateTrackedHand(wrist)&&IsReliableWatchTracking(wrist);
+            if(wristValid&&priorTrackingLoss>=wristTrackingHoldDuration)hasReliableWatchTarget=false;
+            if(wristValid)wristValid=UpdateWristWatchPose(wrist,wristHand);
+            bool oppositeValid=UpdateTrackedHand(opposite)&&HasHighConfidence(opposite);
+            if(ShouldShowRequestedWristFallback(manualWristFallbackRequested,IsMenuVisible))
+            {
+                wristWatchRoot.SetActive(false);
+                if(menuPlacementState==MenuPlacementState.Dragging)EndMenuDrag(true);
+                ShowWatchFallback("Explicit recovery request");
+                return;
+            }
+            if(!wristValid)
+            {
+                watchTrackingLoss+=Time.unscaledDeltaTime;
+                wristWatchRoot.SetActive(watchOrientationVisible&&watchPoseInitialized
+                    &&watchTrackingLoss<wristTrackingHoldDuration);
+                if(menuPlacementState==MenuPlacementState.Dragging)EndMenuDrag(true);
+                watchFallbackVisible=false;SetPalmButtonVisible(false);
+                wristFallbackDiagnostic=ShouldShowWristFallback(watchTrackingLoss,wristFallbackDelay)
+                    ?"Wrist unavailable; automatic headset fallback intentionally suppressed"
+                    :"Waiting for wrist tracking";
+                return;
+            }
+            watchTrackingLoss=0f;watchFallbackVisible=false;
+            wristFallbackDiagnostic="Wristwatch available";SetPalmButtonVisible(false);
+            wristWatchRoot.SetActive(watchOrientationVisible);
+            if(!watchOrientationVisible)watchPokeArmed=false;
+            else if(oppositeValid)
+            {
+                if(!oppositePokeTrackingValid)watchPokeArmed=false;
+                oppositePokeTrackingValid=true;UpdateWatchPoke(opposite.index.tip.position,wristHand);
+            }
+            else{oppositePokeTrackingValid=false;watchPokeArmed=false;}
+
+            if(IsMenuVisible)
+            {
+                UpdateMenuDrag();
+                if(menuPlacementState!=MenuPlacementState.Dragging&&menuGrabTimer<=0f)UpdateMenuCloseFist();
+            }
+        }
+
+        private bool UpdateTrackedHand(OpenPalmHand hand)
+        {
+            hand.tracked=hand.hand!=null&&hand.skeleton!=null&&hand.hand.IsTracked;
+            hand.jointsResolved=hand.tracked&&ResolveOpenPalmJoints(hand);
+            if(hand.jointsResolved)UpdateFingerRatios(hand);
+            return hand.jointsResolved;
+        }
+
+        private bool IsReliableWatchTracking(OpenPalmHand hand)
+        {
+            bool reliable=HasHighConfidence(hand);
+            if(!reliable)watchPoseDiagnostic="Rejected: low hand or skeleton confidence";
+            return reliable;
+        }
+
+        private static bool HasHighConfidence(OpenPalmHand hand)
+            =>hand.hand!=null&&hand.skeleton!=null&&hand.hand.HandConfidence==OVRHand.TrackingConfidence.High
+                &&hand.skeleton.IsDataValid&&hand.skeleton.IsDataHighConfidence;
+
+        private bool UpdateWristWatchPose(OpenPalmHand hand,OpeningHand handedness)
+        {
+            float sign=handedness==OpeningHand.Left?leftWristDorsalSign:rightWristDorsalSign;
+            if(!TryCalculateDorsalWatchPose(hand.wrist.position,hand.index.proximal.position,
+                hand.middle.proximal.position,hand.pinky.proximal.position,sign,wristWatchOffset,
+                wristWatchRotationOffset,out Vector3 targetPosition,out Quaternion targetRotation))
+            {watchPoseDiagnostic="Rejected: degenerate wrist geometry";return false;}
+            if(hasReliableWatchTarget&&!IsPlausibleWatchPose(lastReliableWatchTargetPosition,
+                lastReliableWatchTargetRotation,targetPosition,targetRotation,maximumWatchPositionJump,
+                maximumWatchRotationJump,out string rejection))
+            {rejectedWatchPoseCount++;watchPoseDiagnostic="Rejected: "+rejection;return false;}
+            lastReliableWatchTargetPosition=targetPosition;lastReliableWatchTargetRotation=targetRotation;
+            hasReliableWatchTarget=true;watchPoseDiagnostic="Reliable · "+handedness+" · high confidence";
+            if(!watchPoseInitialized)
+            {wristWatchRoot.transform.SetPositionAndRotation(targetPosition,targetRotation);watchPositionVelocity=Vector3.zero;watchPoseInitialized=true;}
+            else
+            {
+                wristWatchRoot.transform.position=Vector3.SmoothDamp(wristWatchRoot.transform.position,targetPosition,
+                    ref watchPositionVelocity,wristPositionSmoothTime,Mathf.Infinity,Time.unscaledDeltaTime);
+                float blend=1f-Mathf.Exp(-wristRotationSmoothSpeed*Time.unscaledDeltaTime);
+                wristWatchRoot.transform.rotation=Quaternion.Slerp(wristWatchRoot.transform.rotation,targetRotation,blend);
+            }
+            watchContactCenter=CalculateWatchContactCenter(wristWatchRoot.transform.position,
+                wristWatchRoot.transform.rotation,watchContactLocalOffset);
+            Transform headset=recordingGestureController!=null?recordingGestureController.CenterEyeAnchor:null;
+            Vector3 dorsal=targetRotation*Vector3.back;
+            Vector3 towardHeadset=headset!=null?(headset.position-targetPosition).normalized:Vector3.zero;
+            bool readable=IsWristwatchReadable(dorsal,towardHeadset,watchOrientationVisible,
+                watchVisibilityEnterAngle,watchVisibilityExitAngle,watchMinimumDorsalUpDot);
+            if(readable!=watchOrientationVisible)
+            {
+                watchOrientationTimer+=Time.unscaledDeltaTime;
+                if(watchOrientationTimer>=watchVisibilityStabilityDelay)
+                {watchOrientationVisible=readable;watchOrientationTimer=0f;}
+            }
+            else watchOrientationTimer=0f;
+            if(wristButtonRenderer!=null)wristButtonRenderer.sharedMaterial=wristButtonMaterial;
+            return true;
+        }
+
+        public static bool IsWristwatchReadable(Vector3 dorsal,Vector3 towardHeadset,bool currentlyVisible,
+            float enterAngle,float exitAngle,float minimumDorsalUpDot)
+        {
+            if(dorsal.sqrMagnitude<.000001f||towardHeadset.sqrMagnitude<.000001f)return false;
+            dorsal.Normalize();towardHeadset.Normalize();
+            float threshold=Mathf.Cos((currentlyVisible?exitAngle:enterAngle)*Mathf.Deg2Rad);
+            return Vector3.Dot(dorsal,towardHeadset)>=threshold
+                &&Vector3.Dot(dorsal,Vector3.up)>=minimumDorsalUpDot;
+        }
+
+        private void UpdateWatchPoke(Vector3 fingertip,OpeningHand wristHand)
+        {
+            float distance=Vector3.Distance(fingertip,watchContactCenter);
+            if(distance>=watchReleaseRadius)watchPokeArmed=true;
+            if(bubbleManager==null)bubbleManager=FindFirstObjectByType<IdeaBubbleManager>();
+            bool blocked=(bubbleManager!=null&&(bubbleManager.DirectMode!=IdeaBubbleManager.DirectManipulationMode.None
+                ||bubbleManager.IsPanelDragging))||menuPlacementState==MenuPlacementState.Dragging;
+            if(!ShouldAcceptWatchPoke(distance,watchPokeArmed,Time.unscaledTime-lastWatchToggle,
+                watchContactRadius,watchToggleCooldown,blocked))return;
+            watchPokeArmed=false;lastWatchToggle=Time.unscaledTime;
+            if(IsMenuVisible)CloseMenuInternal(menuOwner);
+            else OpenMenu(wristHand,wristWatchRoot.transform.position);
+        }
+
+        public static bool ShouldAcceptWatchPoke(float distance,bool armed,float elapsed,
+            float contactRadius,float cooldown,bool blocked)
+            =>armed&&!blocked&&distance<=contactRadius&&elapsed>=cooldown;
+
+        public static bool ShouldShowWristFallback(float trackingLoss,float fallbackDelay)
+            =>trackingLoss>=Mathf.Max(0f,fallbackDelay);
+        public static bool ShouldShowRequestedWristFallback(bool explicitlyRequested,bool menuVisible)
+            =>explicitlyRequested&&!menuVisible;
+        public static bool ShouldUseLegacyPalmActivation(bool wristwatchModeActive)=>!wristwatchModeActive;
+
+        public static Vector3 CalculateWatchContactCenter(Vector3 renderedPosition,
+            Quaternion renderedRotation,Vector3 localContactOffset)
+            =>renderedPosition+renderedRotation*localContactOffset;
+
+        public static bool IsPlausibleWatchPose(Vector3 previousPosition,Quaternion previousRotation,
+            Vector3 nextPosition,Quaternion nextRotation,float maximumPositionJump,
+            float maximumRotationJump,out string reason)
+        {
+            float distance=Vector3.Distance(previousPosition,nextPosition);
+            if(distance>maximumPositionJump){reason="position jump "+distance.ToString("F3")+"m";return false;}
+            float angle=Quaternion.Angle(previousRotation,nextRotation);
+            if(angle>maximumRotationJump){reason="rotation jump "+angle.ToString("F1")+"°";return false;}
+            reason="Accepted";return true;
+        }
+
+        public static bool TryCalculateDorsalWatchPose(Vector3 wrist,Vector3 indexKnuckle,
+            Vector3 middleKnuckle,Vector3 pinkyKnuckle,float handednessSign,Vector3 localOffset,
+            Vector3 rotationOffset,out Vector3 position,out Quaternion rotation)
+        {
+            Vector3 across=indexKnuckle-pinkyKnuckle;
+            Vector3 along=middleKnuckle-wrist;
+            if(across.sqrMagnitude<.000001f||along.sqrMagnitude<.000001f)
+            {position=wrist;rotation=Quaternion.identity;return false;}
+            across.Normalize();along=Vector3.ProjectOnPlane(along,across);
+            if(along.sqrMagnitude<.000001f){position=wrist;rotation=Quaternion.identity;return false;}
+            along.Normalize();
+            Vector3 dorsal=Vector3.Cross(across,along)*(handednessSign<0f?-1f:1f);
+            if(dorsal.sqrMagnitude<.000001f){position=wrist;rotation=Quaternion.identity;return false;}
+            dorsal.Normalize();
+            position=wrist+across*localOffset.x+along*localOffset.y+dorsal*localOffset.z;
+            rotation=Quaternion.LookRotation(-dorsal,along)*Quaternion.Euler(rotationOffset);
+            return true;
+        }
+
+        public bool IsMenuInteractionBusy => menuSelected || menuHovered
+            || menuPlacementState == MenuPlacementState.Dragging || menuGrabTimer > 0f;
+
+        private void ConfigureAirSwipePrototype()
+        {
+            airSwipeRecognizer=GetComponent<AirSwipeGestureRecognizer>();
+            if(airSwipeRecognizer==null)airSwipeRecognizer=gameObject.AddComponent<AirSwipeGestureRecognizer>();
+            airSwipeRecognizer.Configure(recordingGestureController.LeftOVRHand,
+                recordingGestureController.LeftOVRSkeleton,recordingGestureController.RightOVRHand,
+                recordingGestureController.RightOVRSkeleton,recordingGestureController.CenterEyeAnchor,
+                this,bubbleManager,recordingGestureController,swipeHorizontalTravel,
+                swipeMinimumDuration,swipeMaximumDuration,swipeMinimumSpeed,
+                swipeHorizontalDominance,swipeCooldown,swipeExtendedFingerRatio,
+                swipeRequiredExtendedFingers,showAirSwipeDiagnostics);
+        }
+
+        private void ShowWatchFallback(string reason)
+        {
+            if(palmButtonCanvas==null||IsMenuVisible)return;
+            watchFallbackVisible=true;buttonOwner=OpeningHand.None;
+            wristFallbackDiagnostic="Visible: "+reason;SetPalmButtonVisible(true);
+            Transform headset=recordingGestureController.CenterEyeAnchor;
+            if(headset!=null){palmButtonCanvas.transform.position=headset.TransformPoint(palmButtonTestHeadsetOffset);
+                FaceCanvasToHeadset(palmButtonCanvas.transform,headset,true);}
+        }
+
+        public void RequestWristTrackingFallback()
+        {
+            manualWristFallbackRequested=true;
+            wristFallbackDiagnostic="Explicit recovery requested";
+            ShowWatchFallback("Explicit recovery request");
+        }
+
+        public void CancelWristTrackingFallback()
+        {
+            manualWristFallbackRequested=false;watchFallbackVisible=false;
+            wristFallbackDiagnostic="Explicit recovery cancelled";SetPalmButtonVisible(false);
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [ContextMenu("Development/Wristwatch/Request Headset Fallback")]
+        private void DevelopmentRequestWristFallback()=>RequestWristTrackingFallback();
+        [ContextMenu("Development/Wristwatch/Cancel Headset Fallback")]
+        private void DevelopmentCancelWristFallback()=>CancelWristTrackingFallback();
+#endif
+
+        private void UpdateMenuDrag()
+        {
+            if(menuCanvas==null){menuGrabTimer=0f;return;}
+            bool leftValid=UpdateTrackedHand(left);bool rightValid=UpdateTrackedHand(right);
+            Transform leftPalm=left.palm!=null?left.palm:left.wrist;
+            Transform rightPalm=right.palm!=null?right.palm:right.wrist;
+            if(menuPlacementState==MenuPlacementState.Dragging)
+            {
+                Transform owner=menuDragOwner==OpeningHand.Left?leftPalm:rightPalm;
+                OpenPalmHand ownerHand=menuDragOwner==OpeningHand.Left?left:right;
+                bool valid=menuDragOwner==OpeningHand.Left?leftValid:rightValid;
+                if(!valid||owner==null||!IsFist(ownerHand,menuDragOwner==OpeningHand.Left))
+                {EndMenuDrag(true);return;}
+                Vector3 targetPosition=owner.position+owner.rotation*menuDragPositionOffset;
+                Quaternion targetRotation=owner.rotation*menuDragRotationOffset;
+                menuCanvas.transform.position=Vector3.SmoothDamp(menuCanvas.transform.position,targetPosition,
+                    ref menuDragVelocity,menuDragSmoothTime,Mathf.Infinity,Time.unscaledDeltaTime);
+                float blend=1f-Mathf.Exp(-facingSmoothSpeed*Time.unscaledDeltaTime);
+                menuCanvas.transform.rotation=Quaternion.Slerp(menuCanvas.transform.rotation,targetRotation,blend);
+                return;
+            }
+            float leftDistance=leftValid?DistanceToMenuFrame(leftPalm.position):float.PositiveInfinity;
+            float rightDistance=rightValid?DistanceToMenuFrame(rightPalm.position):float.PositiveInfinity;
+            float nearest=Mathf.Min(leftDistance,rightDistance);
+            if(nearest>menuFrameGrabRange){menuGrabTimer=0f;return;}
+            OpeningHand candidate=leftDistance<=rightDistance?OpeningHand.Left:OpeningHand.Right;
+            OpenPalmHand candidateHand=candidate==OpeningHand.Left?left:right;
+            if(!IsFist(candidateHand,candidate==OpeningHand.Left)){menuGrabTimer=0f;return;}
+            SuppressMenuPointerInteraction();
+            menuGrabTimer+=Time.unscaledDeltaTime;if(menuGrabTimer<menuGrabConfirmation)return;
+            Transform palm=candidate==OpeningHand.Left?leftPalm:rightPalm;
+            menuDragOwner=candidate;menuPlacementState=MenuPlacementState.Dragging;
+            menuDragPositionOffset=Quaternion.Inverse(palm.rotation)*(menuCanvas.transform.position-palm.position);
+            menuDragRotationOffset=Quaternion.Inverse(palm.rotation)*menuCanvas.transform.rotation;
+            menuDragVelocity=Vector3.zero;menuGrabTimer=0f;menuPoseLocked=true;
+            SetMenuFrameColor(new Color(.35f,.95f,1f,1f));
+            recordingGestureController?.SetBubbleManipulationSuppressed(true,duplicateClickGuard);
+        }
+
+        private void EndMenuDrag(bool detached)
+        {
+            menuPlacementState=detached?MenuPlacementState.Detached:MenuPlacementState.Closed;
+            menuDragOwner=OpeningHand.None;menuGrabTimer=0f;menuDragVelocity=Vector3.zero;menuPoseLocked=false;
+            SetMenuFrameColor(new Color(.08f,.32f,.48f,.72f));
+            menuInteractionSuppressedUntil=Time.unscaledTime+menuInteractionReleaseCooldown;
+            recordingGestureController?.SetBubbleManipulationSuppressed(false,watchToggleCooldown);
+        }
+
+        private void SuppressMenuPointerInteraction()
+        {
+            menuHovered=menuSelected=false;menuPoseLocked=true;
+            externalHoveredPointers.Clear();externalSelectedPointers.Clear();
+            menuInteractionSuppressedUntil=Mathf.Max(menuInteractionSuppressedUntil,
+                Time.unscaledTime+menuInteractionReleaseCooldown);
+        }
+
+        private bool IsMenuButtonInteractionSuppressed => menuGrabTimer>0f
+            ||menuPlacementState==MenuPlacementState.Dragging
+            ||Time.unscaledTime<menuInteractionSuppressedUntil;
+
+        private float DistanceToMenuFrame(Vector3 point)
+        {
+            if(canvasRect==null)return float.PositiveInfinity;
+            Vector2 size=canvasRect.rect.size;float x=size.x*.5f,y=size.y*.5f;
+            Vector3 a=canvasRect.TransformPoint(new Vector3(-x,-y,0f));
+            Vector3 b=canvasRect.TransformPoint(new Vector3(x,-y,0f));
+            Vector3 c=canvasRect.TransformPoint(new Vector3(x,y,0f));
+            Vector3 d=canvasRect.TransformPoint(new Vector3(-x,y,0f));
+            return Mathf.Min(DistanceToSegment(point,a,b),DistanceToSegment(point,b,c),
+                DistanceToSegment(point,c,d),DistanceToSegment(point,d,a));
+        }
+
+        private static float DistanceToSegment(Vector3 point,Vector3 start,Vector3 end)
+        {
+            Vector3 segment=end-start;float length=segment.sqrMagnitude;
+            if(length<.000001f)return Vector3.Distance(point,start);
+            float t=Mathf.Clamp01(Vector3.Dot(point-start,segment)/length);
+            return Vector3.Distance(point,start+segment*t);
+        }
+
+        private void BuildWristTrackingFallbackButton()
         {
             if (palmMenuButtonPrefab == null)
             {
@@ -798,17 +1229,14 @@ namespace ThinkingSpace.UI
                 return;
             }
             palmMenuButtonView = Instantiate(palmMenuButtonPrefab);
-            palmMenuButtonView.name = "Palm Menu Button (Authored)";
+            palmMenuButtonView.name = "Wrist Tracking Loss Fallback Button";
             palmButtonCanvas = palmMenuButtonView.WorldCanvas;
             palmMenuGraphicRaycaster = palmMenuButtonView.GraphicRaycaster;
             palmMenuButton = palmMenuButtonView.MenuButton;
             palmMenuButtonImage = palmMenuButtonView.ButtonImage;
             palmButtonLabel = palmMenuButtonView.Label;
             palmMenuButton.onClick.RemoveAllListeners();
-            // The palm toggle owns its physical press/release gate. The previous
-            // nested InvokeGuarded call stamped the click before this callback and
-            // caused the callback's second guard to reject every valid click.
-            palmMenuButton.onClick.AddListener(PressPalmMenuButton);
+            palmMenuButton.onClick.AddListener(PressWristTrackingFallbackButton);
             palmMenuButtonView.UnityPointerDown += HandleUnityPointerDown;
             palmMenuButtonView.UnityPointerUp += HandleUnityPointerUp;
             palmMenuButtonView.UnityPointerClick += HandleUnityPointerClick;
@@ -818,54 +1246,6 @@ namespace ThinkingSpace.UI
                 Debug.LogError(buttonConstructionStatus, this);
             palmButtonVisualVisible = true;
             SetPalmButtonVisible(false);
-        }
-
-        private bool UpdatePalmButtonTestMode()
-        {
-            if (!debugShowPalmMenuButtonAtHeadset)
-            {
-                if (palmButtonTestWasVisible)
-                {
-                    palmButtonTestWasVisible = false;
-                    palmButtonDebugOpenedMenu = false;
-                    debugButtonPosePlaced = false;
-                    SetPalmButtonVisible(false);
-                    ResetPalmButton(false);
-                }
-                return false;
-            }
-            Transform headset = recordingGestureController != null
-                ? recordingGestureController.CenterEyeAnchor : null;
-            if (headset == null)
-            {
-                buttonConstructionStatus = "Debug test rejected: CenterEyeAnchor missing";
-                return true;
-            }
-            palmButtonTestWasVisible = true;
-            if (palmButtonDebugOpenedMenu)
-            {
-                SetPalmButtonVisible(false);
-                return true;
-            }
-            SetPalmButtonVisible(true);
-            if (!debugButtonPosePlaced)
-            {
-                debugButtonPosePlaced = true;
-                debugButtonFrozenPosition = headset.TransformPoint(palmButtonTestHeadsetOffset);
-                debugButtonFrozenRotation = headset.rotation;
-                palmButtonCanvas.transform.SetPositionAndRotation(
-                    debugButtonFrozenPosition, debugButtonFrozenRotation);
-                RecordInteractionEvent("DEBUG BASELINE PLACED", null,
-                    palmButtonCanvas.gameObject);
-            }
-            else
-            {
-                palmButtonCanvas.transform.SetPositionAndRotation(
-                    debugButtonFrozenPosition, debugButtonFrozenRotation);
-            }
-            if (palmButtonLabel != null && Time.unscaledTime >= debugClickConfirmationUntil)
-                palmButtonLabel.text = "Menu";
-            return true;
         }
 
         private bool UpdateAuthoredMenuTestMode()
@@ -1147,7 +1527,13 @@ namespace ThinkingSpace.UI
                     + gestureHoldTimer.ToString("0.00") + "/" + palmButtonHoldDuration.ToString("0.00")
                     + "\nGrace pose/tracking " + palmPoseLossTimer.ToString("0.00") + "/" + trackingLossTimer.ToString("0.00")
                     + "\nDismiss " + buttonDismissalReason
-                    + "\nTransitions " + buttonTransitionCount + " | " + lastButtonTransition;
+                    + "\nTransitions " + buttonTransitionCount + " | " + lastButtonTransition
+                    + "\nWatch " + watchPoseDiagnostic
+                    + "\nFallback " + wristFallbackDiagnostic
+                    + "\nTarget " + lastReliableWatchTargetPosition.ToString("F3")
+                    + " | rendered " + (wristWatchRoot!=null?wristWatchRoot.transform.position.ToString("F3"):"missing")
+                    + "\nContact " + watchContactCenter.ToString("F3") + " | loss " + watchTrackingLoss.ToString("F2")
+                    + " | rejected " + rejectedWatchPoseCount;
             else if (diagnosticPage == 3)
                 diagnosticsText.text = "INTERACTION  3 / 4"
                     + "\nBuilt " + buttonConstructionStatus
@@ -1247,6 +1633,7 @@ namespace ThinkingSpace.UI
         {
             if (args.Canvas == menuCanvas)
             {
+                if(IsMenuButtonInteractionSuppressed)return;
                 menuHovered = true;
                 menuPoseLocked = true;
                 interactionDiagnostic = "Hover: " + GetInteractionObjectName(args.Hovered);
@@ -1287,6 +1674,7 @@ namespace ThinkingSpace.UI
         {
             if (args.Canvas == menuCanvas)
             {
+                if(IsMenuButtonInteractionSuppressed)return;
                 menuSelected = true;
                 menuPoseLocked = true;
                 interactionDiagnostic = "Press: " + GetInteractionObjectName(args.Hovered);
@@ -1372,10 +1760,11 @@ namespace ThinkingSpace.UI
             else rightFistDiagnostic = message;
         }
 
-        private void PressPalmMenuButton()
+        private void PressWristTrackingFallbackButton()
         {
-            RecordInteractionEvent("UNITY BUTTON ONCLICK", null,
+            RecordInteractionEvent("WRIST FALLBACK ONCLICK", null,
                 palmMenuButton != null ? palmMenuButton.gameObject : null);
+            if(!watchFallbackVisible)return;
             if (!toggleGate.TryConsume(Time.unscaledTime, duplicateClickGuard))
             {
                 lastToggleGateResult = "Rejected duplicate callback without a new press/release cycle";
@@ -1384,36 +1773,12 @@ namespace ThinkingSpace.UI
                 return;
             }
             lastToggleGateResult = "Accepted generation " + toggleGate.ConsumedGeneration;
-            if(menuCanvas!=null&&menuCanvas.gameObject.activeSelf)
-            {lastPointerClick="Menu closed by palm button at "+Time.unscaledTime.ToString("0.00")+"s";CloseMenuInternal(menuOwner);RecordInteractionEvent("CONTROLLER TOGGLE CLOSE",null,menuCanvas.gameObject);return;}
-            if (debugShowPalmMenuButtonAtHeadset)
-            {
-                interactionDiagnostic = "Debug palm Menu button clicked successfully";
-                lastPointerClick = "Debug Menu button at " + Time.unscaledTime.ToString("0.00") + "s";
-                debugClickConfirmationUntil = Time.unscaledTime + 1.5f;
-                if (palmButtonLabel != null) palmButtonLabel.text = "Clicked ✓";
-                Transform headset = recordingGestureController != null
-                    ? recordingGestureController.CenterEyeAnchor : null;
-                if (headset == null || menuCanvas == null)
-                {
-                    interactionDiagnostic = "Debug click received, but headset or authored menu is missing";
-                    return;
-                }
-                palmButtonDebugOpenedMenu = true;
-                SetPalmButtonVisible(false);
-                OpenMenuAtHeadset(headset);
-                RecordInteractionEvent("CONTROLLER OPEN CALLBACK", null, menuCanvas.gameObject);
-                return;
-            }
-            if (buttonState != MenuButtonState.Visible || buttonOwner == OpeningHand.None) return;
-            OpeningHand activatingHand = buttonOwner;
-            lastPointerClick = "Menu opened at " + Time.unscaledTime.ToString("0.00") + "s";
-            // The same authored button remains the close toggle. Do not disable and
-            // re-enable Meta interactables inside their own click dispatch.
-            // Use the last stable tracked anchor. A single joint-resolution drop on
-            // the poke/release frame must not consume a valid Unity Button click.
-            OpenMenu(activatingHand, lastStableButtonAnchor);
-            RecordInteractionEvent("CONTROLLER OPEN CALLBACK", null, menuCanvas.gameObject);
+            Transform fallbackHeadset=recordingGestureController!=null
+                ?recordingGestureController.CenterEyeAnchor:null;
+            if(fallbackHeadset==null)return;
+            manualWristFallbackRequested=false;watchFallbackVisible=false;SetPalmButtonVisible(false);
+            OpenMenuAtHeadset(fallbackHeadset);
+            RecordInteractionEvent("WRIST FALLBACK OPEN",null,menuCanvas.gameObject);
         }
 
         private static Vector3 GetStablePalmAnchor(OpenPalmHand hand)
@@ -1425,6 +1790,10 @@ namespace ThinkingSpace.UI
         private void SetPalmButtonVisible(bool visible)
         {
             if (palmButtonCanvas == null) return;
+            // The authored palm launcher is retained only as the sustained wrist-tracking-loss
+            // fallback (and its explicit development test). Normal palm/pinch state paths can no
+            // longer make this obsolete launcher visible.
+            visible=visible&&ShouldShowTrackingLossFallback(watchFallbackVisible);
             bool changed = palmButtonVisualVisible != visible
                 || palmButtonInteractionActive != visible;
             palmButtonVisualVisible = visible;
@@ -1450,6 +1819,9 @@ namespace ThinkingSpace.UI
                 palmButtonCanvas.transform.position = new Vector3(0f, -1000f, 0f);
             }
         }
+
+        public static bool ShouldShowTrackingLossFallback(bool sustainedWristTrackingFallback)
+            =>sustainedWristTrackingFallback;
 
         private void ResetPalmButton(bool requireRelease)
         {
@@ -1483,8 +1855,7 @@ namespace ThinkingSpace.UI
         private void UpdatePalmButtonFollowing()
         {
             if (palmButtonCanvas == null || !palmButtonVisualVisible
-                || buttonOwner == OpeningHand.None || palmButtonPoseLocked
-                || debugShowPalmMenuButtonAtHeadset) return;
+                || buttonOwner == OpeningHand.None || palmButtonPoseLocked) return;
             OpenPalmHand owner = buttonOwner == OpeningHand.Left ? left : right;
             if (!IsOwnerTracked(buttonOwner) || !ResolveOpenPalmJoints(owner)) return;
             Transform headset = recordingGestureController.CenterEyeAnchor;
@@ -1520,6 +1891,7 @@ namespace ThinkingSpace.UI
         private void OpenMenu(OpeningHand owner, Vector3 handAnchor)
         {
             menuOwner = owner;
+            menuPlacementState=MenuPlacementState.Attached;
             buttonOwner = owner;
             SetButtonState(MenuButtonState.WaitingForRelease, "Menu button clicked; full menu opened");
             buttonDismissalReason = "Menu button clicked; full menu opened";
@@ -1533,6 +1905,9 @@ namespace ThinkingSpace.UI
             FaceCanvasToHeadset(menuCanvas.transform, headset, true);
             menuCanvas.enabled = true;
             menuCanvas.gameObject.SetActive(true);
+            recordingGestureController?.SetMenuGestureSuppressed(true);
+            recordingGestureController?.ConversationalListening?.SetExternalPause(
+                OrbyMenuPauseReason,true);
             ShowScreen(sessionStore.ActiveSession == null ? MenuScreen.Main : MenuScreen.Session);
             ValidateMenuVisibility(headset, "palm open callback");
         }
@@ -1540,6 +1915,7 @@ namespace ThinkingSpace.UI
         private void OpenMenuAtHeadset(Transform headset)
         {
             menuOwner = OpeningHand.None;
+            menuPlacementState=MenuPlacementState.Detached;
             buttonOwner = OpeningHand.None;
             SetButtonState(MenuButtonState.WaitingForRelease, "Debug button clicked; full menu opened");
             buttonDismissalReason = "Debug Menu button clicked; full menu opened";
@@ -1548,6 +1924,9 @@ namespace ThinkingSpace.UI
             FaceCanvasToHeadset(menuCanvas.transform, headset, true);
             menuCanvas.enabled = true;
             menuCanvas.gameObject.SetActive(true);
+            recordingGestureController?.SetMenuGestureSuppressed(true);
+            recordingGestureController?.ConversationalListening?.SetExternalPause(
+                OrbyMenuPauseReason,true);
             ShowScreen(sessionStore.ActiveSession == null ? MenuScreen.Main : MenuScreen.Session);
             ValidateMenuVisibility(headset, "debug open callback");
             interactionDiagnostic = "Click callback completed; " + menuVisibilityDiagnostic;
@@ -1555,8 +1934,25 @@ namespace ThinkingSpace.UI
 
         private void UpdateMenuFollowing()
         {
-            if (menuCanvas == null || !menuCanvas.gameObject.activeSelf || menuOwner == OpeningHand.None
-                || menuPoseLocked) return;
+            if(menuCanvas==null||!menuCanvas.gameObject.activeSelf||menuPoseLocked)return;
+            if(menuPlacementState==MenuPlacementState.Detached)
+            {
+                if(ShouldAutoFaceDetachedMenu(true,true,false,menuSelected||menuHovered))
+                    FaceCanvasToHeadset(menuCanvas.transform,recordingGestureController.CenterEyeAnchor,false);
+                return;
+            }
+            if(menuPlacementState!=MenuPlacementState.Attached)return;
+            if(wristWatchRoot!=null&&wristWatchRoot.activeInHierarchy)
+            {
+                Transform attachedHeadset=recordingGestureController.CenterEyeAnchor;
+                Vector3 toward=attachedHeadset!=null?(attachedHeadset.position-wristWatchRoot.transform.position).normalized:Vector3.zero;
+                Vector3 target=wristWatchRoot.transform.position+Vector3.up*attachedMenuOffset.y
+                    +wristWatchRoot.transform.right*attachedMenuOffset.x+toward*attachedMenuOffset.z;
+                menuCanvas.transform.position=Vector3.SmoothDamp(menuCanvas.transform.position,target,
+                    ref followVelocity,followSmoothTime,Mathf.Infinity,Time.unscaledDeltaTime);
+                FaceCanvasToHeadset(menuCanvas.transform,attachedHeadset,false);return;
+            }
+            if(menuOwner==OpeningHand.None)return;
             OpenPalmHand owner = menuOwner == OpeningHand.Left ? left : right;
             if (owner.hand == null || owner.skeleton == null || !owner.hand.IsTracked
                 || !ResolveOpenPalmJoints(owner))
@@ -1580,6 +1976,9 @@ namespace ThinkingSpace.UI
                 canvasFacingDot = Vector3.Dot(-menuCanvas.transform.forward, towardHeadset);
             }
         }
+
+        public static bool ShouldAutoFaceDetachedMenu(bool visible,bool detached,bool dragging,bool pressed)
+            =>visible&&detached&&!dragging&&!pressed;
 
         private Vector3 GetMenuTargetPosition(Vector3 handAnchor, Transform headset)
         {
@@ -1637,14 +2036,19 @@ namespace ThinkingSpace.UI
 
         private void CloseMenuInternal(OpeningHand releasingHand)
         {
+            if(menuPlacementState==MenuPlacementState.Dragging)EndMenuDrag(false);
             OpeningHand ownerToRelease = menuOwner != OpeningHand.None ? menuOwner : releasingHand;
             if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
             menuHovered = menuSelected = menuPoseLocked = false;
             menuVisibilityDiagnostic = "Menu closed";
             menuOwner = OpeningHand.None;
+            menuPlacementState=MenuPlacementState.Closed;
             closeFistTimer = 0f;
             externalHoveredPointers.Clear();
             externalSelectedPointers.Clear();
+            recordingGestureController?.SetMenuGestureSuppressed(false,watchToggleCooldown);
+            recordingGestureController?.ConversationalListening?.SetExternalPause(
+                OrbyMenuPauseReason,false);
             ResetPalmButton(true);
             rearmOwner = ownerToRelease;
         }
@@ -1662,6 +2066,7 @@ namespace ThinkingSpace.UI
                         recordingGestureController.SelectedRecordingHand);
                 else if (screen == MenuScreen.VoiceHelp) authoredView.ShowVoiceHelp();
                 else authoredView.ShowGestureHelp();
+                authoredView.SetWristMenuHand(preferencesStore.Data.WristMenuHand);
                 return;
             }
             ClearContent();
@@ -1685,6 +2090,7 @@ namespace ThinkingSpace.UI
                 }
             }
             AddButton("Start New Session", StartNewSession, true);
+            AddButton("Import Session",RequestImportSession);
             AddButton("Voice Commands", () => OpenHelp(MenuScreen.VoiceHelp));
             AddButton("Hand Gestures", () => OpenHelp(MenuScreen.GestureHelp));
             AddRecordingHandSelector();
@@ -1700,6 +2106,7 @@ namespace ThinkingSpace.UI
             AddButton("Expand My Idea", () => ShowPlaceholder("Expand My Idea — Coming Soon"));
             AddButton("Connect My Ideas", () => ShowPlaceholder("Connect My Ideas — Coming Soon"));
             AddButton("Spawn Whiteboard", () => ShowPlaceholder("Whiteboard — Coming Soon"));
+            AddButton("Export Session",RequestExportSession);
             AddButton("Voice Commands", () => OpenHelp(MenuScreen.VoiceHelp));
             AddButton("Hand Gestures", () => OpenHelp(MenuScreen.GestureHelp));
             AddRecordingHandSelector();
@@ -1780,6 +2187,92 @@ namespace ThinkingSpace.UI
             ShowScreen(MenuScreen.Main);
         }
 
+        public SessionTransferResult ExportCurrentSession(string format)
+        {
+            if(sessionTransferBusy)return SessionTransferResult.Fail("Another session transfer is already running.");
+            sessionTransferBusy=true;
+            try
+            {
+                SessionTransferResult result=sessionTransfer.ExportCurrentSession(format);
+                authoredView?.SetTransferStatus(result.Success
+                    ?result.Message+"\n"+result.FilePath:result.Message);
+                return result;
+            }
+            finally{sessionTransferBusy=false;}
+        }
+
+        public SessionTransferResult ImportSession(string fileReference,bool confirmed=false)
+        {
+            if(sessionTransferBusy)return SessionTransferResult.Fail("Another session transfer is already running.");
+            sessionTransferBusy=true;
+            try
+            {
+                SessionTransferResult result=sessionTransfer.ImportSession(fileReference,confirmed);
+                authoredView?.SetTransferStatus(result.Message);
+                if(result.Success&&result.ImportedSession!=null)
+                {
+                    BrainstormSession imported=result.ImportedSession;
+                    recordingGestureController.SetSessionIdentifier("Session "+imported.Number);
+                    recordingGestureController.SetSessionActive(true);
+                    OrbyVoiceDirector.Instance?.SetActiveSession(imported.SessionId);
+                    SessionActivated?.Invoke(imported);
+                    ShowScreen(MenuScreen.Session);
+                }
+                return result;
+            }
+            finally{sessionTransferBusy=false;}
+        }
+
+        public string[] ListSupportedExportFormats()=>sessionTransfer.ListSupportedExportFormats();
+
+        private void RequestExportSession()
+        {
+            if(safTransferPending){authoredView?.SetTransferStatus("Another document operation is already open.");return;}
+            SessionTransferResult prepared=ExportCurrentSession("json");
+            if(!prepared.Success)return;
+            if(!AndroidSafSessionDocumentBridge.IsSupported)
+            {authoredView?.SetTransferStatus("Quest document picker is unavailable. The app-owned export remains at:\n"+prepared.FilePath);return;}
+            safTransferPending=true;
+            authoredView?.SetTransferStatus("Choose where to save "+Path.GetFileName(prepared.FilePath)+".");
+            if(!AndroidSafSessionDocumentBridge.BeginExport(gameObject.name,prepared.FilePath,Path.GetFileName(prepared.FilePath)))
+            {safTransferPending=false;authoredView?.SetTransferStatus("Quest document picker could not start. The app-owned export was preserved.");}
+        }
+
+        private void RequestImportSession()
+        {
+            if(safTransferPending){authoredView?.SetTransferStatus("Another document operation is already open.");return;}
+            if(!string.IsNullOrEmpty(pendingSafImportFile))
+            {
+                string fileName=Path.GetFileName(pendingSafImportFile);
+                SessionTransferResult result=ImportSession(fileName,true);
+                sessionTransfer.DeleteStagedImport(fileName);
+                pendingSafImportFile=string.Empty;
+                if(!result.Success)authoredView?.SetTransferStatus(result.Message);
+                return;
+            }
+            if(!AndroidSafSessionDocumentBridge.IsSupported)
+            {authoredView?.SetTransferStatus("Quest document picker is unavailable on this device; no file was accessed.");return;}
+            safTransferPending=true;
+            authoredView?.SetTransferStatus("Choose a Thinking Space JSON session to import.");
+            if(!AndroidSafSessionDocumentBridge.BeginImport(gameObject.name,sessionTransfer.ImportDirectory))
+            {safTransferPending=false;authoredView?.SetTransferStatus("Quest document picker could not start; no file was accessed.");}
+        }
+
+        public void OnSafDocumentResult(string payload)
+        {
+            safTransferPending=false;
+            if(!AndroidSafSessionDocumentBridge.TryParseResult(payload,out SafDocumentResult result))
+            {authoredView?.SetTransferStatus("Document picker returned an invalid result.");return;}
+            if(result.Operation=="import"&&result.Success)
+            {
+                string candidate=Path.GetFileName(result.FilePath);
+                if(string.IsNullOrEmpty(candidate))
+                {authoredView?.SetTransferStatus("Selected import could not be staged safely.");return;}
+                pendingSafImportFile=candidate;
+            }
+            authoredView?.SetTransferStatus(result.Message);
+        }
+
         private void EndSession()
         {
             recordingGestureController.SetSessionActive(false);
@@ -1842,6 +2335,7 @@ namespace ThinkingSpace.UI
 
         private void InvokeGuarded(Action action)
         {
+            if(IsMenuButtonInteractionSuppressed)return;
             if (Time.unscaledTime - lastButtonActivation < duplicateClickGuard) return;
             lastButtonActivation = Time.unscaledTime;
             action?.Invoke();
@@ -1865,10 +2359,8 @@ namespace ThinkingSpace.UI
         [ContextMenu("Development/Palm Menu/Hide Full Menu")]
         public void DevelopmentHideMenu()
         {
-            if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
-            menuOwner = OpeningHand.None;
-            menuHovered = menuSelected = menuPoseLocked = false;
-            menuVisibilityDiagnostic = "Hidden by development command";
+            CloseMenuInternal(menuOwner);
+            menuVisibilityDiagnostic = "Closed by development command";
             lastToggleGateResult = "Development hide completed; no session changed";
         }
 
@@ -1876,7 +2368,7 @@ namespace ThinkingSpace.UI
         public void DevelopmentSimulateMenuButtonCallback()
         {
             toggleGate.BeginDevelopmentInteraction(Time.unscaledTime);
-            if (IsMenuVisible) PressPalmMenuButton();
+            if (IsMenuVisible) CloseMenuInternal(menuOwner);
             else
             {
                 if (!toggleGate.TryConsume(Time.unscaledTime, 0f)) return;
@@ -1934,6 +2426,11 @@ namespace ThinkingSpace.UI
 
         private void OnDestroy()
         {
+            recordingGestureController?.SetMenuGestureSuppressed(false,watchToggleCooldown);
+            recordingGestureController?.ConversationalListening?.SetExternalPause(
+                OrbyMenuPauseReason,false);
+            if(!string.IsNullOrEmpty(pendingSafImportFile)&&sessionTransfer!=null)
+                sessionTransfer.DeleteStagedImport(Path.GetFileName(pendingSafImportFile));
             externalHoveredPointers.Clear();
             externalSelectedPointers.Clear();
             if (palmMenuButtonView != null)
@@ -1944,6 +2441,9 @@ namespace ThinkingSpace.UI
             }
             if (progressBackgroundMaterial != null) Destroy(progressBackgroundMaterial);
             if (progressFillMaterial != null) Destroy(progressFillMaterial);
+            if(wristBodyMaterial!=null)Destroy(wristBodyMaterial);
+            if(wristButtonMaterial!=null)Destroy(wristButtonMaterial);
+            if(wristWatchRoot!=null)Destroy(wristWatchRoot);
             if (palmButtonCanvas != null) Destroy(palmButtonCanvas.gameObject);
             if (menuCanvas != null && menuCanvas.transform.parent == null) Destroy(menuCanvas.gameObject);
             if (diagnosticsBackgroundMaterial != null) Destroy(diagnosticsBackgroundMaterial);
