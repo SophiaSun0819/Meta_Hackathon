@@ -1,7 +1,9 @@
+import asyncio
 import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ["OPENAI_API_KEY"] = "test-key-not-used"
 os.environ["THINKING_SPACE_DEV_TOKEN"] = "test-development-token"
@@ -11,8 +13,9 @@ from fastapi.testclient import TestClient
 
 import app as backend_app
 from idea_manager import IdeaRequestRegistry
-from voice_service import (VoiceConfigurationError, VoiceInvalidAudio, VoiceProviderFailure,
-                           VoiceProviderTimeout)
+from voice_service import (ElevenLabsVoiceProvider, VoiceConfigurationError, VoiceInvalidAudio,
+                           VoiceProviderFailure, VoiceProviderTimeout)
+from language_support import VOICE_PROFILES, resolve_tts_model
 
 
 class FixedVoiceProvider:
@@ -21,13 +24,32 @@ class FixedVoiceProvider:
         self.error = error
         self.calls = 0
         self.texts = []
+        self.profiles = []
 
-    async def synthesize(self, text):
+    async def synthesize(self, text, profile=None):
         self.calls += 1
         self.texts.append(text)
+        self.profiles.append(profile)
         if self.error:
             raise self.error
         return self.audio
+
+
+class FakeStreamResponse:
+    status_code = 200
+    async def __aenter__(self): return self
+    async def __aexit__(self, *_): return False
+    async def aiter_bytes(self): yield b"ID3\x04\x00\x00mock-mp3"
+
+
+class FakeHttpClient:
+    last_request = None
+    def __init__(self, **_): pass
+    async def __aenter__(self): return self
+    async def __aexit__(self, *_): return False
+    def stream(self, method, url, **kwargs):
+        FakeHttpClient.last_request = (method, url, kwargs)
+        return FakeStreamResponse()
 
 
 class VoiceEndpointTests(unittest.TestCase):
@@ -105,6 +127,53 @@ class VoiceEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertEqual(provider.calls, 0)
+
+    def test_all_approved_voice_profiles_are_server_resolved(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        cases = (("orby-en", "en"), ("orby-es", "es"), ("orby-fr", "fr"),
+                 ("orby-zh", "zh-CN"), ("orby-hi", "hi-IN"))
+        for index, (profile_id, language) in enumerate(cases):
+            payload = {"request_id": f"voice-profile-{index}", "session_id": "Session 1",
+                       "text": "Validated text.", "response_language": language,
+                       "voice_profile_id": profile_id}
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers["x-thinkingspace-response-language"], language)
+            self.assertEqual(response.headers["x-thinkingspace-voice-profile"], profile_id)
+        self.assertEqual([profile.profile_id for profile in provider.profiles],
+                         [profile_id for profile_id, _ in cases])
+        self.assertEqual(provider.calls, len(cases))
+
+    def test_language_profile_validation_and_model_fallback(self):
+        provider = FixedVoiceProvider()
+        backend_app.voice_provider = provider
+        invalid_language = self.payload(); invalid_language["response_language"] = "xx"
+        invalid_profile = self.payload(); invalid_profile["voice_profile_id"] = "user-voice"
+        conflict = self.payload(); conflict.update(
+            {"response_language": "es", "voice_profile_id": "orby-fr"})
+        for payload in (invalid_language, invalid_profile, conflict):
+            backend_app.voice_request_times.clear()
+            self.assertEqual(self.post(payload).status_code, 422)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(resolve_tts_model("unsupported-model"), "eleven_flash_v2_5")
+        self.assertEqual(resolve_tts_model("eleven_v4_turbo"), "eleven_v4_turbo")
+        self.assertEqual(VOICE_PROFILES["orby-en"].voice_id, "E584YCmNqnu35GrWlrqy")
+
+    def test_elevenlabs_receives_server_profile_language_and_unchanged_text(self):
+        provider = ElevenLabsVoiceProvider("secret-not-logged", "",
+            "eleven_flash_v2_5", 5, 1024)
+        profile = VOICE_PROFILES["orby-zh"]
+        with patch("voice_service.httpx.AsyncClient", FakeHttpClient):
+            audio = asyncio.run(provider.synthesize("原始文本 42", profile))
+        self.assertTrue(audio.startswith(b"ID3"))
+        method, url, kwargs = FakeHttpClient.last_request
+        self.assertEqual(method, "POST")
+        self.assertTrue(url.endswith("/" + profile.voice_id))
+        self.assertEqual(kwargs["json"], {"text": "原始文本 42",
+                                          "model_id": "eleven_flash_v2_5",
+                                          "language_code": "zh"})
+        self.assertNotIn("secret-not-logged", str(kwargs["json"]))
 
     def test_missing_and_incorrect_authentication(self):
         backend_app.voice_provider = FixedVoiceProvider()

@@ -4,7 +4,10 @@ from typing import Literal, Protocol
 from urllib.parse import quote
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from language_support import (VoiceProfile, normalize_language_code, normalize_voice_profile_id,
+    resolve_voice_profile, resolve_tts_model)
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
@@ -25,6 +28,8 @@ class VoiceSynthesisRequest(BaseModel):
         "mischievously",
         "snorts",
     ] = "neutral"
+    response_language: str | None = None
+    voice_profile_id: str | None = None
 
     @field_validator("request_id")
     @classmethod
@@ -47,9 +52,38 @@ class VoiceSynthesisRequest(BaseModel):
             raise ValueError("Text is required.")
         return value
 
+    @field_validator("response_language", mode="before")
+    @classmethod
+    def validate_language(cls, value: str | None) -> str | None:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        normalized = normalize_language_code(value)
+        if normalized is None:
+            raise ValueError("Unsupported response language.")
+        return normalized
+
+    @field_validator("voice_profile_id", mode="before")
+    @classmethod
+    def validate_voice_profile(cls, value: str | None) -> str | None:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        normalized = normalize_voice_profile_id(value)
+        if normalized is None:
+            raise ValueError("Unsupported voice profile.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_profile_language(self) -> "VoiceSynthesisRequest":
+        resolve_voice_profile(self.response_language, self.voice_profile_id)
+        return self
+
+    @property
+    def resolved_profile(self) -> VoiceProfile:
+        return resolve_voice_profile(self.response_language, self.voice_profile_id)
+
 
 class VoiceProvider(Protocol):
-    async def synthesize(self, text: str) -> bytes: ...
+    async def synthesize(self, text: str, profile: VoiceProfile | None = None) -> bytes: ...
 
 
 class VoiceConfigurationError(RuntimeError): pass
@@ -72,13 +106,17 @@ class ElevenLabsVoiceProvider:
         self.timeout_seconds = timeout_seconds
         self.maximum_audio_bytes = maximum_audio_bytes
 
-    async def synthesize(self, text: str) -> bytes:
-        if not self.api_key or not self.voice_id or not self.model:
+    async def synthesize(self, text: str, profile: VoiceProfile | None = None) -> bytes:
+        if not self.api_key or not self.model or (profile is None and not self.voice_id):
             raise VoiceConfigurationError("Voice service is not configured.")
-        url = f"{self.endpoint_root}/{quote(self.voice_id, safe='')}"
+        voice_id = profile.voice_id if profile else self.voice_id
+        model = resolve_tts_model(self.model)
+        url = f"{self.endpoint_root}/{quote(voice_id, safe='')}"
         headers = {"xi-api-key": self.api_key, "accept": self.mime_type,
                    "content-type": "application/json"}
-        payload = {"text": text, "model_id": self.model}
+        payload = {"text": text, "model_id": model}
+        if profile:
+            payload["language_code"] = profile.provider_language_code
         audio = bytearray()
         try:
             timeout = httpx.Timeout(self.timeout_seconds)

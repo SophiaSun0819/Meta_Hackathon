@@ -19,6 +19,7 @@ from conversation_orchestrator import (ConversationClarificationStore, Conversat
     ConversationContextError, ConversationModelOutput, ConversationOrchestrator, ConversationRequest,
     OpenAIConversationProvider)
 from idea_manager import IdeaRequestRegistry
+from mock_providers import MockConversationProvider
 
 
 class FixedConversationProvider:
@@ -128,6 +129,70 @@ class ConversationEndpointTests(unittest.TestCase):
             data = self.post(self.payload(f"conversation-{index}")).json()
             self.assertFalse(data["should_create_idea"])
             self.assertEqual(data["spoken_response"], data["subtitle_text"])
+
+    def test_legacy_request_defaults_to_english_profile(self):
+        self.use(FixedConversationProvider())
+        response = self.post(self.payload("legacy-language-client"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["response_language"], "en")
+        self.assertEqual(response.json()["voice_profile_id"], "orby-en")
+
+    def test_explicit_and_auto_languages_resolve_without_extra_provider_calls(self):
+        cases = (("en", "orby-en"), ("es", "orby-es"), ("fr", "orby-fr"),
+                 ("zh-CN", "orby-zh"), ("hi-IN", "orby-hi"))
+        for index, (language, profile) in enumerate(cases):
+            provider = FixedConversationProvider(response="Validated localized response.")
+            self.use(provider)
+            payload = self.payload(f"explicit-language-{index}")
+            payload["context"].update({"response_language_mode": "explicit",
+                                       "response_language": language,
+                                       "voice_profile_id": profile})
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 200, response.text)
+            data = response.json()
+            self.assertEqual(data["response_language"], language)
+            self.assertEqual(data["voice_profile_id"], profile)
+            self.assertEqual(data["spoken_response"], data["subtitle_text"])
+            self.assertEqual(provider.calls, 1)
+
+        provider = FixedConversationProvider()
+        self.use(provider)
+        auto = self.payload("auto-detected-language")
+        auto["context"].update({"response_language_mode": "auto", "input_language": "es",
+                                "voice_profile_id": "orby-auto"})
+        response = self.post(auto)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["response_language"], "es")
+        self.assertEqual(response.json()["voice_profile_id"], "orby-es")
+        self.assertEqual(provider.calls, 1)
+
+    def test_invalid_or_conflicting_language_context_is_rejected(self):
+        cases = (
+            {"input_language": "xx"},
+            {"voice_profile_id": "arbitrary-voice"},
+            {"response_language_mode": "explicit"},
+            {"response_language_mode": "auto", "response_language": "fr"},
+            {"response_language_mode": "explicit", "response_language": "es",
+             "voice_profile_id": "orby-fr"},
+        )
+        for index, values in enumerate(cases):
+            payload = self.payload(f"invalid-language-{index}")
+            payload["context"].update(values)
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 422, response.text)
+
+    def test_mock_conversation_uses_resolved_language_for_speech_and_subtitles(self):
+        self.use(MockConversationProvider())
+        payload = self.payload("mock-spanish-language", transcript="¿Qué es la realidad virtual?")
+        payload["context"].update({"response_language_mode": "explicit",
+                                   "response_language": "es",
+                                   "voice_profile_id": "orby-auto"})
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["response_language"], "es")
+        self.assertEqual(data["spoken_response"], data["subtitle_text"])
+        self.assertIn("pregunta", data["spoken_response"])
 
     def test_preferred_name_request_compatibility(self):
         cases = [
