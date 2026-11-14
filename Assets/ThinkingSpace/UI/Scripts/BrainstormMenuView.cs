@@ -109,6 +109,7 @@ namespace ThinkingSpace.UI
             CreateAudioSettingsPage();
             CreateSessionAudioSettingsPage();
             CreateWristSettings();
+            ArrangeSessionHelpPage();
             CreateLanguageSettings();
             CreateConversationLanguageSettings(mainPanel,mainCloseButton,mainConversationLanguageButtons,
                 out mainConversationAutoButton,out mainConversationLabel);
@@ -433,6 +434,28 @@ namespace ThinkingSpace.UI
                 out mainWristRightButton,out mainWristLabel);
             CreateWristSettings(sessionPanel,sessionCloseButton,out sessionWristLeftButton,
                 out sessionWristRightButton,out sessionWristLabel);
+        }
+
+        private void ArrangeSessionHelpPage()
+        {
+            // Page two combines four authored help/hand buttons with the two runtime wrist controls.
+            // Give every control an explicit row so localized labels cannot occupy the same space.
+            SetButtonRect(sessionVoiceButton,new Vector2(.08f,.59f),new Vector2(.47f,.70f));
+            SetButtonRect(sessionGesturesButton,new Vector2(.53f,.59f),new Vector2(.92f,.70f));
+            SetButtonRect(sessionLeftHandButton,new Vector2(.08f,.39f),new Vector2(.47f,.50f));
+            SetButtonRect(sessionRightHandButton,new Vector2(.53f,.39f),new Vector2(.92f,.50f));
+            if(sessionWristLabel!=null)SetRect(sessionWristLabel.rectTransform,
+                new Vector2(.08f,.27f),new Vector2(.92f,.35f));
+            SetButtonRect(sessionWristLeftButton,new Vector2(.08f,.14f),new Vector2(.47f,.25f));
+            SetButtonRect(sessionWristRightButton,new Vector2(.53f,.14f),new Vector2(.92f,.25f));
+            SetLabelRect(sessionPanel,"settings.recording_hand",
+                new Vector2(.08f,.73f),new Vector2(.92f,.84f));
+        }
+
+        private static void SetButtonRect(Button button,Vector2 min,Vector2 max)
+        {
+            if(button==null)return;
+            SetRect(button.GetComponent<RectTransform>(),min,max);
         }
 
         private void CreateLanguageSettings()
@@ -787,6 +810,20 @@ namespace ThinkingSpace.UI
                     if ((localized!=null&&localized.StringKey==key)||labels[i].text.Trim()==L(key))
                         labels[i].gameObject.SetActive(visible);
                 }
+        }
+
+        private static void SetLabelRect(GameObject panel,string key,Vector2 min,Vector2 max)
+        {
+            if(panel==null)return;
+            TMP_Text[] labels=panel.GetComponentsInChildren<TMP_Text>(true);
+            for(int i=0;i<labels.Length;i++)
+            {
+                TMP_Text label=labels[i];
+                if(label==null)continue;
+                ThinkingSpaceLocalizedText localized=label.GetComponent<ThinkingSpaceLocalizedText>();
+                if((localized!=null&&localized.StringKey==key)||label.text.Trim()==L(key))
+                    SetRect(label.rectTransform,min,max);
+            }
         }
 
         private static void DisableScrolling(GameObject panel)

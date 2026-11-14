@@ -186,7 +186,7 @@ namespace ThinkingSpace.Speech
             if (conversationalListening != null && conversationalListening.OwnsCapture)
             {
                 conversationalListening.NotifyRecordingStarted();
-                aiWorkflow?.NotifyListening();
+                aiWorkflow?.NotifyIdle();
                 UpdateDiagnostic("Conversational microphone monitoring");
                 return;
             }
@@ -469,9 +469,7 @@ namespace ThinkingSpace.Speech
             ClearPendingRecording();
             State = RecordingWorkflowState.Ready;
             gestureController?.RequireFreshRecordingGesture();
-            if (conversationalListening != null && conversationalListening.ListeningEnabled)
-                aiWorkflow?.NotifyListening();
-            else aiWorkflow?.NotifyIdle();
+            aiWorkflow?.NotifyIdle();
             UpdateDiagnostic("Automatic conversational turn completed; ready to listen");
         }
 

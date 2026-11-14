@@ -1467,7 +1467,7 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void ListeningOffOverrideReturnsEveryStateToIdle()
+        public void ListeningOffOverrideReturnsEveryStateToPaused()
         {
             var root = new GameObject("Orby State Test");
             var controller = root.AddComponent<OrbyConversationStateController>();
@@ -1475,7 +1475,7 @@ namespace ThinkingSpace.Tests.Editor
             {
                 controller.SetState(state);
                 controller.TurnListeningOffFromAnyState();
-                Assert.That(controller.State, Is.EqualTo(OrbyConversationState.Idle));
+                Assert.That(controller.State, Is.EqualTo(OrbyConversationState.Paused));
             }
             Object.DestroyImmediate(root);
         }

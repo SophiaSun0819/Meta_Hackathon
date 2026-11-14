@@ -220,7 +220,7 @@ namespace ThinkingSpace.Speech
             State = ConversationalListeningState.WaitingForCapture;
             WorkflowBlocker = "None";
             ResolveOrby();
-            orby?.SetState(OrbyConversationState.Listening);
+            orby?.SetState(OrbyConversationState.Idle);
             hud?.SetListeningMode(true, true);
             OrbyVoiceDirector.Instance?.PlayPrerecorded("mic_on");
         }
@@ -276,7 +276,7 @@ namespace ThinkingSpace.Speech
             else State = ConversationalListeningState.Off;
             if (!shutdownAfterUtterance
                 && (coordinator == null || coordinator.State == RecordingWorkflowState.Ready))
-                orby?.SetState(OrbyConversationState.Idle);
+                orby?.SetState(OrbyConversationState.Paused);
             orbyView?.SetLiveAudioLevel(0f, false, 0f);
             if (wasEnabled) hud?.SetListeningMode(false, true);
             if(wasEnabled&&reason=="Disabled by thumbs-down"&&!shutdownAfterUtterance)
@@ -424,7 +424,7 @@ namespace ThinkingSpace.Speech
             captureStartedAt = Time.unscaledTime;
             State = ConversationalListeningState.Calibrating;
             WorkflowBlocker = "Calibrating ambient audio";
-            orby?.SetState(OrbyConversationState.Listening);
+            orby?.SetState(OrbyConversationState.Idle);
         }
 
         public void NotifyRecordingCompleted()
