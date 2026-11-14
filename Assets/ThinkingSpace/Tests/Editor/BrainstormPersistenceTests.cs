@@ -1118,6 +1118,45 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void CleanedConversationJsonMatchesFastApiContractAndRequiresSelectedTranscript()
+        {
+            var request = new ConversationProcessRequest
+            {
+                request_id = "conversation-cleaned-1",
+                session_id = "session-1",
+                raw_transcript = "Synthetic raw input.",
+                cleaned_transcript = "Synthetic cleaned input.",
+                transcript_source = "cleaned",
+                available_ideas = System.Array.Empty<AIIdeaContext>(),
+                context = new ConversationContextPayload
+                {
+                    current_mode = "conversational",
+                    recent_turns = System.Array.Empty<ConversationTurnPayload>()
+                }
+            };
+
+            string error = ThinkingSpaceAIBackendClient.ValidateConversationRequest(
+                request, out string field, out string category);
+            Assert.That(error, Is.Empty, $"{field}:{category}");
+
+            string json = AIRequestJsonSerializer.Serialize(request);
+            StringAssert.Contains("\"request_id\":\"conversation-cleaned-1\"", json);
+            StringAssert.Contains("\"session_id\":\"session-1\"", json);
+            StringAssert.Contains("\"raw_transcript\":\"Synthetic raw input.\"", json);
+            StringAssert.Contains("\"cleaned_transcript\":\"Synthetic cleaned input.\"", json);
+            StringAssert.Contains("\"transcript_source\":\"cleaned\"", json);
+            StringAssert.Contains("\"available_ideas\":[]", json);
+            StringAssert.Contains("\"context\":", json);
+
+            request.cleaned_transcript = null;
+            error = ThinkingSpaceAIBackendClient.ValidateConversationRequest(
+                request, out field, out category);
+            Assert.That(error, Is.Not.Empty);
+            Assert.That(field, Is.EqualTo("cleaned_transcript"));
+            Assert.That(category, Is.EqualTo("missing_value"));
+        }
+
+        [Test]
         public void ConversationJsonKeepsEmptyInventoryAndValidClarification()
         {
             string json = AIRequestJsonSerializer.Serialize(new ConversationProcessRequest

@@ -121,17 +121,7 @@ namespace ThinkingSpace.UI
         [Header("Backend Capabilities")]
         [Tooltip("Enable only after the multilingual conversation backend contract is deployed and verified.")]
         [SerializeField] private bool multilingualBackendContractEnabled;
-        public bool MultilingualBackendContractEnabled
-        {
-            get
-            {
-#if DEVELOPMENT_BUILD
-                return true;
-#else
-                return multilingualBackendContractEnabled;
-#endif
-            }
-        }
+        public bool MultilingualBackendContractEnabled => multilingualBackendContractEnabled;
 
         [Header("Open Palm Diagnostics")]
         [SerializeField] private bool showOpenPalmDiagnostics;

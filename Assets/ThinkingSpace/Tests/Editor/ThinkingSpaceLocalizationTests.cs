@@ -274,6 +274,44 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(json,Does.Not.Contain("input_language"));
         }
 
+        [Test]
+        public void MultilingualBackendCapabilityDefaultsOffUntilExplicitlyVerified()
+        {
+            GameObject root = new GameObject("Multilingual Capability Gate Test");
+            try
+            {
+                var controller = root.AddComponent<BrainstormMenuController>();
+                Assert.That(controller.MultilingualBackendContractEnabled, Is.False);
+
+                typeof(BrainstormMenuController).GetField("multilingualBackendContractEnabled",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    ?.SetValue(controller, true);
+                Assert.That(controller.MultilingualBackendContractEnabled, Is.True);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void LegacyCleanedRequestIncludesCleanedTranscriptWithoutMultilingualMetadata()
+        {
+            var context = new ConversationContextPayload();
+            string json = AIRequestJsonSerializer.Serialize(new ConversationProcessRequest
+            {
+                request_id = "request-cleaned-legacy",
+                session_id = "Session 1",
+                raw_transcript = "Synthetic raw input.",
+                cleaned_transcript = "Synthetic cleaned input.",
+                transcript_source = "cleaned",
+                context = context
+            });
+
+            Assert.That(json, Does.Contain("\"cleaned_transcript\":\"Synthetic cleaned input.\""));
+            Assert.That(json, Does.Not.Contain("response_language"));
+            Assert.That(json, Does.Not.Contain("response_language_mode"));
+            Assert.That(json, Does.Not.Contain("voice_profile_id"));
+            Assert.That(json, Does.Not.Contain("input_language"));
+        }
+
         [TestCase("en","orby-en")]
         [TestCase("es","orby-es")]
         [TestCase("fr","orby-fr")]

@@ -156,9 +156,25 @@ namespace ThinkingSpace.Speech
             public string clarification_id;
         }
 
+        [Serializable] private sealed class CleanedConversationLanguageWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentLanguageWire context;
+            public string clarification_id;
+        }
+
         [Serializable] private sealed class ConversationRecentLanguageWireRequest
         {
             public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentLanguageWire context;
+            public string clarification_id;
+        }
+
+        [Serializable] private sealed class CleanedConversationRecentLanguageWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
             public AIIdeaContext[] available_ideas;
             public ConversationContextWithRecentLanguageWire context;
             public string clarification_id;
@@ -171,9 +187,23 @@ namespace ThinkingSpace.Speech
             public ConversationContextWithoutRecentWire context;
         }
 
+        [Serializable] private sealed class CleanedInitialConversationWithoutRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentWire context;
+        }
+
         [Serializable] private sealed class InitialConversationWithRecentWireRequest
         {
             public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentWire context;
+        }
+
+        [Serializable] private sealed class CleanedInitialConversationWithRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
             public AIIdeaContext[] available_ideas;
             public ConversationContextWithRecentWire context;
         }
@@ -186,9 +216,25 @@ namespace ThinkingSpace.Speech
             public string clarification_id;
         }
 
+        [Serializable] private sealed class CleanedFollowUpConversationWithoutRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithoutRecentWire context;
+            public string clarification_id;
+        }
+
         [Serializable] private sealed class FollowUpConversationWithRecentWireRequest
         {
             public string request_id, session_id, raw_transcript, transcript_source;
+            public AIIdeaContext[] available_ideas;
+            public ConversationContextWithRecentWire context;
+            public string clarification_id;
+        }
+
+        [Serializable] private sealed class CleanedFollowUpConversationWithRecentWireRequest
+        {
+            public string request_id, session_id, raw_transcript, cleaned_transcript, transcript_source;
             public AIIdeaContext[] available_ideas;
             public ConversationContextWithRecentWire context;
             public string clarification_id;
@@ -204,6 +250,7 @@ namespace ThinkingSpace.Speech
                 || !string.IsNullOrWhiteSpace(context.response_language)
                 || !string.IsNullOrWhiteSpace(context.response_language_mode)
                 || !string.IsNullOrWhiteSpace(context.voice_profile_id);
+            bool usesCleanedTranscript = value.transcript_source == "cleaned";
             var withoutRecent = new ConversationContextWithoutRecentWire
             { recent_turns = context.recent_turns, preferred_name = context.preferred_name,
               current_mode = context.current_mode };
@@ -224,6 +271,18 @@ namespace ThinkingSpace.Speech
                   input_language=context.input_language, response_language=context.response_language,
                   response_language_mode=context.response_language_mode,
                   voice_profile_id=context.voice_profile_id };
+                if (usesCleanedTranscript)
+                    return hasRecent
+                        ? JsonUtility.ToJson(new CleanedConversationRecentLanguageWireRequest
+                        { request_id=value.request_id, session_id=value.session_id,
+                          raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                          transcript_source=value.transcript_source, available_ideas=ideas,
+                          context=recentLanguage, clarification_id=string.IsNullOrEmpty(value.clarification_id)?null:value.clarification_id })
+                        : JsonUtility.ToJson(new CleanedConversationLanguageWireRequest
+                        { request_id=value.request_id, session_id=value.session_id,
+                          raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                          transcript_source=value.transcript_source, available_ideas=ideas,
+                          context=language, clarification_id=string.IsNullOrEmpty(value.clarification_id)?null:value.clarification_id });
                 return hasRecent
                     ? JsonUtility.ToJson(new ConversationRecentLanguageWireRequest
                     { request_id=value.request_id, session_id=value.session_id,
@@ -235,6 +294,30 @@ namespace ThinkingSpace.Speech
                       raw_transcript=value.raw_transcript, transcript_source=value.transcript_source,
                       available_ideas=ideas, context=language,
                       clarification_id=string.IsNullOrEmpty(value.clarification_id)?null:value.clarification_id });
+            }
+            if (usesCleanedTranscript)
+            {
+                if (string.IsNullOrEmpty(value.clarification_id))
+                    return hasRecent
+                        ? JsonUtility.ToJson(new CleanedInitialConversationWithRecentWireRequest
+                        { request_id=value.request_id, session_id=value.session_id,
+                          raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                          transcript_source=value.transcript_source, available_ideas=ideas, context=withRecent })
+                        : JsonUtility.ToJson(new CleanedInitialConversationWithoutRecentWireRequest
+                        { request_id=value.request_id, session_id=value.session_id,
+                          raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                          transcript_source=value.transcript_source, available_ideas=ideas, context=withoutRecent });
+                return hasRecent
+                    ? JsonUtility.ToJson(new CleanedFollowUpConversationWithRecentWireRequest
+                    { request_id=value.request_id, session_id=value.session_id,
+                      raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                      transcript_source=value.transcript_source, available_ideas=ideas,
+                      context=withRecent, clarification_id=value.clarification_id })
+                    : JsonUtility.ToJson(new CleanedFollowUpConversationWithoutRecentWireRequest
+                    { request_id=value.request_id, session_id=value.session_id,
+                      raw_transcript=value.raw_transcript, cleaned_transcript=value.cleaned_transcript,
+                      transcript_source=value.transcript_source, available_ideas=ideas,
+                      context=withoutRecent, clarification_id=value.clarification_id });
             }
             if (string.IsNullOrEmpty(value.clarification_id))
                 return hasRecent
@@ -617,6 +700,12 @@ namespace ThinkingSpace.Speech
                 if (!string.IsNullOrEmpty(common)) return common;
                 if (conversation.transcript_source != "raw" && conversation.transcript_source != "cleaned")
                 { fieldPath = "transcript_source"; category = "invalid_enum"; return "Transcript source is invalid."; }
+                if (conversation.transcript_source == "cleaned"
+                    && string.IsNullOrWhiteSpace(conversation.cleaned_transcript))
+                { fieldPath = "cleaned_transcript"; category = "missing_value"; return "Cleaned transcript is required when selected."; }
+                if (!string.IsNullOrEmpty(conversation.cleaned_transcript)
+                    && conversation.cleaned_transcript.Length > 8000)
+                { fieldPath = "cleaned_transcript"; category = "invalid_length"; return "Cleaned transcript is too long."; }
                 if (!string.IsNullOrEmpty(conversation.clarification_id)
                     && !IdentifierPattern.IsMatch(conversation.clarification_id))
                 { fieldPath = "clarification_id"; category = "invalid_identifier"; return "Clarification identifier is invalid."; }
