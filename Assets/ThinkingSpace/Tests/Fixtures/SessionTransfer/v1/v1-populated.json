@@ -1,0 +1,69 @@
+{
+  "FormatIdentifier": "thinking-space-session",
+  "FormatVersion": 1,
+  "ExportedUtc": "2026-11-13T12:00:00.0000000Z",
+  "SessionId": "session-populated",
+  "SessionTitle": "Community Energy Lab",
+  "SessionNumber": 7,
+  "CreatedUtc": "2026-11-10T14:00:00.0000000Z",
+  "UpdatedUtc": "2026-11-13T11:45:00.0000000Z",
+  "Ideas": [
+    {
+      "IdeaId": "idea-solar-hub",
+      "Title": "Solar Learning Hub",
+      "Summary": "A shared solar workspace for practical community education.",
+      "Category": "Education",
+      "VisualColor": "Yellow",
+      "SourceTranscript": "We could build a solar learning hub for the neighborhood.",
+      "CreatedUtc": "2026-11-10T14:05:00.0000000Z",
+      "RelatedIdeaIds": [],
+      "Bubble": {
+        "Position": { "x": 1.25, "y": 0.5, "z": -2.0 },
+        "Rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+        "Scale": { "x": 1.0, "y": 1.0, "z": 1.0 }
+      }
+    },
+    {
+      "IdeaId": "idea-tool-library",
+      "Title": "Community Tool Library",
+      "Summary": "A lending collection that helps residents build and repair local projects.",
+      "Category": "Community",
+      "VisualColor": "Purple",
+      "SourceTranscript": "Pair it with a tool library that everyone can use.",
+      "CreatedUtc": "2026-11-10T14:10:00.0000000Z",
+      "RelatedIdeaIds": ["idea-solar-hub"],
+      "Bubble": {
+        "Position": { "x": -0.75, "y": 1.5, "z": 2.25 },
+        "Rotation": { "x": 0.0, "y": 0.38268343, "z": 0.0, "w": 0.9238795 },
+        "Scale": { "x": 0.8, "y": 0.8, "z": 0.8 }
+      }
+    }
+  ],
+  "Relationships": [
+    {
+      "SourceIdeaId": "idea-tool-library",
+      "TargetIdeaId": "idea-solar-hub",
+      "RelationshipType": "derived_from"
+    }
+  ],
+  "Conversation": [
+    {
+      "MessageId": "message-user-001",
+      "Speaker": "user",
+      "Text": "We could build a solar learning hub for the neighborhood.",
+      "CreatedUtc": "2026-11-10T14:04:00.0000000Z",
+      "MessageType": "approved_transcript",
+      "RelatedRequestId": "request-idea-001",
+      "RelatedIdeaIds": ["idea-solar-hub"]
+    },
+    {
+      "MessageId": "message-orby-002",
+      "Speaker": "orby",
+      "Text": "I connected the tool library to the learning hub.",
+      "CreatedUtc": "2026-11-10T14:11:00.0000000Z",
+      "MessageType": "idea_result",
+      "RelatedRequestId": "request-idea-002",
+      "RelatedIdeaIds": ["idea-tool-library", "idea-solar-hub"]
+    }
+  ]
+}

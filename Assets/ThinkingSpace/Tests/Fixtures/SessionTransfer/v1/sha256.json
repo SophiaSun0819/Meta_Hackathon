@@ -1,0 +1,9 @@
+{
+  "v1-deleted-idea-history.json": "f8fa30f854bd4f6453144d000bb63029d1c3c021c1ea95e1caa18210fbfe267e",
+  "v1-empty.json": "2e25f233e62808ef00e4bc89366d78d96dc48a2b3d29b007c5467396158759f0",
+  "v1-invalid-relationship.json": "6aef4cc7cfc58e979bf067bab71f39109a26459bf4d4c8f466a4d7bd9f43c3ba",
+  "v1-populated.json": "87a0312e30e38ab98c60f2b45f9dd599b28fe7d31e59b1a654c9dfe23235348b",
+  "v1-spatial-transforms.json": "4ba0a276484f880d9c5bea220c77dd22894652bc6ecb4a16ca94b5b348bf5170",
+  "v1-unknown-field.json": "106ec9ed501deba858fcc5ae619ae87349f395b2e8664f67c177c663b44c9d2a",
+  "v1-unsupported-version.json": "ae6815b31a07e2730e98725021bd07efe3df809cb9fa2126d6d59f042c7fbca1"
+}

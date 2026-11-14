@@ -1,0 +1,23 @@
+{
+  "FormatIdentifier": "thinking-space-session",
+  "FormatVersion": 1,
+  "ExportedUtc": "2026-11-13T12:00:00.0000000Z",
+  "SessionId": "session-history",
+  "SessionTitle": "Historical References",
+  "SessionNumber": 8,
+  "CreatedUtc": "2026-11-11T09:00:00.0000000Z",
+  "UpdatedUtc": "2026-11-13T11:00:00.0000000Z",
+  "Ideas": [],
+  "Relationships": [],
+  "Conversation": [
+    {
+      "MessageId": "message-history-001",
+      "Speaker": "user",
+      "Text": "This message still records the deleted idea context.",
+      "CreatedUtc": "2026-11-11T09:05:00.0000000Z",
+      "MessageType": "idea_discussion",
+      "RelatedRequestId": "request-history-001",
+      "RelatedIdeaIds": ["idea-deleted"]
+    }
+  ]
+}
