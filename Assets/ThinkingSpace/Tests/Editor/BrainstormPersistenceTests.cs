@@ -911,6 +911,11 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.SilenceCountdown, OrbyConversationState.Listening, true,
                 false,
+                RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.SpeechDetected),
+                "Short gaps within a qualified utterance must remain visibly Listening.");
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.Finalizing, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.FinishingThought));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Suspended, OrbyConversationState.Thinking, true,
@@ -929,6 +934,21 @@ namespace ThinkingSpace.Tests.Editor
                 false, RecordingWorkflowState.Reviewing),
                 Is.EqualTo(MicrophoneStatusDisplayState.MicOff),
                 "Logical Mic Off must remain visible while Orby speaks.");
+        }
+
+        [Test]
+        public void AiFailureDiagnosticContainsOnlySanitizedTransportMetadata()
+        {
+            string diagnostic = ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                "/api/conversations/process", 502, "provider_request", "provider_error",
+                "route-safe-123");
+            Assert.That(diagnostic, Is.EqualTo(
+                "ThinkingSpaceAI failure endpoint=/api/conversations/process http=502 "
+                + "stage=provider_request category=provider_error request=route-safe-123"));
+            Assert.That(ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                "/api/conversations/process", 422, "request_schema", "enum value",
+                "unsafe request with spaces"), Does.EndWith(
+                "stage=request_schema category=redacted request=redacted"));
         }
 
         private static AdaptiveVoiceActivityDetector NewVad()

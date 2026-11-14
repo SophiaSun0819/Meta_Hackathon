@@ -293,6 +293,12 @@ namespace ThinkingSpace.Speech
             LastResponseValidation = string.IsNullOrEmpty(validation) ? "Valid" : validation;
             if (!string.IsNullOrEmpty(validation))
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning(ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                    ThinkingSpaceAIBackendClient.ConversationEndpointPath,
+                    client != null ? client.LastHttpStatus : 0,
+                    "unity_response_validation", "contract", requestId), this);
+#endif
                 if (followUp) ClearClarification();
                 CurrentStage = "Intent validation failed";
                 ShowError(L("ai.invalid_response"), validation, null);
@@ -381,6 +387,11 @@ namespace ThinkingSpace.Speech
             LastResponseValidation = string.IsNullOrEmpty(validation) ? "Valid" : validation;
             if (!string.IsNullOrEmpty(validation))
             {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+                Debug.LogWarning(ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                    "/api/ideas/process", client != null ? client.LastHttpStatus : 0,
+                    "unity_response_validation", "contract", requestId), this);
+#endif
                 CurrentStage = "Idea validation failed";
                 ShowError(L("ai.invalid_response"), validation, null);
                 yield break;

@@ -426,7 +426,8 @@ namespace ThinkingSpace.Speech
                 "Transcription failed", status, seconds, 0, error)
                 + BuildSafeTranscriptionTransportDiagnostic();
             workflowStatus.ShowRecoverable(WorkflowStatusPresenter.ClassifyTransportFailure(status, error),
-                wasAutomatic ? RetryAutomaticTurn : RetryLastFailed, BackToRecording, true);
+                wasAutomatic ? RetryAutomaticTurn : RetryLastFailed,
+                wasAutomatic ? DismissAutomaticFailure : BackToRecording, true);
             RequestTranscriptionErrorVoice(generation, error, status);
         }
 
@@ -437,7 +438,7 @@ namespace ThinkingSpace.Speech
             State = RecordingWorkflowState.TranscriptionFailed;
             aiWorkflow?.NotifyError(error);
             workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.AiProcessingFailed,
-                RetryAutomaticTurn, BackToRecording, true);
+                RetryAutomaticTurn, DismissAutomaticFailure, true);
             UpdateDiagnostic("Automatic conversation submission failed; completed recording retained");
         }
 
@@ -460,7 +461,7 @@ namespace ThinkingSpace.Speech
             {
                 State = RecordingWorkflowState.TranscriptionFailed;
                 workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.AiProcessingFailed,
-                    RetryAutomaticConversationRequest, BackToRecording, true);
+                    RetryAutomaticConversationRequest, DismissAutomaticFailure, true);
                 UpdateDiagnostic("Automatic conversational processing failed; recording retained");
                 return;
             }
@@ -484,6 +485,21 @@ namespace ThinkingSpace.Speech
             if (!aiWorkflow.SubmitApprovedTranscript(pendingTranscript))
                 HandleAutomaticSubmissionFailure(aiWorkflow.LastSubmissionRejection);
             else UpdateDiagnostic("Retrying retained transcript through conversational processing");
+        }
+
+        private void DismissAutomaticFailure()
+        {
+            automaticConversationTurn = false;
+            aiWorkflow?.SetAutomaticConversationMode(false);
+            StopPlayback();
+            reviewPanel.Hide();
+            transcriptPanel.Hide();
+            workflowStatus.Hide();
+            ClearPendingRecording();
+            State = RecordingWorkflowState.Ready;
+            gestureController?.RequireFreshRecordingGesture();
+            aiWorkflow?.NotifyIdle();
+            UpdateDiagnostic("Conversational failure dismissed; ready to listen");
         }
 
         private string BuildSafeTranscriptionTransportDiagnostic()

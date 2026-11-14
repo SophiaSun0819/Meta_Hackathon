@@ -340,6 +340,7 @@ namespace ThinkingSpace.Speech
         public string LastFailureCategory { get; private set; } = "None";
         public string LastCompletionStatus { get; private set; } = "None";
         public string LastIncompleteReason { get; private set; } = "None";
+        public string LastRequestCorrelation { get; private set; } = "None";
         public int LastOutputTokenCount { get; private set; } = -1;
         public int LastReasoningTokenCount { get; private set; } = -1;
         private static readonly Regex IdentifierPattern = new Regex(
@@ -384,6 +385,7 @@ namespace ThinkingSpace.Speech
             LastFailureStage = LastFailureFieldPath = LastFailureCategory = "None";
             LastCompletionStatus = LastIncompleteReason = "None";
             LastOutputTokenCount = LastReasoningTokenCount = -1;
+            LastRequestCorrelation = RequestCorrelation(payload);
             if (IsBusy)
             {
                 LastError = "Another AI request is already active.";
@@ -411,6 +413,7 @@ namespace ThinkingSpace.Speech
                 LastValidationFieldPath = fieldPath;
                 LastValidationCategory = category;
                 LastError = validationError;
+                LogSanitizedFailure("request_validation");
                 completed?.Invoke(Failure<TResponse>(validationError, 0, 0f));
                 yield break;
             }
@@ -469,12 +472,61 @@ namespace ThinkingSpace.Speech
                     LastValidationFieldPath = "Backend response did not include a field path";
                     LastValidationCategory = "remote_schema_validation";
                 }
+                LogSanitizedFailure(ClassifyTransportCategory(request.responseCode,
+                    LastRequestTimedOut));
                 AIBackendResult<TResponse> failure=Failure<TResponse>(message,request.responseCode,elapsed);
                 failure.FallbackSpokenResponse=ExtractFallbackSpeech(request.downloadHandler!=null
                     ?request.downloadHandler.text:null);
                 completed?.Invoke(failure);
             }
             request.Dispose();
+        }
+
+        private static string RequestCorrelation<TRequest>(TRequest payload)
+        {
+            string value = payload is ConversationProcessRequest conversation ? conversation.request_id
+                : payload is IntentRouteRequest intent ? intent.request_id
+                : payload is IdeaProcessRequest idea ? idea.request_id : null;
+            return !string.IsNullOrEmpty(value) && IdentifierPattern.IsMatch(value) ? value : "None";
+        }
+
+        private static string ClassifyTransportCategory(long status, bool timedOut)
+        {
+            if (timedOut) return "timeout";
+            if (status == 0) return "transport";
+            if (status == 401) return "authentication";
+            if (status == 403) return "authorization";
+            if (status == 422) return "request_schema";
+            if (status >= 500) return "server_or_provider";
+            return status >= 400 ? "http" : "response_validation";
+        }
+
+        public static string BuildSafeFailureDiagnostic(string endpoint, long status,
+            string stage, string category, string requestCorrelation)
+            => "ThinkingSpaceAI failure endpoint=" + SafeDiagnosticValue(endpoint)
+                + " http=" + status
+                + " stage=" + SafeDiagnosticValue(stage)
+                + " category=" + SafeDiagnosticValue(category)
+                + " request=" + SafeDiagnosticValue(requestCorrelation);
+
+        private static string SafeDiagnosticValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "None";
+            string trimmed = value.Trim();
+            return Regex.IsMatch(trimmed, "^[A-Za-z0-9_./:-]{1,160}$",
+                RegexOptions.CultureInvariant) ? trimmed : "redacted";
+        }
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+        private void LogSanitizedFailure(string fallbackCategory)
+        {
+            string stage = LastFailureStage != "None" ? LastFailureStage
+                : LastValidationFieldPath != "None" ? "request_validation" : "transport";
+            string category = LastFailureCategory != "None" ? LastFailureCategory
+                : LastValidationCategory != "None" ? LastValidationCategory : fallbackCategory;
+            Debug.LogWarning(BuildSafeFailureDiagnostic(LastEndpointPath, LastHttpStatus,
+                stage, category, LastRequestCorrelation), this);
         }
 
         private void ReadSafeDiagnosticHeaders(UnityWebRequest request)

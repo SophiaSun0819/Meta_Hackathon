@@ -98,10 +98,10 @@ namespace ThinkingSpace.Speech
             if (orby == ThinkingSpace.Companion.OrbyConversationState.Thinking
                 || workflow == RecordingWorkflowState.Transcribing)
                 return MicrophoneStatusDisplayState.Thinking;
-            if (listening == ConversationalListeningState.SpeechActive)
+            if (listening == ConversationalListeningState.SpeechActive
+                || listening == ConversationalListeningState.SilenceCountdown)
                 return MicrophoneStatusDisplayState.SpeechDetected;
-            if (listening == ConversationalListeningState.SilenceCountdown
-                || listening == ConversationalListeningState.Finalizing)
+            if (listening == ConversationalListeningState.Finalizing)
                 return MicrophoneStatusDisplayState.FinishingThought;
             if (listening == ConversationalListeningState.Suspended
                 || workflow != RecordingWorkflowState.Ready)
