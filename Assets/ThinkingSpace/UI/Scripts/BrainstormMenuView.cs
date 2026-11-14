@@ -118,6 +118,7 @@ namespace ThinkingSpace.UI
             CreateSessionDeleteConfirmation();
             CreateLanguageConfirmation();
             CreatePairingPanel();
+            ApplyFoundationStyling();
             RefreshLocalization();
         }
 
@@ -844,7 +845,20 @@ namespace ThinkingSpace.UI
             if (layout != null) layout.ignoreLayout = true;
             TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
             if (text != null) text.text = label;
+            ThinkingSpaceUIStyler.StyleButton(button, ThinkingSpaceButtonKind.Navigation);
             button.gameObject.SetActive(true);
+        }
+
+        private void ApplyFoundationStyling()
+        {
+            GameObject[] panels={mainPanel,sessionPanel,voiceHelpPanel,gestureHelpPanel,
+                sessionDeleteConfirmation,languageConfirmation,pairingPanel};
+            for(int i=0;i<panels.Length;i++)
+            {
+                if(panels[i]==null)continue;
+                ThinkingSpaceUIStyler.StylePanel(panels[i],false,true);
+                ThinkingSpaceUIStyler.StyleHierarchy(panels[i]);
+            }
         }
 
         private static void UpdateNavigation(Button previous, Button next, TMP_Text indicator,

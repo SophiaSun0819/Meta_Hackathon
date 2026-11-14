@@ -42,6 +42,12 @@ namespace ThinkingSpace.UI
             && clippedPlaneSurface != null && rayInteractable != null && pokeInteractable != null
             && menuButton != null && buttonImage != null && label != null;
 
+        private void Awake()
+        {
+            ThinkingSpaceUIStyler.StyleButton(menuButton,ThinkingSpaceButtonKind.Icon);
+            if(label!=null)label.raycastTarget=false;
+        }
+
         public void SetEligibility(bool eligible)
         {
             IsEligible = eligible;

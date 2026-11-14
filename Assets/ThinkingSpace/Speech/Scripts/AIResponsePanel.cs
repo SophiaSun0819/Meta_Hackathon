@@ -148,6 +148,8 @@ namespace ThinkingSpace.Speech
             primaryButton.onClick.AddListener(() => { if (primaryButton.interactable) primaryAction?.Invoke(); });
             secondaryButton = Button("Secondary", rect, new Vector2(0.53f, 0.05f), new Vector2(0.93f, 0.17f), out secondaryLabel);
             secondaryButton.onClick.AddListener(() => { if (secondaryButton.interactable) secondaryAction?.Invoke(); });
+            ThinkingSpaceUIStyler.StylePanel(root,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(root);
         }
 
         private static TMP_Text Text(string name, Transform parent, float size, FontStyles style,

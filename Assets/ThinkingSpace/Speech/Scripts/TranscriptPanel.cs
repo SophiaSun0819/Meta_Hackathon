@@ -260,6 +260,8 @@ namespace ThinkingSpace.Speech
                 closeButton.interactable = false;
                 closeAction.Invoke();
             });
+            ThinkingSpaceUIStyler.StylePanel(root,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(root);
         }
 
         private static TMP_Text CreateText(

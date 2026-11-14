@@ -37,6 +37,13 @@ namespace ThinkingSpace.Speech
             ConfigureButton(dismissButton,L("common.dismiss"),dismiss!=null);
             shownAt=Time.unscaledTime;canvas.gameObject.SetActive(true);PositionAtHeadset();
         }
+        public void ShowStatus(string title,string message)
+        {
+            if(canvas==null)Build();retryAction=null;dismissAction=null;
+            heading.text=title??string.Empty;body.text=message??string.Empty;
+            ConfigureButton(retryButton,string.Empty,false);ConfigureButton(dismissButton,string.Empty,false);
+            shownAt=Time.unscaledTime;canvas.gameObject.SetActive(true);PositionAtHeadset();
+        }
         public void Hide(){retryAction=null;dismissAction=null;if(canvas!=null)canvas.gameObject.SetActive(false);}
         public static string MessageKey(RecoverableWorkflowFailureKind kind)
         {

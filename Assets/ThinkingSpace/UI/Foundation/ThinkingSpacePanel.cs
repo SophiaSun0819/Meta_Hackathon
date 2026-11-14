@@ -12,6 +12,7 @@ namespace ThinkingSpace.UI
         [SerializeField] private ThinkingSpacePanelKind panelKind = ThinkingSpacePanelKind.Base;
         [SerializeField] private ThinkingSpaceUITheme theme;
         [SerializeField] private bool showDecorativeFrame = true;
+        [SerializeField] private bool backgroundReceivesRaycasts = true;
         private readonly Image[] borderImages = new Image[4];
         public ThinkingSpacePanelKind PanelKind=>panelKind;
         public ThinkingSpaceUITheme Theme=>theme!=null?theme:ThinkingSpaceUITheme.LoadDefault();
@@ -22,10 +23,13 @@ namespace ThinkingSpace.UI
         public virtual void ApplyVisuals()
         {
             Image background=GetComponent<Image>();ThinkingSpaceUITheme resolved=Theme;
-            background.raycastTarget=true;background.sprite=null;background.type=Image.Type.Simple;
+            background.raycastTarget=backgroundReceivesRaycasts;background.sprite=null;background.type=Image.Type.Simple;
             background.color=resolved!=null?resolved.PanelColor:new Color(.025f,.045f,.075f,.96f);
             if(showDecorativeFrame)EnsureBorder(resolved);
         }
+
+        public void Configure(bool decorativeFrame,bool receivesRaycasts)
+        {showDecorativeFrame=decorativeFrame;backgroundReceivesRaycasts=receivesRaycasts;ApplyVisuals();}
 
         private void EnsureBorder(ThinkingSpaceUITheme resolved)
         {

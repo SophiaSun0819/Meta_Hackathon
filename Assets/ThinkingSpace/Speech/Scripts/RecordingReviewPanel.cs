@@ -180,6 +180,8 @@ namespace ThinkingSpace.Speech
             discardButton.onClick.AddListener(() => discard?.Invoke());
             rerecordButton.onClick.AddListener(() => rerecord?.Invoke());
             exportButton.onClick.AddListener(() => export?.Invoke());
+            ThinkingSpaceUIStyler.StylePanel(root,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(root);
             ThinkingSpaceLocalizationController.LocalizeKnownText(root);
         }
 

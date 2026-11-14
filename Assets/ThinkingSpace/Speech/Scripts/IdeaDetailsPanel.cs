@@ -348,6 +348,8 @@ namespace ThinkingSpace.Speech
             close=Button("Close",rect,new Vector2(.74f,.05f),new Vector2(.97f,.16f));close.onClick.AddListener(ClosePanel);
             cancelDelete=Button("Cancel",rect,new Vector2(.06f,.05f),new Vector2(.44f,.16f));cancelDelete.onClick.AddListener(ShowDetails);
             confirmDelete=Button("Confirm Delete",rect,new Vector2(.56f,.05f),new Vector2(.94f,.16f));confirmDelete.onClick.AddListener(ConfirmDelete);
+            ThinkingSpaceUIStyler.StylePanel(gameObject,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(gameObject);
             for(int i=0;i<IdeaVisualColorPalette.Names.Length;i++)
             {
                 int row=i/3,column=i%3;Vector2 min=new Vector2(.06f+column*.31f,.64f-row*.15f);

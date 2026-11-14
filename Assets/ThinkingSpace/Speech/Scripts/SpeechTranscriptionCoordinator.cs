@@ -324,7 +324,6 @@ namespace ThinkingSpace.Speech
         {
             if (!reuseWav) pendingWav = null;
             State = RecordingWorkflowState.Transcribing;
-            aiWorkflow?.NotifyThinking();
             if (!automatic) transcriptPanel.ShowTranscribing(pendingRecordingIdentifier, BackToRecording);
             int generation = ++requestGeneration;
             lastStartedRequestGeneration = generation;
@@ -382,7 +381,8 @@ namespace ThinkingSpace.Speech
             if (automaticConversationTurn)
             {
                 State = RecordingWorkflowState.Transcribing;
-                aiWorkflow?.NotifyThinking();
+                bool localCommand=aiWorkflow!=null&&aiWorkflow.CanHandleLocalInterfaceLanguageCommand(result.Transcript);
+                if(!localCommand)aiWorkflow?.NotifyThinking();
                 if (aiWorkflow == null || !aiWorkflow.SubmitApprovedTranscript(result.Transcript))
                 {
                     string reason = aiWorkflow != null ? aiWorkflow.LastSubmissionRejection
@@ -549,6 +549,8 @@ namespace ThinkingSpace.Speech
         private void ConfirmTranscript()
         {
             if (State != RecordingWorkflowState.TranscriptReady) return;
+            bool localCommand=aiWorkflow!=null&&aiWorkflow.CanHandleLocalInterfaceLanguageCommand(pendingTranscript);
+            if(!localCommand)aiWorkflow?.NotifyThinking();
             if (aiWorkflow == null || !aiWorkflow.SubmitApprovedTranscript(pendingTranscript))
             {
                 string reason = aiWorkflow != null

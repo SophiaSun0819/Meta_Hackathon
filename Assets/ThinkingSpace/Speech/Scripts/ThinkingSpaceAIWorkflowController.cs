@@ -63,6 +63,8 @@ namespace ThinkingSpace.Speech
         public string LastAutomaticError { get; private set; } = string.Empty;
         public string LastResolvedResponseLanguage => resolvedResponseLanguage ?? "legacy";
         public string LastResolvedVoiceProfile => resolvedVoiceProfileId ?? "legacy";
+        public int LocalInterfaceLanguageCommandsHandled { get; private set; }
+        public string LastLocalInterfaceLanguageOutcome { get; private set; } = "None";
 
         public void Configure(SpeechTranscriptionService transcriptionService, Transform headset)
         {
@@ -126,6 +128,8 @@ namespace ThinkingSpace.Speech
                 LastSubmissionRejection = "The approved transcript is empty.";
                 return false;
             }
+            LocalInterfaceLanguageCommand localCommand=LocalInterfaceLanguageCommandRouter.Parse(rawTranscript);
+            if(localCommand.IsRecognized)return HandleLocalInterfaceLanguageCommand(localCommand);
             if (activeOperation != null)
             {
                 LastSubmissionRejection = "Another AI request is already in progress.";
@@ -155,6 +159,40 @@ namespace ThinkingSpace.Speech
             SetOrby(OrbyConversationState.Thinking);
             return true;
         }
+
+        public bool CanHandleLocalInterfaceLanguageCommand(string transcript)
+            =>LocalInterfaceLanguageCommandRouter.Parse(transcript).IsRecognized;
+
+        private bool HandleLocalInterfaceLanguageCommand(LocalInterfaceLanguageCommand command)
+        {
+            ResolveDependencies();LocalInterfaceLanguageCommandsHandled++;LastSubmissionRejection="None";
+            bool applied=false;string messageKey;
+            if(command.Outcome==LocalInterfaceLanguageCommandOutcome.Supported)
+            {
+                applied=menuController!=null&&menuController.SetInterfaceLanguage(command.LanguageCode)
+                    &&ThinkingSpaceLocalizationController.Instance!=null
+                    &&ThinkingSpaceLocalizationController.Instance.InterfaceLanguageCode==command.LanguageCode
+                    &&menuController.PreferencesStore?.Data?.InterfaceLanguageCode==command.LanguageCode;
+                messageKey=applied?"language.command.success":"language.command.failed";
+                LastLocalInterfaceLanguageOutcome=applied?"Applied "+command.LanguageCode:"Apply failed "+command.LanguageCode;
+            }
+            else
+            {
+                messageKey=command.Outcome==LocalInterfaceLanguageCommandOutcome.Unsupported
+                    ?"language.command.unsupported":"language.command.ambiguous";
+                LastLocalInterfaceLanguageOutcome=command.Outcome.ToString();
+            }
+            string message=applied?L(messageKey,L("language."+LanguageNameKey(command.LanguageCode))):L(messageKey);
+            CurrentStage=applied?"Local interface language applied":"Local interface language command handled without change";
+            responsePanel?.Hide();awaitingDismissal=false;
+            workflowStatus?.ShowStatus(L("language.command.title"),message);
+            if(automaticConversationMode)CompleteAutomaticTurn(true);
+            else SetOrby(OrbyConversationState.Reviewing);
+            return true;
+        }
+
+        private static string LanguageNameKey(string code)
+            =>code=="es"?"spanish":code=="fr"?"french":"english";
 
         private bool HandleDirectGreeting(string transcript,string response)
         {
@@ -234,9 +272,9 @@ namespace ThinkingSpace.Speech
             {
                 if (followUp) ClearClarification();
                 CurrentStage = "Intent request failed";
+                bool fallbackQueued=SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"conversation_error_fallback");
                 ShowError(L("ai.request_failed"), result != null ? result.Error : "Intent routing returned no result.",
-                    () => SubmitApprovedTranscript(transcript));
-                SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"conversation_error_fallback");
+                    () => SubmitApprovedTranscript(transcript),ShouldPlayPrerecordedErrorAcknowledgement(fallbackQueued));
                 yield break;
             }
             response = result.Response;
@@ -333,8 +371,9 @@ namespace ThinkingSpace.Speech
             if (result == null || !result.Success)
             {
                 CurrentStage = "Idea request failed";
-                ShowError(L("ai.idea_failed"), result != null ? result.Error : "Idea processing returned no result.", null);
-                SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"idea_error_fallback");
+                bool fallbackQueued=SpeakFallbackIfAvailable(result?.FallbackSpokenResponse,"idea_error_fallback");
+                ShowError(L("ai.idea_failed"), result != null ? result.Error : "Idea processing returned no result.", null,
+                    ShouldPlayPrerecordedErrorAcknowledgement(fallbackQueued));
                 yield break;
             }
             IdeaProcessResponse response = result.Response;
@@ -474,7 +513,7 @@ namespace ThinkingSpace.Speech
             responsePanel.Show(title, content, closeLabel, DismissResponse, null, null);
         }
 
-        private void ShowError(string title, string message, Action retry)
+        private void ShowError(string title, string message, Action retry,bool speakAcknowledgement=true)
         {
             ResolveDependencies();
             LastAutomaticError = string.IsNullOrWhiteSpace(message)
@@ -487,13 +526,13 @@ namespace ThinkingSpace.Speech
             if (automaticConversationMode)
             {
                 awaitingDismissal = false;
-                PlayErrorAcknowledgementOnce(kind);
+                if(speakAcknowledgement)PlayErrorAcknowledgementOnce(kind);
                 CompleteAutomaticTurn(false);
                 return;
             }
             awaitingDismissal = false;
             workflowStatus?.ShowRecoverable(kind, retry, () => workflowStatus?.Hide(), false);
-            PlayErrorAcknowledgementOnce(kind);
+            if(speakAcknowledgement)PlayErrorAcknowledgementOnce(kind);
         }
 
         private void PlayErrorAcknowledgementOnce(RecoverableWorkflowFailureKind kind)
@@ -843,13 +882,17 @@ namespace ThinkingSpace.Speech
         { return prefix + "-" + Guid.NewGuid().ToString("N"); }
         private static string L(string key,params object[] arguments)
             =>ThinkingSpaceLocalizationController.Get(key,arguments);
-        private void SpeakFallbackIfAvailable(string text,string eventName)
+        private bool SpeakFallbackIfAvailable(string text,string eventName)
         {
-            if(string.IsNullOrWhiteSpace(text)||string.IsNullOrEmpty(activeSessionId))return;
-            OrbyVoiceDirector.Instance?.SpeakDynamic(text,activeSessionId,
+            if(string.IsNullOrWhiteSpace(text)||string.IsNullOrEmpty(activeSessionId))return false;
+            string fingerprint=LastRequestId+":fallback";if(fingerprint==lastErrorVoiceFingerprint)return true;
+            bool accepted=OrbyVoiceDirector.Instance?.SpeakDynamic(text,activeSessionId,
                 OrbyVoicePriority.Acknowledgement,null,eventName,"concerned",
-                resolvedResponseLanguage,resolvedVoiceProfileId);
+                resolvedResponseLanguage,resolvedVoiceProfileId)??false;
+            if(accepted)lastErrorVoiceFingerprint=fingerprint;return accepted;
         }
+        public static bool ShouldPlayPrerecordedErrorAcknowledgement(bool synthesizedFallbackAccepted)
+            =>!synthesizedFallbackAccepted;
         private void OnDisable() => CancelAndClear();
     }
 }
