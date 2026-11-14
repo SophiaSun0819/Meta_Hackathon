@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using ThinkingSpace.Pairing;
 using ThinkingSpace.Speech;
 
 namespace ThinkingSpace.UI
@@ -69,6 +70,7 @@ namespace ThinkingSpace.UI
         private Button mainConversationAutoButton,sessionConversationAutoButton;
         private TMP_Text mainConversationLabel,sessionConversationLabel;
         private Button exportSessionButton,importSessionButton;
+        private Button accountConnectionButton;
         private GameObject mainSessionActionRow;
         private TMP_Text mainTransferStatus;
         private TMP_Text sessionSilenceValueLabel, sessionSettingsTitle;
@@ -79,6 +81,11 @@ namespace ThinkingSpace.UI
         private TMP_Text languageConfirmationQuestion;
         private Button languageConfirmationYes,languageConfirmationNo;
         private TMP_Text mainPageIndicator, sessionPageIndicator;
+        private GameObject pairingPanel;
+        private TMP_Text pairingTitle,pairingBody,pairingCode,pairingCountdown;
+        private Button pairingPreviousButton,pairingNextButton,pairingAuxiliaryButton;
+        private QuestPairingSnapshot pairingSnapshot;
+        private bool hasPairingSnapshot;
         private int mainPage, mainPageCount, sessionPage;
         private int currentSessionNumber;
         private float currentSilenceSeconds=2f;
@@ -110,6 +117,7 @@ namespace ThinkingSpace.UI
             CreateSessionTransferActions();
             CreateSessionDeleteConfirmation();
             CreateLanguageConfirmation();
+            CreatePairingPanel();
             RefreshLocalization();
         }
 
@@ -142,6 +150,7 @@ namespace ThinkingSpace.UI
             SetButtonLabel(mainWristLeftButton,L("settings.wrist.left"));SetButtonLabel(mainWristRightButton,L("settings.wrist.right"));
             SetButtonLabel(sessionWristLeftButton,L("settings.wrist.left"));SetButtonLabel(sessionWristRightButton,L("settings.wrist.right"));
             SetButtonLabel(importSessionButton,L("menu.session.import"));SetButtonLabel(exportSessionButton,L("menu.session.export"));
+            SetButtonLabel(accountConnectionButton,L("pairing.account.title"));
             SetButtonLabel(mainEnglishButton,L("language.english"));SetButtonLabel(mainSpanishButton,L("language.spanish"));SetButtonLabel(mainFrenchButton,L("language.french"));
             SetButtonLabel(sessionEnglishButton,L("language.english"));SetButtonLabel(sessionSpanishButton,L("language.spanish"));SetButtonLabel(sessionFrenchButton,L("language.french"));
             SetButtonLabel(sessionDeleteCancel,L("common.cancel"));SetButtonLabel(sessionDeleteConfirm,L("session.delete.confirm"));
@@ -168,6 +177,7 @@ namespace ThinkingSpace.UI
             for(int i=0;i<runtimeSessionDeleteButtons.Count;i++)SetButtonLabel(runtimeSessionDeleteButtons[i],L("common.delete"));
             UpdateNavigation(mainPreviousButton,mainNextButton,mainPageIndicator,mainPage,Mathf.Max(1,mainPageCount));
             UpdateNavigation(sessionPreviousButton,sessionNextButton,sessionPageIndicator,sessionPage,SessionPageCount);
+            if(hasPairingSnapshot)RefreshPairingPresentation();
         }
 
         private static int ExtractSessionNumber(string value)
@@ -181,7 +191,8 @@ namespace ThinkingSpace.UI
             Action endSession, Action backFromHelp,
             Action decreaseSilence, Action increaseSilence, Action conversationalMode, Action manualMode,
             Action subtitlesOn,Action subtitlesOff,Action editName,Action replayTutorial,
-            Action wristLeft,Action wristRight,Action exportSession,Action importSession)
+            Action wristLeft,Action wristRight,Action exportSession,Action importSession,
+            Action accountConnection)
         {
             BindButton(startSessionButton, startSession);
             BindButton(mainVoiceButton, voiceHelp);
@@ -214,6 +225,7 @@ namespace ThinkingSpace.UI
             BindButton(mainWristLeftButton,wristLeft);BindButton(mainWristRightButton,wristRight);
             BindButton(sessionWristLeftButton,wristLeft);BindButton(sessionWristRightButton,wristRight);
             BindButton(exportSessionButton,exportSession);BindButton(importSessionButton,importSession);
+            BindButton(accountConnectionButton,accountConnection);
         }
 
         public void SetWristMenuHand(WristMenuHand hand)
@@ -292,6 +304,15 @@ namespace ThinkingSpace.UI
 
         public void ShowVoiceHelp() => ShowOnly(voiceHelpPanel);
         public void ShowGestureHelp() => ShowOnly(gestureHelpPanel);
+        public void ShowPairing(QuestPairingSnapshot snapshot,Action previous,Action next,Action auxiliary)
+        {
+            pairingSnapshot=snapshot;hasPairingSnapshot=true;
+            ShowOnly(pairingPanel);
+            BindButton(pairingPreviousButton,previous);
+            BindButton(pairingNextButton,next);
+            BindButton(pairingAuxiliaryButton,auxiliary);
+            RefreshPairingPresentation();
+        }
         public void SetSessionStatus(string message) => sessionStatus.text = message;
         public void SetTransferStatus(string message)
         {
@@ -311,6 +332,7 @@ namespace ThinkingSpace.UI
             sessionPanel.SetActive(panel == sessionPanel);
             voiceHelpPanel.SetActive(panel == voiceHelpPanel);
             gestureHelpPanel.SetActive(panel == gestureHelpPanel);
+            if(pairingPanel!=null)pairingPanel.SetActive(panel==pairingPanel);
         }
 
         private void ClearSessionButtons()
@@ -339,6 +361,7 @@ namespace ThinkingSpace.UI
             if (sessionList != null) sessionList.gameObject.SetActive(sessionPage);
             if(mainSessionActionRow!=null)mainSessionActionRow.SetActive(firstSessionPage);
             if(mainTransferStatus!=null)mainTransferStatus.gameObject.SetActive(firstSessionPage);
+            SetActive(accountConnectionButton,sessionPage&&IsAccountConnectionOnMainPage(mainPage));
             if (noSessionsLabel != null) noSessionsLabel.SetActive(sessionPage && sessionCount == 0 && mainPage == 0);
             for (int i = 0; i < runtimeSessionRows.Count; i++)
                 runtimeSessionRows[i].SetActive(sessionPage
@@ -491,6 +514,12 @@ namespace ThinkingSpace.UI
             importSessionButton.name="Import Session";
             SetButtonLabel(importSessionButton,L("menu.session.import"));
 
+            accountConnectionButton=Instantiate(startSessionButton,sessionList);
+            accountConnectionButton.name="Account and Device Connection";
+            SetButtonLabel(accountConnectionButton,L("pairing.account.title"));
+            LayoutElement accountLayout=accountConnectionButton.GetComponent<LayoutElement>();
+            if(accountLayout!=null)accountLayout.preferredHeight=56f;
+
             TMP_Text statusSource=noSessionsLabel!=null?noSessionsLabel.GetComponent<TMP_Text>():null;
             if(statusSource==null)statusSource=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
             if(statusSource!=null)
@@ -581,6 +610,97 @@ namespace ThinkingSpace.UI
             languageConfirmation.SetActive(false);
         }
 
+        private void CreatePairingPanel()
+        {
+            if(CanvasRect==null||mainCloseButton==null)return;
+            pairingPanel=new GameObject("Account and Device Connection Panel",typeof(RectTransform),typeof(Image));
+            pairingPanel.transform.SetParent(CanvasRect,false);
+            RectTransform panelRect=pairingPanel.GetComponent<RectTransform>();
+            RectTransform mainRect=mainPanel!=null?mainPanel.GetComponent<RectTransform>():null;
+            if(mainRect!=null)
+            {
+                panelRect.anchorMin=mainRect.anchorMin;panelRect.anchorMax=mainRect.anchorMax;
+                panelRect.pivot=mainRect.pivot;panelRect.anchoredPosition=mainRect.anchoredPosition;
+                panelRect.sizeDelta=mainRect.sizeDelta;
+            }
+            else SetRect(panelRect,Vector2.zero,Vector2.one);
+            pairingPanel.GetComponent<Image>().color=new Color(.035f,.055f,.09f,.98f);
+
+            TMP_Text source=mainCloseButton.GetComponentInChildren<TMP_Text>(true);
+            if(source!=null)
+            {
+                pairingTitle=Instantiate(source,pairingPanel.transform);pairingTitle.name="Pairing Title";
+                pairingTitle.alignment=TextAlignmentOptions.Center;pairingTitle.raycastTarget=false;
+                pairingTitle.fontSize=Mathf.Max(pairingTitle.fontSize,32f);
+                SetRect(pairingTitle.rectTransform,new Vector2(.07f,.78f),new Vector2(.93f,.94f));
+                pairingBody=Instantiate(source,pairingPanel.transform);pairingBody.name="Pairing Body";
+                pairingBody.alignment=TextAlignmentOptions.Center;pairingBody.raycastTarget=false;
+                pairingBody.enableWordWrapping=true;pairingBody.fontSize=Mathf.Min(pairingBody.fontSize,23f);
+                SetRect(pairingBody.rectTransform,new Vector2(.08f,.45f),new Vector2(.92f,.76f));
+                pairingCode=Instantiate(source,pairingPanel.transform);pairingCode.name="Six Digit Pairing Code";
+                pairingCode.alignment=TextAlignmentOptions.Center;pairingCode.raycastTarget=false;
+                pairingCode.fontSize=Mathf.Max(pairingCode.fontSize,46f);pairingCode.characterSpacing=8f;
+                SetRect(pairingCode.rectTransform,new Vector2(.12f,.35f),new Vector2(.88f,.48f));
+                pairingCountdown=Instantiate(source,pairingPanel.transform);pairingCountdown.name="Pairing Expiration Countdown";
+                pairingCountdown.alignment=TextAlignmentOptions.Center;pairingCountdown.raycastTarget=false;
+                pairingCountdown.fontSize=Mathf.Min(pairingCountdown.fontSize,20f);
+                SetRect(pairingCountdown.rectTransform,new Vector2(.12f,.27f),new Vector2(.88f,.36f));
+            }
+
+            pairingPreviousButton=Instantiate(mainCloseButton,pairingPanel.transform);
+            pairingPreviousButton.name="Pairing Previous Button";
+            ConfigureNavigationButton(pairingPreviousButton,L("common.previous"),new Vector2(.05f,.05f),new Vector2(.30f,.16f));
+            pairingAuxiliaryButton=Instantiate(mainCloseButton,pairingPanel.transform);
+            pairingAuxiliaryButton.name="Pairing Auxiliary Button";
+            ConfigureNavigationButton(pairingAuxiliaryButton,L("common.cancel"),new Vector2(.36f,.05f),new Vector2(.64f,.16f));
+            pairingNextButton=Instantiate(mainCloseButton,pairingPanel.transform);
+            pairingNextButton.name="Pairing Next Button";
+            ConfigureNavigationButton(pairingNextButton,L("common.next"),new Vector2(.70f,.05f),new Vector2(.95f,.16f));
+            pairingPanel.SetActive(false);
+        }
+
+        private void RefreshPairingPresentation()
+        {
+            if(!hasPairingSnapshot)return;
+            QuestPairingUiState state=pairingSnapshot.State;
+            string titleKey="pairing.account.title",bodyKey="pairing.account.disconnected";
+            string nextKey="common.next",auxiliaryKey="common.cancel";
+            bool showCode=false,showCountdown=false,showNext=true,showAuxiliary=false;
+            switch(state)
+            {
+                case QuestPairingUiState.UnavailableOffline:
+                    titleKey="pairing.unavailable.title";bodyKey=string.IsNullOrEmpty(pairingSnapshot.MessageKey)?"pairing.unavailable.body":pairingSnapshot.MessageKey;nextKey="common.retry";break;
+                case QuestPairingUiState.Disconnected:
+                    bodyKey="pairing.account.disconnected";nextKey="pairing.action.pair";break;
+                case QuestPairingUiState.RequestingCode:
+                    titleKey="pairing.requesting.title";bodyKey="pairing.requesting.body";showNext=false;showAuxiliary=true;break;
+                case QuestPairingUiState.CodeReady:
+                    titleKey="pairing.code.title";bodyKey="pairing.code.body";showCode=showCountdown=true;showAuxiliary=true;auxiliaryKey="pairing.action.new_code";break;
+                case QuestPairingUiState.WaitingForWebsite:
+                    titleKey="pairing.waiting.title";bodyKey="pairing.waiting.body";showCode=showCountdown=true;showNext=false;showAuxiliary=true;break;
+                case QuestPairingUiState.AwaitingQuestConfirmation:
+                    titleKey="pairing.confirm.title";bodyKey="pairing.confirm.body";nextKey="pairing.action.confirm";showCountdown=true;showAuxiliary=true;break;
+                case QuestPairingUiState.Paired:
+                    titleKey="pairing.paired.title";bodyKey="pairing.paired.body";nextKey="pairing.action.done";auxiliaryKey="pairing.action.unpair";showAuxiliary=true;break;
+                case QuestPairingUiState.Expired:
+                    titleKey="pairing.expired.title";bodyKey="pairing.expired.body";nextKey="pairing.action.new_code";break;
+                case QuestPairingUiState.Failed:
+                    titleKey="pairing.failed.title";bodyKey=string.IsNullOrEmpty(pairingSnapshot.MessageKey)?"pairing.failed.body":pairingSnapshot.MessageKey;nextKey="common.retry";break;
+                case QuestPairingUiState.UnpairConfirmation:
+                    titleKey="pairing.unpair.title";bodyKey="pairing.unpair.body";nextKey="common.yes";break;
+            }
+            if(pairingTitle!=null)pairingTitle.text=L(titleKey);
+            if(pairingBody!=null)pairingBody.text=L(bodyKey,pairingSnapshot.AccountLabel);
+            if(pairingCode!=null){pairingCode.gameObject.SetActive(showCode);pairingCode.text=FormatPairingCode(pairingSnapshot.PairingCode);}
+            if(pairingCountdown!=null){pairingCountdown.gameObject.SetActive(showCountdown);pairingCountdown.text=L("pairing.expires",pairingSnapshot.RemainingSeconds);}
+            SetButtonLabel(pairingPreviousButton,L("common.previous"));
+            SetButtonLabel(pairingNextButton,L(nextKey));SetActive(pairingNextButton,showNext);
+            SetButtonLabel(pairingAuxiliaryButton,L(auxiliaryKey));SetActive(pairingAuxiliaryButton,showAuxiliary);
+        }
+
+        private static string FormatPairingCode(string value)
+            =>QuestPairingStateMachine.IsSixDigitCode(value)?value.Substring(0,3)+" "+value.Substring(3):string.Empty;
+
         private void ShowLanguageConfirmation(string code)
         {
             if(languageConfirmation==null)return;
@@ -652,6 +772,7 @@ namespace ThinkingSpace.UI
                 +MainUtilityPageCount;
 
         public static bool IsImportOnMainPage(int page)=>page==0;
+        public static bool IsAccountConnectionOnMainPage(int page)=>page==0;
         public static bool IsExportOnSessionPage(int page)=>page==0;
 
         private static void SetLabelVisible(GameObject panel, string key, bool visible)

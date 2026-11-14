@@ -632,6 +632,153 @@ MonoBehaviour:
     m_Localized: Violet
     m_Metadata:
       m_Items: []
+  - m_Id: 810583459975168
+    m_Localized: "Compte / connexion de l\u2019appareil"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112512
+    m_Localized: "Ce casque n\u2019est pas associ\xE9. L\u2019association restera
+      indisponible jusqu\u2019\xE0 la finalisation du service web partag\xE9."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112513
+    m_Localized: Association indisponible
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112514
+    m_Localized: "L\u2019association n\u2019est pas encore disponible ou le r\xE9seau
+      est hors ligne. Vos sessions locales sont prot\xE9g\xE9es."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112515
+    m_Localized: "Demande du code d\u2019association"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112516
+    m_Localized: "Connexion au service d\u2019association. Le microphone et les donn\xE9es
+      de session ne sont pas modifi\xE9s."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112517
+    m_Localized: Associer ce casque
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112518
+    m_Localized: "Saisissez ce code \xE0 six chiffres sur le site Thinking Space."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112519
+    m_Localized: En attente du site web
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112520
+    m_Localized: Gardez cette page ouverte pendant que le site confirme le code.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112521
+    m_Localized: Confirmer le compte sur Quest
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112522
+    m_Localized: "Associer ce casque \xE0 {0} ?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112523
+    m_Localized: "Association r\xE9ussie"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306816
+    m_Localized: "Ce casque est associ\xE9. La synchronisation cloud n\u2019est pas
+      activ\xE9e dans ce jalon."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306817
+    m_Localized: "Code d\u2019association expir\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306818
+    m_Localized: "G\xE9n\xE9rez un nouveau code lorsque le service d\u2019association
+      sera disponible."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306819
+    m_Localized: "\xC9chec de la connexion"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306820
+    m_Localized: "Le casque n\u2019a pas pu terminer l\u2019association. Vos sessions
+      locales n\u2019ont pas \xE9t\xE9 modifi\xE9es."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306821
+    m_Localized: Dissocier le casque
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306822
+    m_Localized: Dissocier ce casque ? Les sessions locales resteront sur cet appareil.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306823
+    m_Localized: Expire dans {0} secondes
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306824
+    m_Localized: Associer ce casque
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306825
+    m_Localized: "G\xE9n\xE9rer un nouveau code"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306826
+    m_Localized: Confirmer le compte
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306827
+    m_Localized: Dissocier
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306828
+    m_Localized: "Termin\xE9"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306829
+    m_Localized: "Micro d\xE9sactiv\xE9 \xB7 Fin de la pens\xE9e en cours"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306830
+    m_Localized: Orby n'a pas pu terminer
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306831
+    m_Localized: "Je n'ai pas pu me connecter. R\xE9essayez."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306832
+    m_Localized: Je n'ai pas pu terminer cette demande.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306833
+    m_Localized: "Je n'ai pas compris. Essayez de parler \xE0 nouveau."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306834
+    m_Localized: "Je ne peux pas encore g\xE9n\xE9rer cela, mais je peux vous aider
+      \xE0 le planifier."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306835
+    m_Localized: "Le visuel n'a pas pu \xEAtre termin\xE9. Vous pouvez r\xE9essayer."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306836
+    m_Localized: "Votre session et votre enregistrement sont conserv\xE9s."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306837
+    m_Localized: Masquer
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

@@ -630,6 +630,155 @@ MonoBehaviour:
     m_Localized: Morado
     m_Metadata:
       m_Items: []
+  - m_Id: 810583459975168
+    m_Localized: "Cuenta / conexi\xF3n del dispositivo"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112512
+    m_Localized: "Este visor no est\xE1 vinculado. La vinculaci\xF3n no estar\xE1
+      disponible hasta que finalice el servicio web compartido."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112513
+    m_Localized: "Vinculaci\xF3n no disponible"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112514
+    m_Localized: "La vinculaci\xF3n a\xFAn no est\xE1 disponible o no hay conexi\xF3n.
+      Tus sesiones locales est\xE1n seguras."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112515
+    m_Localized: "Solicitando c\xF3digo de vinculaci\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112516
+    m_Localized: "Contactando con el servicio de vinculaci\xF3n. No se cambiar\xE1n
+      el micr\xF3fono ni los datos de la sesi\xF3n."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112517
+    m_Localized: Vincular este visor
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112518
+    m_Localized: "Introduce este c\xF3digo de seis d\xEDgitos en el sitio web de
+      Thinking Space."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112519
+    m_Localized: Esperando al sitio web
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112520
+    m_Localized: "Mant\xE9n esta p\xE1gina abierta mientras el sitio web confirma
+      el c\xF3digo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112521
+    m_Localized: Confirmar cuenta en Quest
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112522
+    m_Localized: "\xBFVincular este visor con {0}?"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112523
+    m_Localized: "Vinculaci\xF3n completada"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306816
+    m_Localized: "Este visor est\xE1 vinculado. La sincronizaci\xF3n en la nube no
+      est\xE1 habilitada en este hito."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306817
+    m_Localized: "El c\xF3digo ha caducado"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306818
+    m_Localized: "Genera un c\xF3digo nuevo cuando el servicio de vinculaci\xF3n
+      est\xE9 disponible."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306819
+    m_Localized: "Error de conexi\xF3n"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306820
+    m_Localized: "El visor no pudo completar la vinculaci\xF3n. Tus sesiones locales
+      no se modificaron."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306821
+    m_Localized: Desvincular visor
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306822
+    m_Localized: "\xBFDesvincular este visor? Las sesiones locales permanecer\xE1n
+      en el dispositivo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306823
+    m_Localized: Caduca en {0} segundos
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306824
+    m_Localized: Vincular este visor
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306825
+    m_Localized: "Generar c\xF3digo nuevo"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306826
+    m_Localized: Confirmar cuenta
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306827
+    m_Localized: Desvincular
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306828
+    m_Localized: Listo
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306829
+    m_Localized: "Micr\xF3fono desactivado \xB7 Terminando la idea actual"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306830
+    m_Localized: Orby no pudo terminar
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306831
+    m_Localized: "No pude conectarme. Int\xE9ntalo de nuevo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306832
+    m_Localized: No pude terminar esa solicitud.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306833
+    m_Localized: "No entend\xED eso. Intenta hablar de nuevo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306834
+    m_Localized: "Todav\xEDa no puedo generar eso, pero puedo ayudarte a planificarlo."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306835
+    m_Localized: No se pudo completar el elemento visual. Puedes intentarlo de nuevo.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306836
+    m_Localized: "Tu sesi\xF3n y tu grabaci\xF3n est\xE1n seguras."
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306837
+    m_Localized: Cerrar
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

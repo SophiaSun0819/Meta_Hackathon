@@ -10,6 +10,7 @@ using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.Speech;
 using ThinkingSpace.Companion;
+using ThinkingSpace.Pairing;
 
 namespace ThinkingSpace.UI
 {
@@ -19,7 +20,7 @@ namespace ThinkingSpace.UI
         private const string OrbyMenuPauseReason="Main menu visible";
         public event Action PalmMenuOpened;
         public event Action<BrainstormSession> SessionActivated;
-        private enum MenuScreen { Main, Session, VoiceHelp, GestureHelp }
+        private enum MenuScreen { Main, Session, VoiceHelp, GestureHelp, Pairing }
         private enum OpeningHand { None, Left, Right }
         private enum MenuButtonState { WaitingForPalm, Stabilizing, Visible, WaitingForRelease }
         private enum MenuGestureState { WaitingForFist, FistHold, WaitingForOpen, OpenHold, WaitingForRelease }
@@ -177,6 +178,7 @@ namespace ThinkingSpace.UI
         private Canvas palmButtonCanvas;
         private PalmMenuButtonView palmMenuButtonView;
         private BrainstormMenuView authoredView;
+        private QuestPairingController pairingController;
         private RectTransform contentRoot;
         private RectTransform canvasRect;
         private BoundsClipper canvasBoundsClipper;
@@ -848,7 +850,11 @@ namespace ThinkingSpace.UI
                 () => InvokeGuarded(() => SetWristMenuHand(WristMenuHand.Left)),
                 () => InvokeGuarded(() => SetWristMenuHand(WristMenuHand.Right)),
                 () => InvokeGuarded(RequestExportSession),
-                () => InvokeGuarded(RequestImportSession));
+                () => InvokeGuarded(RequestImportSession),
+                () => InvokeGuarded(OpenPairing));
+            pairingController=GetComponent<QuestPairingController>();
+            if(pairingController==null)pairingController=gameObject.AddComponent<QuestPairingController>();
+            pairingController.Initialize(authoredView,()=>ShowScreen(MenuScreen.Main));
             authoredView.SetAudioPreferences(preferencesStore.Data.SilenceDurationSeconds,
                 preferencesStore.Data.RecordingMode,preferencesStore.Data.SubtitlesEnabled);
             authoredView.SetWristMenuHand(preferencesStore.Data.WristMenuHand);
@@ -2054,6 +2060,7 @@ namespace ThinkingSpace.UI
 
         private void CloseMenuInternal(OpeningHand releasingHand)
         {
+            pairingController?.Hide();
             if(menuPlacementState==MenuPlacementState.Dragging)EndMenuDrag(false);
             OpeningHand ownerToRelease = menuOwner != OpeningHand.None ? menuOwner : releasingHand;
             if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
@@ -2074,6 +2081,7 @@ namespace ThinkingSpace.UI
         private void ShowScreen(MenuScreen screen)
         {
             currentScreen = screen;
+            if(screen!=MenuScreen.Pairing)pairingController?.Hide();
             if (authoredView != null)
             {
                 if (screen == MenuScreen.Main)
@@ -2083,14 +2091,26 @@ namespace ThinkingSpace.UI
                         sessionStore.ActiveSession != null ? sessionStore.ActiveSession.Number : 0,
                         recordingGestureController.SelectedRecordingHand);
                 else if (screen == MenuScreen.VoiceHelp) authoredView.ShowVoiceHelp();
-                else authoredView.ShowGestureHelp();
+                else if(screen==MenuScreen.GestureHelp)authoredView.ShowGestureHelp();
+                else pairingController?.Open();
                 authoredView.SetWristMenuHand(preferencesStore.Data.WristMenuHand);
                 return;
             }
             ClearContent();
             if (screen == MenuScreen.Main) BuildMainScreen();
             else if (screen == MenuScreen.Session) BuildSessionScreen();
+            else if(screen==MenuScreen.Pairing)BuildUnavailablePairingScreen();
             else BuildHelpScreen(screen);
+        }
+
+        private void OpenPairing()=>ShowScreen(MenuScreen.Pairing);
+
+        private void BuildUnavailablePairingScreen()
+        {
+            ResizePanel(360f);
+            AddHeading(L("pairing.account.title"),42f);
+            AddLabel(L("pairing.unavailable.body"),25f);
+            AddButton(L("common.previous"),()=>ShowScreen(MenuScreen.Main));
         }
 
         private void BuildMainScreen()
@@ -2109,6 +2129,7 @@ namespace ThinkingSpace.UI
             }
             AddButton(L("menu.session.start"), StartNewSession, true);
             AddButton(L("menu.session.import"),RequestImportSession);
+            AddButton(L("pairing.account.title"),OpenPairing);
             AddButton(L("menu.voice_commands"), () => OpenHelp(MenuScreen.VoiceHelp));
             AddButton(L("menu.hand_gestures"), () => OpenHelp(MenuScreen.GestureHelp));
             AddRecordingHandSelector();

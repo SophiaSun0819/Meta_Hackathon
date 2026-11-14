@@ -629,6 +629,151 @@ MonoBehaviour:
     m_Localized: Purple
     m_Metadata:
       m_Items: []
+  - m_Id: 810583459975168
+    m_Localized: Account / Device Connection
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112512
+    m_Localized: This headset is not paired. Pairing remains unavailable until the
+      shared website service is finalized.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112513
+    m_Localized: Pairing Unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112514
+    m_Localized: Pairing is not available yet or the network is offline. Your local
+      sessions are safe.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112515
+    m_Localized: Requesting Pairing Code
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112516
+    m_Localized: Contacting the pairing service. No microphone or session data is
+      being changed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112517
+    m_Localized: Pair This Headset
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112518
+    m_Localized: Enter this six-digit code on the Thinking Space website.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112519
+    m_Localized: Waiting for Website
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112520
+    m_Localized: Keep this page open while the website confirms the code.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112521
+    m_Localized: Confirm Account on Quest
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112522
+    m_Localized: Pair this headset with {0}?
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112523
+    m_Localized: Paired Successfully
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306816
+    m_Localized: This headset is paired. Cloud synchronization is not enabled in
+      this milestone.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306817
+    m_Localized: Pairing Code Expired
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306818
+    m_Localized: Generate a new code when the pairing service is available.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306819
+    m_Localized: Connection Failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306820
+    m_Localized: The headset could not finish pairing. Your local sessions were not
+      changed.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306821
+    m_Localized: Unpair Headset
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306822
+    m_Localized: Unpair this headset? Local sessions will remain on this device.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306823
+    m_Localized: Expires in {0} seconds
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306824
+    m_Localized: Pair This Headset
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306825
+    m_Localized: Generate New Code
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306826
+    m_Localized: Confirm Account
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306827
+    m_Localized: Unpair
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306828
+    m_Localized: Done
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306829
+    m_Localized: "Mic Off \xB7 Finishing current thought"
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306830
+    m_Localized: Orby couldn't finish
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306831
+    m_Localized: I couldn't connect. Please try again.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306832
+    m_Localized: I couldn't finish that request.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306833
+    m_Localized: I didn't catch that. Please try speaking again.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306834
+    m_Localized: I can't generate that yet, but I can help you plan it.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306835
+    m_Localized: The visual couldn't be completed. You can retry.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306836
+    m_Localized: Your session and recording are safe.
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306837
+    m_Localized: Dismiss
+    m_Metadata:
+      m_Items: []
   references:
     version: 2
     RefIds: []

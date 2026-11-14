@@ -619,6 +619,146 @@ MonoBehaviour:
     m_Key: color.purple
     m_Metadata:
       m_Items: []
+  - m_Id: 810583459975168
+    m_Key: pairing.account.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112512
+    m_Key: pairing.account.disconnected
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112513
+    m_Key: pairing.unavailable.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112514
+    m_Key: pairing.unavailable.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112515
+    m_Key: pairing.requesting.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112516
+    m_Key: pairing.requesting.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112517
+    m_Key: pairing.code.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112518
+    m_Key: pairing.code.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112519
+    m_Key: pairing.waiting.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112520
+    m_Key: pairing.waiting.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112521
+    m_Key: pairing.confirm.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112522
+    m_Key: pairing.confirm.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583506112523
+    m_Key: pairing.paired.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306816
+    m_Key: pairing.paired.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306817
+    m_Key: pairing.expired.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306818
+    m_Key: pairing.expired.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306819
+    m_Key: pairing.failed.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306820
+    m_Key: pairing.failed.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306821
+    m_Key: pairing.unpair.title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306822
+    m_Key: pairing.unpair.body
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306823
+    m_Key: pairing.expires
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306824
+    m_Key: pairing.action.pair
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306825
+    m_Key: pairing.action.new_code
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306826
+    m_Key: pairing.action.confirm
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306827
+    m_Key: pairing.action.unpair
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306828
+    m_Key: pairing.action.done
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306829
+    m_Key: hud.mic_off_finishing
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306830
+    m_Key: error.recoverable_title
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306831
+    m_Key: error.network_unavailable
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306832
+    m_Key: error.ai_processing_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306833
+    m_Key: error.speech_not_understood
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306834
+    m_Key: error.unsupported_capability
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306835
+    m_Key: error.generation_failed
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306836
+    m_Key: error.session_safe
+    m_Metadata:
+      m_Items: []
+  - m_Id: 810583510306837
+    m_Key: common.dismiss
+    m_Metadata:
+      m_Items: []
   m_Metadata:
     m_Items: []
   m_KeyGenerator:
