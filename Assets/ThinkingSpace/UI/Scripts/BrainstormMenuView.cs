@@ -427,9 +427,9 @@ namespace ThinkingSpace.UI
             english=Instantiate(source,parent);ConfigureNavigationButton(english,L("language.english"),new Vector2(.08f,.59f),new Vector2(.34f,.70f));
             spanish=Instantiate(source,parent);ConfigureNavigationButton(spanish,L("language.spanish"),new Vector2(.37f,.59f),new Vector2(.63f,.70f));
             french=Instantiate(source,parent);ConfigureNavigationButton(french,L("language.french"),new Vector2(.66f,.59f),new Vector2(.92f,.70f));
-            BindButton(english,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("en"));
-            BindButton(spanish,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("es"));
-            BindButton(french,()=>ThinkingSpaceLocalizationController.Instance?.SetInterfaceLanguage("fr"));
+            BindButton(english,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetInterfaceLanguage("en"));
+            BindButton(spanish,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetInterfaceLanguage("es"));
+            BindButton(french,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetInterfaceLanguage("fr"));
             TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
             if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.interface_language");
                 label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;

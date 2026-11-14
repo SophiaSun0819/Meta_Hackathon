@@ -19,6 +19,7 @@ namespace ThinkingSpace.Speech
         [SerializeField] private RecordingReviewPanel reviewPanel;
         [SerializeField] private ThinkingSpaceAIWorkflowController aiWorkflow;
         [SerializeField] private ConversationalListeningController conversationalListening;
+        [SerializeField] private WorkflowStatusPresenter workflowStatus;
         [Header("Development Test")]
         [SerializeField] private AudioClip developmentTestClip;
         [Tooltip("Routes a generated 440 Hz tone through the review AudioSource instead of the retained clip.")]
@@ -79,9 +80,12 @@ namespace ThinkingSpace.Speech
             if (aiWorkflow == null) aiWorkflow = gameObject.AddComponent<ThinkingSpaceAIWorkflowController>();
             if (conversationalListening == null) conversationalListening = GetComponent<ConversationalListeningController>();
             if (conversationalListening == null) conversationalListening = gameObject.AddComponent<ConversationalListeningController>();
+            if (workflowStatus == null) workflowStatus = GetComponent<WorkflowStatusPresenter>();
+            if (workflowStatus == null) workflowStatus = gameObject.AddComponent<WorkflowStatusPresenter>();
             Transform headset = gestureController != null ? gestureController.CenterEyeAnchor : null;
             transcriptPanel.SetHeadset(headset);
             reviewPanel.SetHeadset(headset);
+            workflowStatus.SetHeadset(headset);
             aiWorkflow.Configure(transcriptionService, headset);
             aiWorkflow.AutomaticTurnCompleted -= HandleAutomaticTurnCompleted;
             aiWorkflow.AutomaticTurnCompleted += HandleAutomaticTurnCompleted;
@@ -165,7 +169,7 @@ namespace ThinkingSpace.Speech
             if (!active)
             {
                 CancelActiveRequest(); StopPlayback(); ClearPendingRecording();
-                reviewPanel.Hide(); transcriptPanel.Hide();
+                reviewPanel.Hide(); transcriptPanel.Hide(); workflowStatus.Hide();
                 State = RecordingWorkflowState.Ready;
                 UpdateDiagnostic("Session ended; pending recording cleared");
             }
@@ -239,7 +243,8 @@ namespace ThinkingSpace.Speech
             State = RecordingWorkflowState.Ready;
             aiWorkflow?.NotifyError(message);
             UpdateDiagnostic("Microphone failed: " + message);
-            transcriptPanel.ShowNotice("Recording Failed", message, transcriptPanel.Hide);
+            workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.SpeechRecognitionFailed,
+                null, workflowStatus.Hide, false);
         }
 
         public void NotifyConversationalSpeechStarted()
@@ -420,9 +425,8 @@ namespace ThinkingSpace.Speech
             DiagnosticText = BuildDiagnostic(recording, pendingWav != null ? pendingWav.Length : 0,
                 "Transcription failed", status, seconds, 0, error)
                 + BuildSafeTranscriptionTransportDiagnostic();
-            transcriptPanel.ShowError(error + BuildDevelopmentTranscriptionDiagnostic(),
-                wasAutomatic ? RetryAutomaticTurn : RetryLastFailed,
-                wasAutomatic ? Discard : BackToRecording);
+            workflowStatus.ShowRecoverable(WorkflowStatusPresenter.ClassifyTransportFailure(status, error),
+                wasAutomatic ? RetryAutomaticTurn : RetryLastFailed, BackToRecording, true);
             RequestTranscriptionErrorVoice(generation, error, status);
         }
 
@@ -432,8 +436,8 @@ namespace ThinkingSpace.Speech
             aiWorkflow?.SetAutomaticConversationMode(false);
             State = RecordingWorkflowState.TranscriptionFailed;
             aiWorkflow?.NotifyError(error);
-            transcriptPanel.ShowWorkflowError("Conversation Submission Failed", error,
-                RetryAutomaticTurn, Discard);
+            workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.AiProcessingFailed,
+                RetryAutomaticTurn, BackToRecording, true);
             UpdateDiagnostic("Automatic conversation submission failed; completed recording retained");
         }
 
@@ -442,7 +446,7 @@ namespace ThinkingSpace.Speech
             if (!pendingRecording.HasValue || activeRequest != null || transcriptionService.IsBusy) return;
             automaticConversationTurn = true;
             aiWorkflow?.SetAutomaticConversationMode(true);
-            transcriptPanel.Hide();
+            transcriptPanel.Hide(); workflowStatus.Hide();
             BeginRequest(pendingWav != null, true);
         }
 
@@ -455,10 +459,8 @@ namespace ThinkingSpace.Speech
             if (!workflowSucceeded)
             {
                 State = RecordingWorkflowState.TranscriptionFailed;
-                string error = aiWorkflow != null && !string.IsNullOrWhiteSpace(aiWorkflow.LastAutomaticError)
-                    ? aiWorkflow.LastAutomaticError : "Orby could not complete that request.";
-                transcriptPanel.ShowWorkflowError("Conversation Processing Failed", error,
-                    RetryAutomaticConversationRequest, Discard);
+                workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.AiProcessingFailed,
+                    RetryAutomaticConversationRequest, BackToRecording, true);
                 UpdateDiagnostic("Automatic conversational processing failed; recording retained");
                 return;
             }
@@ -479,7 +481,7 @@ namespace ThinkingSpace.Speech
                 || aiWorkflow == null || aiWorkflow.IsBlockingRecording) return;
             automaticConversationTurn = true;
             aiWorkflow.SetAutomaticConversationMode(true);
-            transcriptPanel.Hide();
+            transcriptPanel.Hide(); workflowStatus.Hide();
             State = RecordingWorkflowState.Transcribing;
             if (!aiWorkflow.SubmitApprovedTranscript(pendingTranscript))
                 HandleAutomaticSubmissionFailure(aiWorkflow.LastSubmissionRejection);
@@ -552,8 +554,9 @@ namespace ThinkingSpace.Speech
                 string reason = aiWorkflow != null
                     ? aiWorkflow.LastSubmissionRejection
                     : "The AI workflow component is unavailable.";
-                transcriptPanel.ShowNotice("AI Request Unavailable",
-                    reason + "\n\nThe completed recording remains available.", BackToRecording);
+                DiagnosticText += "\nAI submission rejected: " + reason;
+                workflowStatus.ShowRecoverable(RecoverableWorkflowFailureKind.AiProcessingFailed,
+                    ConfirmTranscript, BackToRecording, true);
                 return;
             }
             transcriptPanel.Hide(); ClearPendingRecording();
@@ -566,7 +569,7 @@ namespace ThinkingSpace.Speech
         {
             if (!pendingRecording.HasValue) return;
             if (State == RecordingWorkflowState.Transcribing) CancelActiveRequest();
-            transcriptPanel.Hide();
+            transcriptPanel.Hide(); workflowStatus.Hide();
             State = RecordingWorkflowState.Reviewing;
             aiWorkflow?.NotifyReviewing();
             CompletedMicrophoneRecording recording = pendingRecording.Value;
@@ -577,7 +580,7 @@ namespace ThinkingSpace.Speech
         private void Discard()
         {
             if (State == RecordingWorkflowState.Transcribing) return;
-            StopPlayback(); reviewPanel.Hide(); transcriptPanel.Hide(); ClearPendingRecording();
+            StopPlayback(); reviewPanel.Hide(); transcriptPanel.Hide(); workflowStatus.Hide(); ClearPendingRecording();
             State = RecordingWorkflowState.Ready;
             aiWorkflow?.NotifyIdle();
             gestureController.RequireFreshRecordingGesture();
@@ -587,7 +590,7 @@ namespace ThinkingSpace.Speech
         private void Rerecord()
         {
             if (State != RecordingWorkflowState.Reviewing && State != RecordingWorkflowState.Playing) return;
-            CancelActiveRequest(); StopPlayback(); reviewPanel.Hide(); transcriptPanel.Hide(); ClearPendingRecording();
+            CancelActiveRequest(); StopPlayback(); reviewPanel.Hide(); transcriptPanel.Hide(); workflowStatus.Hide(); ClearPendingRecording();
             if (!sessionActive)
             {
                 State = RecordingWorkflowState.Ready;

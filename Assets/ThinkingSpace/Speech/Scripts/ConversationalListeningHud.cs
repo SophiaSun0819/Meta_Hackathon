@@ -6,7 +6,7 @@ using ThinkingSpace.UI;
 namespace ThinkingSpace.Speech
 {
     public enum MicrophoneStatusDisplayState
-    { MicOff, Idle, SpeechDetected, FinishingThought, Thinking, Speaking, Paused }
+    { MicOff, MicOffFinishing, Idle, SpeechDetected, FinishingThought, Thinking, Speaking, Paused }
 
     [DisallowMultipleComponent]
     public sealed class ConversationalListeningHud : MonoBehaviour
@@ -66,6 +66,7 @@ namespace ThinkingSpace.Speech
             if (canvas == null) Build();
             if (!canvas.gameObject.activeSelf) canvas.gameObject.SetActive(true);
             string key = state == MicrophoneStatusDisplayState.MicOff ? "hud.mic_off"
+                : state == MicrophoneStatusDisplayState.MicOffFinishing ? "hud.mic_off_finishing"
                 : state == MicrophoneStatusDisplayState.Idle ? "hud.mic_idle"
                 : state == MicrophoneStatusDisplayState.SpeechDetected ? "hud.speech_detected"
                 : state == MicrophoneStatusDisplayState.FinishingThought ? "hud.finishing"
@@ -75,6 +76,7 @@ namespace ThinkingSpace.Speech
             string status = ThinkingSpaceLocalizationController.Get(key);
             statusText.text = status;
             statusText.color = state == MicrophoneStatusDisplayState.MicOff
+                || state == MicrophoneStatusDisplayState.MicOffFinishing
                 ? new Color(1f, 0.35f, 0.35f) : Color.white;
             timerText.text = FormatTime(utteranceElapsed);
             levelFill.fillAmount = Mathf.Clamp01(rms * 24f);
@@ -85,14 +87,17 @@ namespace ThinkingSpace.Speech
         }
 
         public static MicrophoneStatusDisplayState ResolveDisplayState(ConversationalListeningState listening,
-            ThinkingSpace.Companion.OrbyConversationState orby, bool enabled, RecordingWorkflowState workflow)
+            ThinkingSpace.Companion.OrbyConversationState orby, bool enabled, bool deferredShutdown,
+            RecordingWorkflowState workflow)
         {
+            if (!enabled)
+                return deferredShutdown ? MicrophoneStatusDisplayState.MicOffFinishing
+                    : MicrophoneStatusDisplayState.MicOff;
             if (orby == ThinkingSpace.Companion.OrbyConversationState.Speaking)
                 return MicrophoneStatusDisplayState.Speaking;
             if (orby == ThinkingSpace.Companion.OrbyConversationState.Thinking
                 || workflow == RecordingWorkflowState.Transcribing)
                 return MicrophoneStatusDisplayState.Thinking;
-            if (!enabled) return MicrophoneStatusDisplayState.MicOff;
             if (listening == ConversationalListeningState.SpeechActive)
                 return MicrophoneStatusDisplayState.SpeechDetected;
             if (listening == ConversationalListeningState.SilenceCountdown

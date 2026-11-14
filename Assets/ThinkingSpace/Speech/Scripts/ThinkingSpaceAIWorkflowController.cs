@@ -15,6 +15,7 @@ namespace ThinkingSpace.Speech
         [SerializeField, Min(15f)] private float clarificationLifetimeSeconds = 120f;
         private ThinkingSpaceAIBackendClient client;
         private AIResponsePanel responsePanel;
+        private WorkflowStatusPresenter workflowStatus;
         private BrainstormMenuController menuController;
         private OrbyConversationStateController orby;
         private IdeaBubbleManager bubbleManager;
@@ -26,6 +27,7 @@ namespace ThinkingSpace.Speech
         private string resolvedResponseLanguage, resolvedVoiceProfileId;
         private string[] pendingCandidateIds = Array.Empty<string>();
         private float clarificationExpiresAt;
+        private string lastErrorVoiceFingerprint = string.Empty;
 
         private static readonly HashSet<string> IdeaActions = new HashSet<string>
         { "create_idea", "expand_idea", "combine_ideas" };
@@ -59,6 +61,8 @@ namespace ThinkingSpace.Speech
         public string LastProposedAction { get; private set; } = "None";
         public string LastClarificationState { get; private set; } = "None";
         public string LastAutomaticError { get; private set; } = string.Empty;
+        public string LastResolvedResponseLanguage => resolvedResponseLanguage ?? "legacy";
+        public string LastResolvedVoiceProfile => resolvedVoiceProfileId ?? "legacy";
 
         public void Configure(SpeechTranscriptionService transcriptionService, Transform headset)
         {
@@ -210,7 +214,8 @@ namespace ThinkingSpace.Speech
             AIIdeaContext[] availableIdeas = BuildIdeaContexts(session);
             ConversationContextPayload conversationContext = BuildConversationContext(session,
                 availableIdeas, requestId, menuController?.PreferencesStore?.Data?.PreferredName);
-            ApplyLanguagePreferences(conversationContext, menuController?.PreferencesStore?.Data);
+            if (menuController != null && menuController.MultilingualBackendContractEnabled)
+                ApplyLanguagePreferences(conversationContext, menuController.PreferencesStore?.Data);
             var request = new ConversationProcessRequest
             {
                 request_id = requestId,
@@ -472,25 +477,33 @@ namespace ThinkingSpace.Speech
         private void ShowError(string title, string message, Action retry)
         {
             ResolveDependencies();
-            if (orby != null) orby.SetError(message);
+            LastAutomaticError = string.IsNullOrWhiteSpace(message)
+                ? "Orby could not complete that request." : message;
+            RecoverableWorkflowFailureKind kind = WorkflowStatusPresenter.ClassifyAiFailure(
+                client != null ? client.LastHttpStatus : 0, CurrentStage);
+            string safeMessage = L(WorkflowStatusPresenter.MessageKey(kind));
+            if (orby != null) orby.SetError(safeMessage);
+            responsePanel.Hide();
             if (automaticConversationMode)
             {
-                LastAutomaticError = string.IsNullOrWhiteSpace(message)
-                    ? "Orby could not complete that request." : message;
                 awaitingDismissal = false;
-                responsePanel.Hide();
-                ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded(
-                    title.IndexOf("network",StringComparison.OrdinalIgnoreCase)>=0
-                        ?"error_network":"error_general",activeSessionId);
+                PlayErrorAcknowledgementOnce(kind);
                 CompleteAutomaticTurn(false);
                 return;
             }
-            awaitingDismissal = true;
-            responsePanel.Show(title, message + DevelopmentDiagnosticSuffix(), retry != null ? L("common.retry") : L("common.close"),
-                retry != null ? retry : DismissResponse, retry != null ? L("common.close") : null,
-                retry != null ? DismissResponse : null);
+            awaitingDismissal = false;
+            workflowStatus?.ShowRecoverable(kind, retry, () => workflowStatus?.Hide(), false);
+            PlayErrorAcknowledgementOnce(kind);
+        }
+
+        private void PlayErrorAcknowledgementOnce(RecoverableWorkflowFailureKind kind)
+        {
+            string fingerprint = LastRequestId + ":" + kind;
+            if (fingerprint == lastErrorVoiceFingerprint) return;
+            lastErrorVoiceFingerprint = fingerprint;
             ThinkingSpace.Companion.OrbyVoiceDirector.Instance?.PlayPrerecorded(
-                title.IndexOf("network",StringComparison.OrdinalIgnoreCase)>=0?"error_network":"error_general",activeSessionId);
+                kind == RecoverableWorkflowFailureKind.NetworkUnavailable ? "error_network" : "error_general",
+                activeSessionId);
         }
 
         private void CompleteAutomaticTurn(bool success)
@@ -545,6 +558,7 @@ namespace ThinkingSpace.Speech
                     ? client.LastOutputTokenCount + " / " + client.LastReasoningTokenCount : "Unavailable")
                 + "\nIntent: " + LastIntentCategory
                 + "\nAction: " + LastProposedAction
+                + "\nResponse language/voice: " + LastResolvedResponseLanguage + " / " + LastResolvedVoiceProfile
                 + "\nClarification: " + LastClarificationState
                 + "\nCancelled: " + (client != null && client.LastRequestWasCancelled ? "Yes" : "No")
                 + "\nTimed out: " + (client != null && client.LastRequestTimedOut ? "Yes" : "No")
@@ -593,6 +607,7 @@ namespace ThinkingSpace.Speech
         {
             if (menuController == null) menuController = FindFirstObjectByType<BrainstormMenuController>();
             if (orby == null) orby = FindFirstObjectByType<OrbyConversationStateController>();
+            if (workflowStatus == null) workflowStatus = GetComponent<WorkflowStatusPresenter>();
         }
         private void SetOrby(OrbyConversationState state) { ResolveDependencies(); orby?.SetState(state); }
 

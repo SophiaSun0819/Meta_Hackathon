@@ -72,7 +72,7 @@ namespace ThinkingSpace.Companion
         {
             if(string.IsNullOrWhiteSpace(text)||string.IsNullOrWhiteSpace(sessionId)){lastFailure="Dynamic text or session ID missing";ReportEvent(eventName,true,false,priority,sessionId);return null;}
             delivery=NormalizeDelivery(delivery);string language=NormalizeResponseLanguage(responseLanguage);string profile=NormalizeVoiceProfile(voiceProfileId);
-            string identity=CacheIdentity+"|delivery:"+delivery+"|language:"+(language??"legacy")+"|profile:"+(profile??"legacy");
+            string identity=BuildLocalizedCacheIdentity(delivery,language,profile);
             string key=OrbyVoiceCache.CreateKey(text,identity,sessionId);if(pendingKeys.Contains(key)){lastFailure="Duplicate dynamic request already pending";ReportEvent(eventName,true,false,priority,sessionId);return null;}pendingKeys.Add(key);
             Request request=new Request{Id="voice-"+Guid.NewGuid().ToString("N"),SessionId=sessionId,Text=text,Delivery=delivery,ResponseLanguage=language,VoiceProfileId=profile,CacheKey=key,EventKey=eventName,Priority=priority,Completed=completed};lastRequestId=request.Id;lastRequestSession=sessionId;bool accepted=Enqueue(request);if(!accepted)pendingKeys.Remove(key);ReportEvent(eventName,true,accepted,priority,sessionId);return accepted?request.Id:null;
         }
@@ -156,9 +156,8 @@ namespace ThinkingSpace.Companion
             SpeechTranscriptionService config=FindFirstObjectByType<SpeechTranscriptionService>();
             if(config==null||string.IsNullOrEmpty(config.BackendBaseUrl)){lastFailure="TTS backend base URL is unavailable";RefreshDiagnostics(lastFailure);completed(null);yield break;}
             string token=config.GetDevelopmentTokenForCurrentRun();if(string.IsNullOrEmpty(token)){lastFailure="Development authentication token is unavailable";RefreshDiagnostics(lastFailure);completed(null);yield break;}
-            string json=string.IsNullOrEmpty(request.ResponseLanguage)&&string.IsNullOrEmpty(request.VoiceProfileId)
-                ?JsonUtility.ToJson(new VoiceWireRequest{request_id=request.Id,session_id=request.SessionId,text=request.Text,delivery=request.Delivery})
-                :JsonUtility.ToJson(new LocalizedVoiceWireRequest{request_id=request.Id,session_id=request.SessionId,text=request.Text,delivery=request.Delivery,response_language=request.ResponseLanguage,voice_profile_id=request.VoiceProfileId});ttsRequestStartedAt=Time.realtimeSinceStartup;lastTtsSeconds=lastDecodeSeconds=lastTimeToPlaybackSeconds=0;
+            string json=SerializeVoiceRequest(request.Id,request.SessionId,request.Text,request.Delivery,
+                request.ResponseLanguage,request.VoiceProfileId);ttsRequestStartedAt=Time.realtimeSinceStartup;lastTtsSeconds=lastDecodeSeconds=lastTimeToPlaybackSeconds=0;
             lastEndpoint=BuildVoiceEndpoint(config.BackendBaseUrl);activeNetworkRequests++;using(UnityWebRequest web=new UnityWebRequest(lastEndpoint,UnityWebRequest.kHttpVerbPOST))
             {web.uploadHandler=new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));web.downloadHandler=new DownloadHandlerBuffer();web.timeout=30;web.SetRequestHeader("Content-Type","application/json");web.SetRequestHeader("X-ThinkingSpace-Token",token);yield return web.SendWebRequest();
                 activeNetworkRequests=Mathf.Max(0,activeNetworkRequests-1);lastTtsSeconds=Time.realtimeSinceStartup-ttsRequestStartedAt;string mime=web.GetResponseHeader("Content-Type")??"";byte[] bytes=web.downloadHandler?.data;lastHttpStatus=web.responseCode;lastMime=string.IsNullOrEmpty(mime)?"None":mime;lastByteCount=bytes?.Length??0;lastVoiceModel=web.GetResponseHeader("X-ThinkingSpace-Voice-Model")??"Unknown";lastVoiceFallback=web.GetResponseHeader("X-ThinkingSpace-Voice-Fallback")??"false";lastServerCacheIdentity=web.GetResponseHeader("X-ThinkingSpace-Voice-Cache")??"Unknown";RefreshDiagnostics("TTS response received");
@@ -194,6 +193,18 @@ namespace ThinkingSpace.Companion
         {switch((value??"").Trim().Replace('_','-').ToLowerInvariant()){case "en":case "es":case "fr":return value.Trim().ToLowerInvariant();case "zh":case "zh-cn":return "zh-CN";case "hi":case "hi-in":return "hi-IN";default:return null;}}
         public static string NormalizeVoiceProfile(string value)
         {switch((value??"").Trim().ToLowerInvariant()){case "orby-en":case "orby-es":case "orby-fr":case "orby-zh":case "orby-hi":return value.Trim().ToLowerInvariant();default:return null;}}
+        public static string BuildLocalizedCacheIdentity(string delivery,string responseLanguage,string voiceProfileId)
+        {string normalizedDelivery=NormalizeDelivery(delivery);string language=NormalizeResponseLanguage(responseLanguage);string profile=NormalizeVoiceProfile(voiceProfileId);return CacheIdentity+"|delivery:"+normalizedDelivery+"|language:"+(language??"legacy")+"|profile:"+(profile??"legacy");}
+        public static string SerializeVoiceRequest(string requestId,string sessionId,string text,string delivery,
+            string responseLanguage,string voiceProfileId)
+        {
+            string language=NormalizeResponseLanguage(responseLanguage);
+            string profile=NormalizeVoiceProfile(voiceProfileId);
+            return string.IsNullOrEmpty(language)&&string.IsNullOrEmpty(profile)
+                ?JsonUtility.ToJson(new VoiceWireRequest{request_id=requestId,session_id=sessionId,text=text,delivery=NormalizeDelivery(delivery)})
+                :JsonUtility.ToJson(new LocalizedVoiceWireRequest{request_id=requestId,session_id=sessionId,text=text,
+                    delivery=NormalizeDelivery(delivery),response_language=language,voice_profile_id=profile});
+        }
         public void ReportEvent(string eventName,bool submitted,bool accepted,OrbyVoicePriority priority,string sessionId)
         {lastEvent=eventName??"Unknown";lastSubmission=(submitted?"Submitted":"Not submitted")+" · "+(accepted?"accepted":"rejected")+" · priority "+priority+" · session "+(string.IsNullOrEmpty(sessionId)?"none":sessionId);RefreshDiagnostics("Event: "+lastEvent);}
         private void RefreshDiagnostics(string stage)
@@ -201,6 +212,7 @@ namespace ThinkingSpace.Companion
             if(cachedListener==null)cachedListener=FindFirstObjectByType<AudioListener>();AudioListener listener=cachedListener;AudioClip clip=source!=null?source.clip:null;
             DiagnosticText="ORBY VOICE (development)\nStage: "+stage+"\nManifest: "+(manifest!=null?"Loaded":"Missing/invalid")+
                 "\nEvent: "+lastEvent+" · "+lastSubmission+"\nRequest: "+lastRequestId+" · session: "+lastRequestSession+
+                "\nLanguage/profile: "+(current?.ResponseLanguage??"legacy")+" / "+(current?.VoiceProfileId??"legacy")+
                 "\nClip: "+(clip!=null?clip.name+" · "+clip.length.ToString("0.00")+"s · "+clip.frequency+"Hz/"+clip.channels+"ch":"None")+
                 "\nSource active/enabled: "+gameObject.activeInHierarchy+"/"+(source!=null&&source.enabled)+
                 " · volume/mute: "+(source!=null?source.volume.ToString("0.00")+"/"+source.mute:"n/a")+

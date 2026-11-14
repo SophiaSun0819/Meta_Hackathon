@@ -898,22 +898,37 @@ namespace ThinkingSpace.Tests.Editor
         {
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Off, OrbyConversationState.Idle, false,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.MicOff));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.WaitingForSpeech, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.Idle));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.SpeechActive, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.SpeechDetected));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.SilenceCountdown, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.FinishingThought));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Suspended, OrbyConversationState.Thinking, true,
+                false,
                 RecordingWorkflowState.Transcribing), Is.EqualTo(MicrophoneStatusDisplayState.Thinking));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Suspended, OrbyConversationState.Speaking, true,
+                false,
                 RecordingWorkflowState.Reviewing), Is.EqualTo(MicrophoneStatusDisplayState.Speaking));
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.SilenceCountdown, OrbyConversationState.Thinking, false,
+                true, RecordingWorkflowState.Transcribing),
+                Is.EqualTo(MicrophoneStatusDisplayState.MicOffFinishing));
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.Off, OrbyConversationState.Speaking, false,
+                false, RecordingWorkflowState.Reviewing),
+                Is.EqualTo(MicrophoneStatusDisplayState.MicOff),
+                "Logical Mic Off must remain visible while Orby speaks.");
         }
 
         private static AdaptiveVoiceActivityDetector NewVad()

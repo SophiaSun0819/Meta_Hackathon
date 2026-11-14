@@ -112,6 +112,35 @@ namespace ThinkingSpace.UI
             return Mutate(() => Data.VoiceProfileId = normalized);
         }
 
+        public bool SetConversationLanguageAndVoiceProfile(string mode, string languageCode,
+            string voiceProfileId)
+        {
+            string normalizedMode = (mode ?? string.Empty).Trim().ToLowerInvariant();
+            if (normalizedMode != "auto" && normalizedMode != "explicit") return false;
+            string normalizedCode = NormalizeConversationLanguage(languageCode);
+            string normalizedProfile = NormalizeVoiceProfile(voiceProfileId);
+            if (normalizedMode == "explicit" && string.IsNullOrEmpty(normalizedCode)) return false;
+            if (normalizedProfile == null || !IsVoiceProfileCompatible(normalizedMode,
+                normalizedCode, normalizedProfile)) return false;
+            return Mutate(() =>
+            {
+                Data.ConversationLanguageMode = normalizedMode;
+                Data.ConversationLanguageCode = normalizedMode == "auto" ? string.Empty : normalizedCode;
+                Data.VoiceProfileId = normalizedProfile;
+            });
+        }
+
+        private static bool IsVoiceProfileCompatible(string mode, string language, string profile)
+        {
+            if (mode == "auto") return profile == DefaultVoiceProfileId;
+            return profile == VoiceProfileForLanguage(language);
+        }
+
+        public static string VoiceProfileForLanguage(string language)
+            => language == "en" ? "orby-en" : language == "es" ? "orby-es"
+                : language == "fr" ? "orby-fr" : language == "zh-CN" ? "orby-zh"
+                : language == "hi-IN" ? "orby-hi" : null;
+
         public static string NormalizeInterfaceLanguage(string value)
         {
             string normalized = (value ?? string.Empty).Trim().Replace('_', '-').ToLowerInvariant();
@@ -241,6 +270,11 @@ namespace ThinkingSpace.UI
                     loaded.ConversationLanguageCode = conversationCode;
                 }
                 loaded.VoiceProfileId = NormalizeVoiceProfile(loaded.VoiceProfileId) ?? DefaultVoiceProfileId;
+                if (loaded.ConversationLanguageMode == "auto")
+                    loaded.VoiceProfileId = DefaultVoiceProfileId;
+                else if (!IsVoiceProfileCompatible("explicit", loaded.ConversationLanguageCode,
+                    loaded.VoiceProfileId))
+                    loaded.VoiceProfileId = VoiceProfileForLanguage(loaded.ConversationLanguageCode);
                 // Version 1 predates subtitle preferences. Preserve the intended opt-out
                 // behavior instead of treating the absent JSON field as false.
                 if (loaded.SchemaVersion == 1) loaded.SubtitlesEnabled = true;

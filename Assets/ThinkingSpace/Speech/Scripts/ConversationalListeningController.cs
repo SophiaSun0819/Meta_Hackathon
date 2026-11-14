@@ -194,6 +194,7 @@ namespace ThinkingSpace.Speech
         }
 
         public float SilenceDurationSeconds => silenceDuration;
+        public bool IsDeferredShutdownPending => shutdownAfterUtterance;
         public void SetSilenceDuration(float seconds)
         {
             silenceDuration = ThinkingSpace.UI.ThinkingSpacePreferencesStore.ClampSilence(seconds);
@@ -461,7 +462,8 @@ namespace ThinkingSpace.Speech
             if (hud == null || recorder == null) return;
             MicrophoneStatusDisplayState display = ConversationalListeningHud.ResolveDisplayState(
                 State, orby != null ? orby.State : OrbyConversationState.Idle,
-                ListeningEnabled, coordinator != null ? coordinator.State : RecordingWorkflowState.Ready);
+                ListeningEnabled, shutdownAfterUtterance,
+                coordinator != null ? coordinator.State : RecordingWorkflowState.Ready);
             hud.SetStatus(display, recorder.LiveRms, recorder.LivePeak,
                 recorder.LogicalUtteranceElapsedSeconds);
         }

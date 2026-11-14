@@ -11,6 +11,13 @@ namespace ThinkingSpace.Tests.Editor
 {
     public sealed class ThinkingSpaceLocalizationTests
     {
+        private sealed class DevAgentSettingsFixture : ScriptableObject
+        {
+            public bool enabled;
+            public string accessToken;
+            public string preservedSetting;
+        }
+
         private string directory;
 
         [SetUp]
@@ -105,7 +112,7 @@ namespace ThinkingSpace.Tests.Editor
         [Test]
         public void PreparedMandarinFontAndLicenseArePresentWithRepresentativeGlyphs()
         {
-            const string fontPath="Assets/ThinkingSpace/UI/Fonts/NotoSansSC/NotoSansCJKsc-Regular SDF.asset";
+            const string fontPath="Assets/ThinkingSpace/Resources/Fonts/NotoSansCJKsc-Regular SDF.asset";
             TMP_FontAsset font=AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(fontPath);
             Assert.That(font,Is.Not.Null);
             Assert.That(font.atlasPopulationMode,Is.EqualTo(AtlasPopulationMode.Dynamic));
@@ -113,6 +120,43 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(font.HasCharacter('页',false,true),Is.True);
             Assert.That(File.Exists(Path.Combine(Application.dataPath,
                 "ThinkingSpace/UI/Fonts/NotoSansSC/OFL.txt")),Is.True);
+        }
+
+        [Test]
+        public void DevanagariRuntimeFontAndLicenseProvideRepresentativeGlyphs()
+        {
+            const string fontPath="Assets/ThinkingSpace/Resources/Fonts/NotoSansDevanagari-Regular SDF.asset";
+            TMP_FontAsset font=AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(fontPath);
+            Assert.That(font,Is.Not.Null);
+            Assert.That(font.atlasPopulationMode,Is.EqualTo(AtlasPopulationMode.Dynamic));
+            foreach(char value in "नमस्तेक्षित्र")Assert.That(font.HasCharacter(value,false,true),Is.True,$"U+{(int)value:X4}");
+            Assert.That(File.Exists(Path.Combine(Application.dataPath,
+                "ThinkingSpace/UI/Fonts/NotoSansDevanagari/OFL.txt")),Is.True);
+        }
+
+        [Test]
+        public void VoiceCacheIdentitySeparatesEveryApprovedLanguageProfile()
+        {
+            string[] languages={"en","es","fr","zh-CN","hi-IN"};
+            string[] profiles={"orby-en","orby-es","orby-fr","orby-zh","orby-hi"};
+            var identities=new System.Collections.Generic.HashSet<string>();
+            for(int i=0;i<languages.Length;i++)
+                Assert.That(identities.Add(ThinkingSpace.Companion.OrbyVoiceDirector.BuildLocalizedCacheIdentity(
+                    "neutral",languages[i],profiles[i])),Is.True);
+            Assert.That(identities.Count,Is.EqualTo(5));
+        }
+
+        [TestCase("en","orby-en")]
+        [TestCase("es","orby-es")]
+        [TestCase("fr","orby-fr")]
+        [TestCase("zh-CN","orby-zh")]
+        [TestCase("hi-IN","orby-hi")]
+        public void VoiceRequestForwardsApprovedLanguageAndProfile(string language,string profile)
+        {
+            string json=ThinkingSpace.Companion.OrbyVoiceDirector.SerializeVoiceRequest(
+                "voice-test","Session 1","Safe synthetic text","neutral",language,profile);
+            Assert.That(json,Does.Contain("\"response_language\":\""+language+"\""));
+            Assert.That(json,Does.Contain("\"voice_profile_id\":\""+profile+"\""));
         }
 
         [Test]
@@ -140,6 +184,25 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void InterfaceLanguageSwitchDoesNotChangeConversationOrVoicePreferences()
+        {
+            var preferences=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(preferences.SetConversationLanguageAndVoiceProfile("explicit","fr","orby-fr"),Is.True);
+            GameObject root=new GameObject("Independent Localization Test");
+            root.AddComponent<ThinkingSpaceLocalizationController>();
+            ThinkingSpaceLocalizationController controller=ThinkingSpaceLocalizationController.Ensure(preferences);
+            try
+            {
+                Assert.That(controller.SetInterfaceLanguage("es"),Is.True);
+                var restored=new ThinkingSpacePreferencesStore(directory).Data;
+                Assert.That(restored.InterfaceLanguageCode,Is.EqualTo("es"));
+                Assert.That(restored.ConversationLanguageCode,Is.EqualTo("fr"));
+                Assert.That(restored.VoiceProfileId,Is.EqualTo("orby-fr"));
+            }
+            finally {UnityEngine.Object.DestroyImmediate(root);}
+        }
+
+        [Test]
         public void SessionAndTransferVersionsRemainUnchanged()
         {
             Assert.That(BrainstormSessionStore.CurrentSchemaVersion,Is.EqualTo(3));
@@ -155,6 +218,49 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(ThinkingSpacePreferencesStore.NormalizeVoiceProfile("raw-voice-id"),Is.Null);
         }
 
+        [TestCase("explicit","en","orby-en")]
+        [TestCase("explicit","es","orby-es")]
+        [TestCase("explicit","fr","orby-fr")]
+        [TestCase("explicit","zh-CN","orby-zh")]
+        [TestCase("explicit","hi-IN","orby-hi")]
+        [TestCase("auto",null,"orby-auto")]
+        public void ConversationLanguageAndVoiceProfilePersistAtomically(string mode,string language,string profile)
+        {
+            var preferences=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(preferences.SetConversationLanguageAndVoiceProfile(mode,language,profile),Is.True);
+            var restored=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(restored.Data.ConversationLanguageMode,Is.EqualTo(mode));
+            Assert.That(restored.Data.ConversationLanguageCode,Is.EqualTo(language??string.Empty));
+            Assert.That(restored.Data.VoiceProfileId,Is.EqualTo(profile));
+        }
+
+        [Test]
+        public void MismatchedConversationVoiceProfileIsRejectedWithoutPartialSave()
+        {
+            var preferences=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(preferences.SetConversationLanguageAndVoiceProfile("explicit","es","orby-fr"),Is.False);
+            var restored=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(restored.Data.ConversationLanguageMode,Is.EqualTo("auto"));
+            Assert.That(restored.Data.VoiceProfileId,Is.EqualTo("orby-auto"));
+        }
+
+        [Test]
+        public void ExistingMismatchedLanguageProfileIsRepairedOnLoad()
+        {
+            File.WriteAllText(Path.Combine(directory,ThinkingSpacePreferencesStore.FileName),
+                "{\"SchemaVersion\":5,\"ConversationLanguageMode\":\"explicit\","+
+                "\"ConversationLanguageCode\":\"es\",\"VoiceProfileId\":\"orby-fr\"}");
+            var restored=new ThinkingSpacePreferencesStore(directory);
+            Assert.That(restored.Data.ConversationLanguageCode,Is.EqualTo("es"));
+            Assert.That(restored.Data.VoiceProfileId,Is.EqualTo("orby-es"));
+        }
+
+        [TestCase("你好，欢迎回来。","Fonts/NotoSansCJKsc-Regular SDF")]
+        [TestCase("नमस्ते, फिर मिलते हैं।","Fonts/NotoSansDevanagari-Regular SDF")]
+        [TestCase("Bonjour",null)]
+        public void SubtitleTextSelectsScriptSpecificRuntimeFont(string value,string expected)
+            =>Assert.That(ThinkingSpace.Companion.OrbySubtitleView.FontResourcePathForText(value),Is.EqualTo(expected));
+
         [Test]
         public void DefaultAutoRequestOmitsLanguageFieldsForLegacyBackend()
         {
@@ -168,19 +274,23 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(json,Does.Not.Contain("input_language"));
         }
 
-        [Test]
-        public void ExplicitConversationSettingsSerializeStageAContract()
+        [TestCase("en","orby-en")]
+        [TestCase("es","orby-es")]
+        [TestCase("fr","orby-fr")]
+        [TestCase("zh-CN","orby-zh")]
+        [TestCase("hi-IN","orby-hi")]
+        public void ExplicitConversationSettingsSerializeStageAContract(string language,string profile)
         {
             var settings=new ThinkingSpacePreferencesData
-            {ConversationLanguageMode="explicit",ConversationLanguageCode="fr",VoiceProfileId="orby-fr"};
+            {ConversationLanguageMode="explicit",ConversationLanguageCode=language,VoiceProfileId=profile};
             var context=new ConversationContextPayload();
             ThinkingSpaceAIWorkflowController.ApplyLanguagePreferences(context,settings);
             string json=AIRequestJsonSerializer.Serialize(new ConversationProcessRequest
-            {request_id="request-fr",session_id="Session 1",raw_transcript="Bonjour",context=context});
-            Assert.That(json,Does.Contain("\"response_language\":\"fr\""));
+            {request_id="request-language",session_id="Session 1",raw_transcript="Synthetic",context=context});
+            Assert.That(json,Does.Contain("\"response_language\":\""+language+"\""));
             Assert.That(json,Does.Contain("\"response_language_mode\":\"explicit\""));
-            Assert.That(json,Does.Contain("\"voice_profile_id\":\"orby-fr\""));
-            Assert.That(json,Does.Not.Contain("input_language\":\"fr"));
+            Assert.That(json,Does.Contain("\"voice_profile_id\":\""+profile+"\""));
+            Assert.That(json,Does.Not.Contain("\"input_language\":\""+language+"\""));
         }
 
         [Test]
@@ -202,6 +312,111 @@ namespace ThinkingSpace.Tests.Editor
                 Assert.That(controller.RequestInterfaceLanguageChange("zh-CN"),Is.False);
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        [Test]
+        public void FriendlyWorkflowErrorsAreLocalizedWithoutProviderDetails()
+        {
+            string[] keys={"error.recoverable_title","error.network_unavailable",
+                "error.ai_processing_failed","error.speech_not_understood",
+                "error.unsupported_capability","error.generation_failed","error.session_safe",
+                "common.dismiss","hud.mic_off_finishing"};
+            foreach(string key in keys)
+            {
+                Assert.That(ThinkingSpaceLocalizationController.TranslateForLanguage("en",key),Is.Not.Empty,key);
+                Assert.That(ThinkingSpaceLocalizationController.TranslateForLanguage("es",key),Is.Not.Empty,key);
+                Assert.That(ThinkingSpaceLocalizationController.TranslateForLanguage("fr",key),Is.Not.Empty,key);
+            }
+            Assert.That(WorkflowStatusPresenter.MessageKey(
+                RecoverableWorkflowFailureKind.NetworkUnavailable),Is.EqualTo("error.network_unavailable"));
+            Assert.That(WorkflowStatusPresenter.ClassifyTransportFailure(503),
+                Is.EqualTo(RecoverableWorkflowFailureKind.NetworkUnavailable));
+            Assert.That(WorkflowStatusPresenter.ClassifyTransportFailure(422),
+                Is.EqualTo(RecoverableWorkflowFailureKind.SpeechRecognitionFailed));
+            Assert.That(WorkflowStatusPresenter.ClassifyTransportFailure(0, "WAV payload is invalid"),
+                Is.EqualTo(RecoverableWorkflowFailureKind.SpeechRecognitionFailed));
+            Assert.That(WorkflowStatusPresenter.ClassifyTransportFailure(0, "Network connection failed"),
+                Is.EqualTo(RecoverableWorkflowFailureKind.NetworkUnavailable));
+            Assert.That(WorkflowStatusPresenter.ClassifyAiFailure(0, "response_validation"),
+                Is.EqualTo(RecoverableWorkflowFailureKind.AiProcessingFailed));
+        }
+
+        [Test]
+        public void DisabledDevAgentCredentialGuardClearsOnlyDisabledCredentials()
+        {
+            var fixture=ScriptableObject.CreateInstance<DevAgentSettingsFixture>();
+            try
+            {
+                fixture.enabled=false;
+                fixture.accessToken="placeholder-local-token";
+                fixture.preservedSetting="unchanged";
+                var serialized=new SerializedObject(fixture);
+                Assert.That(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard
+                    .TrySanitizeSerializedObject(serialized,out bool enabled,out bool changed),Is.True);
+                Assert.That(enabled,Is.False);
+                Assert.That(changed,Is.True);
+                Assert.That(fixture.accessToken,Is.Empty);
+                Assert.That(fixture.preservedSetting,Is.EqualTo("unchanged"));
+
+                fixture.enabled=true;
+                fixture.accessToken="placeholder-enabled-token";
+                serialized.Update();
+                Assert.That(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard
+                    .TrySanitizeSerializedObject(serialized,out enabled,out changed),Is.True);
+                Assert.That(enabled,Is.True);
+                Assert.That(changed,Is.False);
+                Assert.That(fixture.accessToken,Is.EqualTo("placeholder-enabled-token"));
+                Assert.That(new ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard().callbackOrder,
+                    Is.EqualTo(int.MaxValue));
+                Assert.That(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard
+                    .IsProjectCredentialEmpty(),Is.True,
+                    "The disabled project DevAgent asset must remain credential-free after Editor initialization.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(fixture); }
+        }
+
+        [Test]
+        public void DisabledDevAgentPrebuildGuardRemovesInjectedPlaceholder()
+        {
+            ScriptableObject settings=AssetDatabase.LoadAssetAtPath<ScriptableObject>(
+                ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard.SettingsAssetPath);
+            Assert.That(settings,Is.Not.Null);
+            var serialized=new SerializedObject(settings);
+            SerializedProperty enabled=serialized.FindProperty("enabled");
+            SerializedProperty token=serialized.FindProperty("accessToken");
+            Assert.That(enabled,Is.Not.Null);
+            Assert.That(token,Is.Not.Null);
+            Assert.That(enabled.boolValue,Is.False,"This safeguard test requires DevAgent to be disabled.");
+            try
+            {
+                token.stringValue="placeholder-build-injection";
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                new ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard().OnPreprocessBuild(null);
+                Assert.That(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard
+                    .IsProjectCredentialEmpty(),Is.True);
+            }
+            finally
+            {
+                serialized.Update();
+                token=serialized.FindProperty("accessToken");
+                if(token!=null){token.stringValue=string.Empty;serialized.ApplyModifiedPropertiesWithoutUndo();}
+                EditorUtility.SetDirty(settings);
+                AssetDatabase.SaveAssetIfDirty(settings);
+            }
+        }
+
+        [Test]
+        public void DisabledDevAgentSerializationCleanupPreservesOtherBytesAndNewlines()
+        {
+            string path=Path.Combine(directory,"DevAgentSettings.asset");
+            byte[] original=System.Text.Encoding.UTF8.GetBytes(
+                "enabled: 0\r\n  accessToken: \r\n  serverPort: 48735\r\n");
+            File.WriteAllBytes(path,original);
+            Assert.That(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard
+                .NormalizeEmptyCredentialLine(path),Is.True);
+            byte[] expected=System.Text.Encoding.UTF8.GetBytes(
+                "enabled: 0\r\n  accessToken:\r\n  serverPort: 48735\r\n");
+            Assert.That(File.ReadAllBytes(path),Is.EqualTo(expected));
         }
     }
 }

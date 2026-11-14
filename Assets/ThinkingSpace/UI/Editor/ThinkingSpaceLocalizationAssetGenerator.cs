@@ -37,9 +37,18 @@ namespace ThinkingSpace.Editor
             Populate(collection,french,"fr");
             Populate(collection,mandarin,"zh-CN");
             EnsureChineseFont();
+            EnsureDevanagariFont();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("Generated Thinking Space localization tables for en, es, fr and prepared-only zh-CN. hi-IN remains registration-only.");
+        }
+
+        public static void GenerateSubtitleFonts()
+        {
+            EnsureChineseFont();
+            EnsureDevanagariFont();
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
         }
 
         public static void BuildDevelopmentApk()
@@ -114,11 +123,11 @@ namespace ThinkingSpace.Editor
         private static void EnsureChineseFont()
         {
             const string sourcePath="Assets/ThinkingSpace/UI/Fonts/NotoSansSC/NotoSansCJKsc-Regular.otf";
-            const string assetPath="Assets/ThinkingSpace/UI/Fonts/NotoSansSC/NotoSansCJKsc-Regular SDF.asset";
+            const string assetPath="Assets/ThinkingSpace/Resources/Fonts/NotoSansCJKsc-Regular SDF.asset";
             TMPro.TMP_FontAsset existing=AssetDatabase.LoadAssetAtPath<TMPro.TMP_FontAsset>(assetPath);
             if(existing!=null&&existing.atlasTextures!=null&&existing.atlasTextures.Length>0
                 &&existing.atlasTextures[0]!=null&&existing.material!=null)
-            {RegisterFallback(existing);return;}
+            {return;}
             if(existing!=null)AssetDatabase.DeleteAsset(assetPath);
             Font source=AssetDatabase.LoadAssetAtPath<Font>(sourcePath);
             if(source==null){Debug.LogWarning("Noto Sans CJK SC source font is missing.");return;}
@@ -131,16 +140,31 @@ namespace ThinkingSpace.Editor
                 foreach(Texture2D atlas in font.atlasTextures)
                     if(atlas!=null)AssetDatabase.AddObjectToAsset(atlas,font);
             EditorUtility.SetDirty(font);
-            RegisterFallback(font);
+            // Subtitles resolve this asset directly from Resources. Keeping it out of the
+            // global fallback table avoids loading a large script font for every UI panel.
         }
 
-        private static void RegisterFallback(TMPro.TMP_FontAsset font)
+        private static void EnsureDevanagariFont()
         {
-            TMPro.TMP_FontAsset root=TMPro.TMP_Settings.defaultFontAsset;
-            if(root==null||font==null||root==font)return;
-            root.fallbackFontAssetTable??=new System.Collections.Generic.List<TMPro.TMP_FontAsset>();
-            if(!root.fallbackFontAssetTable.Contains(font))root.fallbackFontAssetTable.Add(font);
-            EditorUtility.SetDirty(root);
+            const string sourcePath="Assets/ThinkingSpace/UI/Fonts/NotoSansDevanagari/NotoSansDevanagari-Regular.ttf";
+            const string assetPath="Assets/ThinkingSpace/Resources/Fonts/NotoSansDevanagari-Regular SDF.asset";
+            TMPro.TMP_FontAsset existing=AssetDatabase.LoadAssetAtPath<TMPro.TMP_FontAsset>(assetPath);
+            if(existing!=null&&existing.atlasTextures!=null&&existing.atlasTextures.Length>0
+                &&existing.atlasTextures[0]!=null&&existing.material!=null)
+            {return;}
+            if(existing!=null)AssetDatabase.DeleteAsset(assetPath);
+            Font source=AssetDatabase.LoadAssetAtPath<Font>(sourcePath);
+            if(source==null){Debug.LogWarning("Noto Sans Devanagari source font is missing.");return;}
+            TMPro.TMP_FontAsset font=TMPro.TMP_FontAsset.CreateFontAsset(source);
+            font.atlasPopulationMode=TMPro.AtlasPopulationMode.Dynamic;
+            font.name="NotoSansDevanagari-Regular SDF";
+            AssetDatabase.CreateAsset(font,assetPath);
+            if(font.material!=null)AssetDatabase.AddObjectToAsset(font.material,font);
+            if(font.atlasTextures!=null)
+                foreach(Texture2D atlas in font.atlasTextures)
+                    if(atlas!=null)AssetDatabase.AddObjectToAsset(atlas,font);
+            EditorUtility.SetDirty(font);
+            // Resolved directly by OrbySubtitleView; do not register globally.
         }
 
         private static void EnsureFolder(string parent,string child)

@@ -120,7 +120,17 @@ namespace ThinkingSpace.UI
         [Header("Backend Capabilities")]
         [Tooltip("Enable only after the multilingual conversation backend contract is deployed and verified.")]
         [SerializeField] private bool multilingualBackendContractEnabled;
-        public bool MultilingualBackendContractEnabled=>multilingualBackendContractEnabled;
+        public bool MultilingualBackendContractEnabled
+        {
+            get
+            {
+#if DEVELOPMENT_BUILD
+                return true;
+#else
+                return multilingualBackendContractEnabled;
+#endif
+            }
+        }
 
         [Header("Open Palm Diagnostics")]
         [SerializeField] private bool showOpenPalmDiagnostics;
@@ -2405,10 +2415,10 @@ namespace ThinkingSpace.UI
         public bool SetConversationLanguage(string mode,string languageCode,string voiceProfileId)
         {
             if(preferencesStore==null)preferencesStore=ThinkingSpacePreferencesStore.CreateForApplication();
-            if(!multilingualBackendContractEnabled&&!string.Equals(mode,"auto",StringComparison.OrdinalIgnoreCase))
+            if(!MultilingualBackendContractEnabled&&!string.Equals(mode,"auto",StringComparison.OrdinalIgnoreCase))
             {interactionDiagnostic="Explicit conversation languages require the multilingual backend deployment.";return false;}
-            if(!preferencesStore.SetConversationLanguage(mode,languageCode))return false;
-            if(!preferencesStore.SetVoiceProfileId(voiceProfileId))return false;
+            if(!preferencesStore.SetConversationLanguageAndVoiceProfile(mode,languageCode,voiceProfileId))
+            {interactionDiagnostic="Conversation language/profile selection was rejected without changing saved preferences.";return false;}
             authoredView?.RefreshLocalization();
             interactionDiagnostic="Conversation language: "+preferencesStore.Data.ConversationLanguageMode+
                 " · "+(string.IsNullOrEmpty(preferencesStore.Data.ConversationLanguageCode)?"backend default":preferencesStore.Data.ConversationLanguageCode)+
