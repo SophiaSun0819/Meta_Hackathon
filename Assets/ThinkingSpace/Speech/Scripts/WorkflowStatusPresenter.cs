@@ -2,7 +2,6 @@ using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
-using Oculus.Interaction;
 using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
@@ -22,15 +21,18 @@ namespace ThinkingSpace.Speech
         private Button retryButton, dismissButton;
         private Action retryAction, dismissAction;
         private float shownAt;
+        private RecoverableWorkflowFailureKind visibleKind;
+        private bool visibleRetainedInput;
         public bool IsVisible => canvas != null && canvas.gameObject.activeSelf;
 
         private void Awake(){Build();canvas.gameObject.SetActive(false);}
+        private void OnEnable()=>ThinkingSpaceLocalizationController.InterfaceLanguageChanged+=HandleLanguageChanged;
+        private void OnDisable()=>ThinkingSpaceLocalizationController.InterfaceLanguageChanged-=HandleLanguageChanged;
         public void SetHeadset(Transform value)=>headset=value;
         public void ShowRecoverable(RecoverableWorkflowFailureKind kind,Action retry,Action dismiss,bool retainedInput)
         {
-            if(canvas==null)Build();retryAction=retry;dismissAction=dismiss;
-            heading.text=L("error.recoverable_title");
-            body.text=L(MessageKey(kind))+(retainedInput?"\n"+L("error.session_safe"):string.Empty);
+            if(canvas==null)Build();retryAction=retry;dismissAction=dismiss;visibleKind=kind;visibleRetainedInput=retainedInput;
+            RefreshLocalizedContent();
             ConfigureButton(retryButton,L("common.retry"),retry!=null);
             ConfigureButton(dismissButton,L("common.dismiss"),dismiss!=null);
             shownAt=Time.unscaledTime;canvas.gameObject.SetActive(true);PositionAtHeadset();
@@ -71,19 +73,30 @@ namespace ThinkingSpace.Speech
         {
             GameObject root=new GameObject("Recoverable Workflow Status",typeof(RectTransform));root.transform.SetParent(transform,false);
             canvas=root.AddComponent<Canvas>();canvas.renderMode=RenderMode.WorldSpace;canvas.overrideSorting=true;canvas.sortingOrder=75;
-            root.AddComponent<GraphicRaycaster>();PointableCanvas pointable=root.AddComponent<PointableCanvas>();pointable.InjectAllPointableCanvas(canvas);
+            root.AddComponent<GraphicRaycaster>();
             RectTransform rect=root.GetComponent<RectTransform>();rect.sizeDelta=new Vector2(520f,185f);rect.localScale=Vector3.one*canvasScale;
-            root.AddComponent<Image>().color=new Color(.035f,.055f,.09f,.97f);
+            root.AddComponent<Image>();root.AddComponent<CompactPanel>();
+            MetaHandInteractionAdapter interaction=root.AddComponent<MetaHandInteractionAdapter>();interaction.Configure(canvas,rect);
             heading=Label("Heading",rect,new Vector2(.05f,.70f),new Vector2(.95f,.93f),30f);
             body=Label("Message",rect,new Vector2(.06f,.28f),new Vector2(.94f,.70f),23f);body.alignment=TextAlignmentOptions.MidlineLeft;
             retryButton=MakeButton("Retry",rect,new Vector2(.08f,.06f),new Vector2(.46f,.24f));
             dismissButton=MakeButton("Dismiss",rect,new Vector2(.54f,.06f),new Vector2(.92f,.24f));
+            retryButton.gameObject.AddComponent<PrimaryButton>();dismissButton.gameObject.AddComponent<SecondaryButton>();
             retryButton.onClick.AddListener(()=>{Action action=retryAction;Hide();action?.Invoke();});
             dismissButton.onClick.AddListener(()=>{Action action=dismissAction;Hide();action?.Invoke();});
         }
         private static TMP_Text Label(string name,RectTransform parent,Vector2 min,Vector2 max,float size){GameObject value=new GameObject(name,typeof(RectTransform),typeof(TextMeshProUGUI));value.transform.SetParent(parent,false);RectTransform rect=value.GetComponent<RectTransform>();rect.anchorMin=min;rect.anchorMax=max;rect.offsetMin=rect.offsetMax=Vector2.zero;TMP_Text text=value.GetComponent<TMP_Text>();text.fontSize=size;text.color=Color.white;text.alignment=TextAlignmentOptions.Center;text.enableAutoSizing=false;text.raycastTarget=false;return text;}
         private static Button MakeButton(string name,RectTransform parent,Vector2 min,Vector2 max){GameObject value=new GameObject(name,typeof(RectTransform),typeof(Image),typeof(Button));value.transform.SetParent(parent,false);RectTransform rect=value.GetComponent<RectTransform>();rect.anchorMin=min;rect.anchorMax=max;rect.offsetMin=rect.offsetMax=Vector2.zero;value.GetComponent<Image>().color=new Color(.11f,.2f,.32f,1f);Label("Label",rect,Vector2.zero,Vector2.one,24f);return value.GetComponent<Button>();}
         private static void ConfigureButton(Button button,string text,bool visible){if(button==null)return;button.gameObject.SetActive(visible);button.interactable=visible;TMP_Text label=button.GetComponentInChildren<TMP_Text>(true);if(label!=null)label.text=text;}
+        private void HandleLanguageChanged(string _){if(IsVisible)RefreshLocalizedContent();}
+        private void RefreshLocalizedContent()
+        {
+            if(heading==null||body==null)return;
+            heading.text=L("error.recoverable_title");
+            body.text=L(MessageKey(visibleKind))+(visibleRetainedInput?"\n"+L("error.session_safe"):string.Empty);
+            ConfigureButton(retryButton,L("common.retry"),retryAction!=null);
+            ConfigureButton(dismissButton,L("common.dismiss"),dismissAction!=null);
+        }
         private static string L(string key)=>ThinkingSpaceLocalizationController.Get(key);
     }
 }

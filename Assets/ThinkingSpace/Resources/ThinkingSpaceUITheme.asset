@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f1b3c32dfe64e89a66448ee0f98f53a, type: 3}
+  m_Name: ThinkingSpaceUITheme
+  m_EditorClassIdentifier:
+  panelBackground: {fileID: 21300000, guid: ebf9e47b2a26f544aa2fa9cb3a11190b, type: 3}
+  panelFrame: {fileID: 21300000, guid: 77d3c62c476ec1b4a8057b7591ff68d1, type: 3}
+  buttonNormal: {fileID: 21300000, guid: a8292d7c3170a7348accf3d85c0e7359, type: 3}
+  buttonHover: {fileID: 21300000, guid: a4fde6e0b21dc224d813ee493157874f, type: 3}
+  buttonPressed: {fileID: 21300000, guid: e5a390d359542f845bd18b3970c5eff3, type: 3}
+  buttonSelected: {fileID: 21300000, guid: 9e2ea1cb70ae8cf41a3db001d7b7cebb, type: 3}
+  navigationArrow: {fileID: 21300000, guid: 603eabcd71ec55e41be090a50f8b646e, type: 3}
+  panelColor: {r: 0.025, g: 0.045, b: 0.075, a: 0.96}
+  primaryColor: {r: 0.08, g: 0.52, b: 0.72, a: 1}
+  secondaryColor: {r: 0.11, g: 0.2, b: 0.32, a: 1}
+  selectedColor: {r: 1, g: 0.62, b: 0.16, a: 1}
+  disabledColor: {r: 0.18, g: 0.21, b: 0.25, a: 0.72}
+  textColor: {r: 1, g: 1, b: 1, a: 1}
+  borderColor: {r: 0.08, g: 0.42, b: 0.62, a: 0.82}
+  minimumHitHeight: 72
+  safePadding: 28
