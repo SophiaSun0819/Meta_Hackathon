@@ -12,6 +12,7 @@ namespace ThinkingSpace.Pairing
         private BrainstormMenuView view;
         private Action returnToMain;
         private bool showing;
+        private DateTime nextLocalPollUtc;
 
         public QuestPairingUiState State => stateMachine.State;
 
@@ -35,7 +36,24 @@ namespace ThinkingSpace.Pairing
 
         private void Update()
         {
-            if (showing) stateMachine.Tick(DateTime.UtcNow);
+            if (!showing) return;
+            DateTime now=DateTime.UtcNow;
+            stateMachine.Tick(now);
+            if(stateMachine.State==QuestPairingUiState.WaitingForWebsite
+                &&transport is LocalQuestPairingTransport local&&now>=nextLocalPollUtc)
+            {
+                nextLocalPollUtc=now.AddMilliseconds(JudgeAccountSyncContract.PollAfterMilliseconds);
+                QuestPairingSnapshot snapshot=stateMachine.Snapshot(now);
+                if(local.TryGetStatus(snapshot.RequestId,now,out LocalPairingStatus status))
+                {
+                    if(status.Status==PairingChallengeStatus.CLAIMED)
+                        stateMachine.ReceiveWebsiteConfirmation(status.SafeAccountLabel,now);
+                    else if(status.Status==PairingChallengeStatus.EXPIRED)
+                        stateMachine.Tick(now.AddSeconds(JudgeAccountSyncContract.PairingTtlSeconds));
+                    else if(status.Status==PairingChallengeStatus.CANCELLED)
+                        stateMachine.Fail("pairing.failed.body",now);
+                }
+            }
         }
 
         private void OnDestroy() => stateMachine.Changed -= HandleChanged;
@@ -73,13 +91,20 @@ namespace ThinkingSpace.Pairing
                     stateMachine.BeginWaiting(now);
                     break;
                 case QuestPairingUiState.AwaitingQuestConfirmation:
-                    stateMachine.ConfirmAccount(true, now);
+                    if(transport is LocalQuestPairingTransport local)
+                    {
+                        string requestId=stateMachine.Snapshot(now).RequestId;
+                        if(local.ConfirmAndActivate(requestId,true))stateMachine.ConfirmAccount(true,now);
+                        else stateMachine.Fail("pairing.failed.body",now);
+                    }
+                    else stateMachine.ConfirmAccount(true, now);
                     break;
                 case QuestPairingUiState.Paired:
                     showing = false;
                     returnToMain?.Invoke();
                     break;
                 case QuestPairingUiState.UnpairConfirmation:
+                    if(transport is LocalQuestPairingTransport localUnpair)localUnpair.Unpair();
                     stateMachine.ConfirmUnpair(true, now);
                     break;
             }
