@@ -1,0 +1,137 @@
+{
+  "capability_negotiation": {
+    "offer": {
+      "contract_versions": ["1.0", "1.1"],
+      "capabilities": ["companion_navigation.v1"],
+      "platform": "quest_3d"
+    },
+    "enabled_selection": {
+      "active_contract_version": "1.1",
+      "enabled_capabilities": ["companion_navigation.v1"],
+      "command_max_age_ms": 30000,
+      "acknowledgement_required": true
+    },
+    "disabled_selection": {
+      "active_contract_version": "1.0",
+      "enabled_capabilities": [],
+      "command_max_age_ms": 30000,
+      "acknowledgement_required": false
+    }
+  },
+  "authenticated_session_binding": {
+    "session_id": "Session 1",
+    "subject_id": "user-golden",
+    "client_instance_id": "quest-golden",
+    "authenticated_at_ms": 90000,
+    "expires_at_ms": 200000
+  },
+  "cases": [
+    {
+      "name": "follow",
+      "command_fixture": "follow_user",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": ["idea-solar", "idea-garden"],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-follow-001","session_id":"Session 1","operation_id":"op-nav-follow-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-follow-001","session_id":"Session 1","operation_id":"op-nav-follow-001","action":"follow_user","target_idea_ids":[],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "approach_idea",
+      "command_fixture": "approach_idea",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": ["idea-solar", "idea-garden"],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-idea-001","session_id":"Session 1","operation_id":"op-nav-idea-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-idea-001","session_id":"Session 1","operation_id":"op-nav-idea-001","action":"approach_idea","target_idea_ids":["idea-solar"],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "reposition",
+      "command_fixture": "reposition",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-position-001","session_id":"Session 1","operation_id":"op-nav-position-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-position-001","session_id":"Session 1","operation_id":"op-nav-position-001","action":"reposition_companion","target_idea_ids":[],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "home",
+      "command_fixture": "return_home",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-home-001","session_id":"Session 1","operation_id":"op-nav-home-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-home-001","session_id":"Session 1","operation_id":"op-nav-home-001","action":"return_companion_home","target_idea_ids":[],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "stop",
+      "command_fixture": "stop",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": true,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-stop-001","session_id":"Session 1","operation_id":"op-nav-stop-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-stop-001","session_id":"Session 1","operation_id":"op-nav-stop-001","action":"stop_companion_navigation","target_idea_ids":[],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "resume",
+      "command_fixture": "resume",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": true,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-resume-001","session_id":"Session 1","operation_id":"op-nav-resume-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-resume-001","session_id":"Session 1","operation_id":"op-nav-resume-001","action":"resume_companion_navigation","target_idea_ids":[],"status":"completed","failure_code":null}
+    },
+    {
+      "name": "interruption",
+      "command_fixture": "follow_user",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-follow-001","session_id":"Session 1","operation_id":"op-nav-follow-001","status":"accepted","failure_code":null},
+      "result": {"contract_version":"1.1","request_id":"nav-follow-001","session_id":"Session 1","operation_id":"op-nav-follow-001","action":"follow_user","target_idea_ids":[],"status":"interrupted","failure_code":"interrupted_by_new_command"}
+    },
+    {
+      "name": "stale",
+      "command_fixture": "follow_user",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 130001,
+      "known_idea_ids": [],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-follow-001","session_id":"Session 1","operation_id":null,"status":"rejected","failure_code":"stale_command"}
+    },
+    {
+      "name": "ambiguous",
+      "command_fixture": "ambiguous_target",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": ["idea-solar", "idea-garden"],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-ambiguous-001","session_id":"Session 1","operation_id":null,"status":"rejected","failure_code":"not_authorized"}
+    },
+    {
+      "name": "rejected",
+      "command_fixture": "unavailable_destination",
+      "enabled": true,
+      "received_at_ms": 100000,
+      "now_ms": 100001,
+      "known_idea_ids": [],
+      "resumable": false,
+      "acknowledgement": {"contract_version":"1.1","request_id":"nav-unavailable-001","session_id":"Session 1","operation_id":null,"status":"rejected","failure_code":"not_authorized"}
+    }
+  ]
+}
