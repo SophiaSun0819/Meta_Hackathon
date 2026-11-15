@@ -1,0 +1,3 @@
+Exported from the approved WEB-024/026 Quest UI Design Kit on 2026-11-14.
+Source: Quest_UI_Design_Kit/assets (thinking-space-orb.svg, gesture-hand.svg, ui-symbols.svg).
+Project-owned Thinking Space artwork. PNG exports contain no text.

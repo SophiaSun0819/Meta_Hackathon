@@ -1,0 +1,2 @@
+using TMPro; using UnityEngine; using UnityEngine.UI;
+namespace ThinkingSpace.UI.DesignKit { public sealed class QuestUIIdeaDetailView:MonoBehaviour { [SerializeField] private TMP_Text title,metadata,description; [SerializeField] private Button challenge,expand,connect; public void Configure(TMP_Text a,TMP_Text b,TMP_Text c,Button d,Button e,Button f){title=a;metadata=b;description=c;challenge=d;expand=e;connect=f;} public void SetContent(string a,string b,string c){if(title!=null)title.text=a;if(metadata!=null)metadata.text=b;if(description!=null)description.text=c;} } }
