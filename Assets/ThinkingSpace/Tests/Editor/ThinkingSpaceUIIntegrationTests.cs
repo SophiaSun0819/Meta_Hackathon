@@ -4,6 +4,8 @@ using ThinkingSpace.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Oculus.Interaction;
+using Oculus.Interaction.HandGrab;
 
 namespace ThinkingSpace.Tests.Editor
 {
@@ -118,26 +120,23 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void PanelManipulatorMovesOnlyAfterDeliberatePointerDrag()
+        public void PanelManipulatorUsesDedicatedMetaNearAndDistanceGrabHandle()
         {
-            GameObject eventOwner=new GameObject("Event System",typeof(EventSystem));
             GameObject root=new GameObject("Movable Panel",typeof(RectTransform),typeof(Image));
             try
             {
-                RectTransform rect=root.GetComponent<RectTransform>();
+                RectTransform rect=root.GetComponent<RectTransform>();rect.sizeDelta=new Vector2(1000f,700f);
                 WorldSpacePanelManipulator handle=WorldSpacePanelManipulator.Attach(rect);
-                PointerEventData pointer=new PointerEventData(eventOwner.GetComponent<EventSystem>());
-                pointer.pointerCurrentRaycast=new RaycastResult{gameObject=handle.gameObject,worldPosition=Vector3.zero};
-                handle.OnPointerDown(pointer);handle.OnBeginDrag(pointer);
-                pointer.pointerCurrentRaycast=new RaycastResult{gameObject=handle.gameObject,worldPosition=new Vector3(.02f,.01f,0f)};
-                handle.OnDrag(pointer);
-                Assert.That(handle.IsDragging,Is.True);
-                Assert.That(handle.HasManualPlacement,Is.True);
-                Assert.That(rect.position,Is.EqualTo(new Vector3(.02f,.01f,0f)));
-                handle.OnEndDrag(pointer);
-                Assert.That(handle.IsDragging,Is.False);
+                Assert.That(root.GetComponent<Grabbable>(),Is.Not.Null);
+                Assert.That(root.GetComponent<StablePanelGrabTransformer>(),Is.Not.Null);
+                Assert.That(handle.GetComponent<HandGrabInteractable>(),Is.Not.Null);
+                Assert.That(handle.GetComponent<DistanceGrabInteractable>(),Is.Not.Null);
+                Assert.That(handle.GetComponent<BoxCollider>(),Is.Not.Null);
+                RectTransform handleRect=handle.transform as RectTransform;
+                Assert.That(handleRect.anchorMax.x-handleRect.anchorMin.x,Is.InRange(.8f,.9f));
+                Assert.That((handleRect.anchorMax.y-handleRect.anchorMin.y)*rect.rect.height,Is.GreaterThanOrEqualTo(30f));
             }
-            finally{Object.DestroyImmediate(root);Object.DestroyImmediate(eventOwner);}
+            finally{Object.DestroyImmediate(root);}
         }
 
         [Test]

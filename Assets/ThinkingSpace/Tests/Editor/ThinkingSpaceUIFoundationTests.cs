@@ -41,13 +41,20 @@ namespace ThinkingSpace.Tests.Editor
             {
                 CompactPanel panel=root.AddComponent<CompactPanel>();panel.ApplyVisuals();
                 Image background=root.GetComponent<Image>();
-                Assert.That(background.sprite,Is.Not.Null);
+                Assert.That(background.sprite,Is.Null,
+                    "The root image is the opaque interaction backplate, not decorative artwork.");
                 Assert.That(background.type,Is.EqualTo(Image.Type.Simple),
+                    "The opaque backplate must remain a simple image.");
+                Assert.That(background.color.a,Is.InRange(.92f,.96f));
+                Image[] images=root.GetComponentsInChildren<Image>(true);Assert.That(images.Length,Is.EqualTo(6));
+                Transform decoration=root.transform.Find("SlimUI Decoration");
+                Assert.That(decoration,Is.Not.Null);
+                Image decorationImage=decoration.GetComponent<Image>();
+                Assert.That(decorationImage.sprite,Is.Not.Null);
+                Assert.That(decorationImage.type,Is.EqualTo(Image.Type.Simple),
                     "Zero-border SlimUI artwork must not be treated as a sliced sprite.");
-                Assert.That(background.preserveAspect,Is.True,
-                    "Zero-border SlimUI artwork must retain its authored aspect ratio.");
-                Image[] images=root.GetComponentsInChildren<Image>(true);Assert.That(images.Length,Is.EqualTo(5));
-                for(int index=1;index<images.Length;index++)Assert.That(images[index].raycastTarget,Is.False);
+                Assert.That(decorationImage.raycastTarget,Is.False);
+                foreach(Image image in images)if(image!=background)Assert.That(image.raycastTarget,Is.False);
             }
             finally{Object.DestroyImmediate(root);}
         }

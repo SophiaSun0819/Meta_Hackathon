@@ -61,6 +61,7 @@ namespace ThinkingSpace.UI
         private Button subtitlesOnButton,subtitlesOffButton,editNameButton,replayTutorialButton;
         private Button sessionSubtitlesOnButton,sessionSubtitlesOffButton,sessionEditNameButton,sessionReplayTutorialButton;
         private Button mainWristLeftButton,mainWristRightButton,sessionWristLeftButton,sessionWristRightButton;
+        private Button mainRecenterButton,sessionRecenterButton;
         private TMP_Text mainWristLabel,sessionWristLabel;
         private Button mainEnglishButton,mainSpanishButton,mainFrenchButton;
         private Button sessionEnglishButton,sessionSpanishButton,sessionFrenchButton;
@@ -101,6 +102,7 @@ namespace ThinkingSpace.UI
         private void Awake()
         {
             Canvas = GetComponent<Canvas>();
+            if(CanvasRect!=null)CanvasRect.sizeDelta=new Vector2(1440f,960f);
             DisableScrolling(mainPanel);
             DisableScrolling(sessionPanel);
             CreatePageNavigation(mainPanel, mainCloseButton, out mainPreviousButton,
@@ -110,6 +112,7 @@ namespace ThinkingSpace.UI
             CreateAudioSettingsPage();
             CreateSessionAudioSettingsPage();
             CreateWristSettings();
+            CreateRecenterControls();
             ArrangeSessionHelpPage();
             CreateLanguageSettings();
             CreateConversationLanguageSettings(mainPanel,mainCloseButton,mainConversationLanguageButtons,
@@ -152,6 +155,7 @@ namespace ThinkingSpace.UI
             SetButtonLabel(sessionEditNameButton,L("settings.edit_name"));SetButtonLabel(sessionReplayTutorialButton,L("settings.replay_tutorial"));
             SetButtonLabel(mainWristLeftButton,L("settings.wrist.left"));SetButtonLabel(mainWristRightButton,L("settings.wrist.right"));
             SetButtonLabel(sessionWristLeftButton,L("settings.wrist.left"));SetButtonLabel(sessionWristRightButton,L("settings.wrist.right"));
+            SetButtonLabel(mainRecenterButton,L("menu.recenter"));SetButtonLabel(sessionRecenterButton,L("menu.recenter"));
             SetButtonLabel(importSessionButton,L("menu.session.import"));SetButtonLabel(exportSessionButton,L("menu.session.export"));
             SetButtonLabel(accountConnectionButton,L("pairing.account.title"));
             SetButtonLabel(mainEnglishButton,L("language.english"));SetButtonLabel(mainSpanishButton,L("language.spanish"));SetButtonLabel(mainFrenchButton,L("language.french"));
@@ -375,6 +379,7 @@ namespace ThinkingSpace.UI
             SetActive(mainLeftHandButton, settingsPage);
             SetActive(mainRightHandButton, settingsPage);
             SetActive(mainWristLeftButton,settingsPage);SetActive(mainWristRightButton,settingsPage);
+            SetActive(mainRecenterButton,settingsPage);
             if(mainWristLabel!=null)mainWristLabel.gameObject.SetActive(settingsPage);
             SetActive(mainCloseButton, settingsPage);
             SetActive(silenceMinusButton, audioPage); SetActive(silencePlusButton, audioPage);
@@ -442,14 +447,15 @@ namespace ThinkingSpace.UI
         {
             // Page two combines four authored help/hand buttons with the two runtime wrist controls.
             // Give every control an explicit row so localized labels cannot occupy the same space.
-            SetButtonRect(sessionVoiceButton,new Vector2(.08f,.64f),new Vector2(.47f,.75f));
-            SetButtonRect(sessionGesturesButton,new Vector2(.53f,.64f),new Vector2(.92f,.75f));
-            SetButtonRect(sessionLeftHandButton,new Vector2(.08f,.46f),new Vector2(.47f,.57f));
-            SetButtonRect(sessionRightHandButton,new Vector2(.53f,.46f),new Vector2(.92f,.57f));
+            SetButtonRect(sessionVoiceButton,new Vector2(.08f,.66f),new Vector2(.47f,.77f));
+            SetButtonRect(sessionGesturesButton,new Vector2(.53f,.66f),new Vector2(.92f,.77f));
+            SetButtonRect(sessionLeftHandButton,new Vector2(.08f,.50f),new Vector2(.47f,.61f));
+            SetButtonRect(sessionRightHandButton,new Vector2(.53f,.50f),new Vector2(.92f,.61f));
             if(sessionWristLabel!=null)SetRect(sessionWristLabel.rectTransform,
-                new Vector2(.08f,.32f),new Vector2(.92f,.40f));
-            SetButtonRect(sessionWristLeftButton,new Vector2(.08f,.18f),new Vector2(.47f,.29f));
-            SetButtonRect(sessionWristRightButton,new Vector2(.53f,.18f),new Vector2(.92f,.29f));
+                new Vector2(.08f,.40f),new Vector2(.92f,.47f));
+            SetButtonRect(sessionWristLeftButton,new Vector2(.08f,.28f),new Vector2(.47f,.38f));
+            SetButtonRect(sessionWristRightButton,new Vector2(.53f,.28f),new Vector2(.92f,.38f));
+            SetButtonRect(sessionRecenterButton,new Vector2(.34f,.14f),new Vector2(.66f,.24f));
             SetLabelRect(sessionPanel,"settings.recording_hand",
                 new Vector2(.08f,.79f),new Vector2(.92f,.88f));
             LimitButtonText(sessionVoiceButton,16f);LimitButtonText(sessionGesturesButton,16f);
@@ -533,6 +539,9 @@ namespace ThinkingSpace.UI
             string code=controller?.ConversationLanguageCode??string.Empty;
             SetButtonSelected(mainConversationAutoButton,mode=="auto");
             SetButtonSelected(sessionConversationAutoButton,mode=="auto");
+            if(mainConversationAutoButton!=null)mainConversationAutoButton.interactable=enabled;
+            if(sessionConversationAutoButton!=null)sessionConversationAutoButton.interactable=enabled;
+            if(!enabled){SetButtonSelected(mainConversationAutoButton,false);SetButtonSelected(sessionConversationAutoButton,false);}
             RefreshExplicitConversationButtons(mainConversationLanguageButtons,enabled,mode,code);
             RefreshExplicitConversationButtons(sessionConversationLanguageButtons,enabled,mode,code);
             string status=enabled?L("settings.conversation.active",
@@ -638,6 +647,12 @@ namespace ThinkingSpace.UI
             if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.wrist.title");
                 label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
                 SetRect(label.rectTransform,new Vector2(.08f,.24f),new Vector2(.92f,.34f));}
+        }
+
+        private void CreateRecenterControls()
+        {
+            if(mainPanel!=null&&mainCloseButton!=null){mainRecenterButton=Instantiate(mainCloseButton,mainPanel.transform);ConfigureNavigationButton(mainRecenterButton,L("menu.recenter"),new Vector2(.34f,.12f),new Vector2(.66f,.22f));BindButton(mainRecenterButton,()=>FindFirstObjectByType<BrainstormMenuController>()?.RecenterMenu());}
+            if(sessionPanel!=null&&sessionCloseButton!=null){sessionRecenterButton=Instantiate(sessionCloseButton,sessionPanel.transform);ConfigureNavigationButton(sessionRecenterButton,L("menu.recenter"),new Vector2(.34f,.14f),new Vector2(.66f,.24f));BindButton(sessionRecenterButton,()=>FindFirstObjectByType<BrainstormMenuController>()?.RecenterMenu());}
         }
 
         private void CreateSessionDeleteConfirmation()
@@ -809,6 +824,7 @@ namespace ThinkingSpace.UI
             SetActive(sessionLeftHandButton, helpAndHand);
             SetActive(sessionRightHandButton, helpAndHand);
             SetActive(sessionWristLeftButton,helpAndHand);SetActive(sessionWristRightButton,helpAndHand);
+            SetActive(sessionRecenterButton,helpAndHand);
             if(sessionWristLabel!=null)sessionWristLabel.gameObject.SetActive(helpAndHand);
             SetActive(sessionSilenceMinusButton,audioSettings);SetActive(sessionSilencePlusButton,audioSettings);
             SetActive(sessionConversationalButton,audioSettings);SetActive(sessionManualButton,audioSettings);

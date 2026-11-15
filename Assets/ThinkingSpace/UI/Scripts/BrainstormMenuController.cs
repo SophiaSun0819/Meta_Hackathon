@@ -68,6 +68,7 @@ namespace ThinkingSpace.UI
         [SerializeField, Range(0.1f,0.8f)] private float watchToggleCooldown = 0.35f;
         [SerializeField, Range(0.02f,0.16f)] private float menuFrameGrabRange = 0.105f;
         [SerializeField, Range(0.08f,0.35f)] private float menuGrabConfirmation = 0.16f;
+        [SerializeField] private bool legacyFistFrameGrabEnabled;
         [SerializeField, Range(0.01f,0.15f)] private float menuDragSmoothTime = 0.045f;
         [SerializeField, Range(0.03f,0.30f)] private float maximumWatchPositionJump = 0.12f;
         [SerializeField, Range(20f,120f)] private float maximumWatchRotationJump = 65f;
@@ -983,7 +984,7 @@ namespace ThinkingSpace.UI
 
             if(IsMenuVisible)
             {
-                UpdateMenuDrag();
+                if(legacyFistFrameGrabEnabled)UpdateMenuDrag();
                 if(menuPlacementState!=MenuPlacementState.Dragging&&menuGrabTimer<=0f)UpdateMenuCloseFist();
             }
         }
@@ -1941,8 +1942,8 @@ namespace ThinkingSpace.UI
 
         private void OpenMenu(OpeningHand owner, Vector3 handAnchor)
         {
-            menuOwner = owner;
-            menuPlacementState=MenuPlacementState.Attached;
+            menuOwner = OpeningHand.None;
+            menuPlacementState=MenuPlacementState.Detached;
             buttonOwner = owner;
             SetButtonState(MenuButtonState.WaitingForRelease, "Menu button clicked; full menu opened");
             buttonDismissalReason = "Menu button clicked; full menu opened";
@@ -1951,7 +1952,9 @@ namespace ThinkingSpace.UI
             gestureHoldTimer = sequenceTimer = trackingLossTimer = fistReleaseTimer = closeFistTimer = 0f;
             followVelocity = Vector3.zero;
             Transform headset = recordingGestureController.CenterEyeAnchor;
-            Vector3 position = ConstrainMenuPosition(GetMenuTargetPosition(handAnchor, headset), headset);
+            Vector3 position = headset!=null?ConstrainMenuPosition(
+                headset.TransformPoint(authoredTestHeadsetOffset),headset)
+                :ConstrainMenuPosition(GetMenuTargetPosition(handAnchor,headset),headset);
             menuCanvas.transform.position = position;
             FaceCanvasToHeadset(menuCanvas.transform, headset, true);
             menuCanvas.enabled = true;
@@ -1961,6 +1964,16 @@ namespace ThinkingSpace.UI
                 OrbyMenuPauseReason,true);
             ShowScreen(sessionStore.ActiveSession == null ? MenuScreen.Main : MenuScreen.Session);
             ValidateMenuVisibility(headset, "palm open callback");
+        }
+
+        public void RecenterMenu()
+        {
+            Transform headset=recordingGestureController!=null?recordingGestureController.CenterEyeAnchor:null;
+            if(headset==null||menuCanvas==null)return;
+            menuOwner=OpeningHand.None;menuPlacementState=MenuPlacementState.Detached;menuPoseLocked=false;
+            pointerMenuManipulator?.ResetManualPlacement();followVelocity=Vector3.zero;
+            menuCanvas.transform.position=ConstrainMenuPosition(headset.TransformPoint(authoredTestHeadsetOffset),headset);
+            FaceCanvasToHeadset(menuCanvas.transform,headset,true);
         }
 
         private void OpenMenuAtHeadset(Transform headset)

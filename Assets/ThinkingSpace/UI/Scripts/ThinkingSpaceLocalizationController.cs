@@ -78,6 +78,7 @@ namespace ThinkingSpace.UI
             new("common.retry", "Retry", "Reintentar", "Réessayer"),
             new("common.confirm", "Confirm", "Confirmar", "Confirmer"),
             new("common.menu", "Menu", "Menú", "Menu"),
+            new("menu.recenter", "Recenter", "Volver a centrar", "Recentrer"),
             new("settings.recording_hand", "Recording Hand", "Mano de grabación", "Main d'enregistrement"),
             new("settings.left", "Left", "Izquierda", "Gauche"),
             new("settings.right", "Right", "Derecha", "Droite"),

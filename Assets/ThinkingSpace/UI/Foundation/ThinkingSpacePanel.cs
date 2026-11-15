@@ -24,14 +24,27 @@ namespace ThinkingSpace.UI
         {
             Image background=GetComponent<Image>();ThinkingSpaceUITheme resolved=Theme;
             background.raycastTarget=backgroundReceivesRaycasts;
-            background.sprite=resolved!=null?resolved.PanelBackground:null;background.type=Image.Type.Simple;
-            background.preserveAspect=background.sprite!=null;
-            background.color=resolved!=null?resolved.PanelColor:new Color(.025f,.045f,.075f,.96f);
+            background.sprite=null;background.type=Image.Type.Simple;background.preserveAspect=false;
+            Color opaque=resolved!=null?resolved.PanelColor:new Color(.025f,.045f,.075f,.96f);
+            opaque.a=Mathf.Clamp(opaque.a,.92f,.96f);background.color=opaque;
+            EnsureDecoration(resolved);
             if(showDecorativeFrame)EnsureBorder(resolved);
         }
 
         public void Configure(bool decorativeFrame,bool receivesRaycasts)
         {showDecorativeFrame=decorativeFrame;backgroundReceivesRaycasts=receivesRaycasts;ApplyVisuals();}
+
+        private void EnsureDecoration(ThinkingSpaceUITheme resolved)
+        {
+            RectTransform parent=transform as RectTransform;if(parent==null)return;
+            Transform existing=parent.Find("SlimUI Decoration");
+            GameObject child=existing!=null?existing.gameObject:new GameObject("SlimUI Decoration",typeof(RectTransform),typeof(Image));
+            child.transform.SetParent(parent,false);child.transform.SetAsFirstSibling();
+            RectTransform rect=child.GetComponent<RectTransform>();rect.anchorMin=Vector2.zero;rect.anchorMax=Vector2.one;
+            rect.offsetMin=rect.offsetMax=Vector2.zero;
+            Image image=child.GetComponent<Image>();image.sprite=resolved!=null?resolved.PanelBackground:null;
+            image.type=Image.Type.Simple;image.preserveAspect=false;image.color=Color.white;image.raycastTarget=false;
+        }
 
         private void EnsureBorder(ThinkingSpaceUITheme resolved)
         {

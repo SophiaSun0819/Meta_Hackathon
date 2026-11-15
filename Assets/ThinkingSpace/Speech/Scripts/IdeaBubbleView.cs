@@ -26,6 +26,8 @@ namespace ThinkingSpace.Speech
         private readonly Transform[] boundsCorners = new Transform[8];
         private readonly Renderer[] boundsCornerRenderers = new Renderer[8];
         private Material boundsLineMaterial, boundsCornerMaterial, boundsAccentMaterial;
+        private Material selectionRingMaterial;
+        private LineRenderer selectionRing;
         private Button selectionButton;
         private Action<BrainstormIdeaRecord, BubbleInteractionHand, int> selected;
         private Canvas interactionCanvas;
@@ -73,6 +75,7 @@ namespace ThinkingSpace.Speech
             categorySaturation = Mathf.Clamp01(saturation);
             name = "Idea Bubble · " + value.IdeaId;
             BuildBubbleVisual(diameter, CategoryColor(value.Category, categorySaturation));
+            BuildSelectionRing(diameter);
             BuildSelectionCanvas(diameter);
             BuildBoundingBox(diameter);
             RefreshVisualState();
@@ -178,12 +181,30 @@ namespace ThinkingSpace.Speech
         private void LateUpdate()
         {
             Camera camera = Camera.main;
+            if(selectionRing!=null&&camera!=null)
+            {
+                Vector3 direction=camera.transform.position-selectionRing.transform.position;
+                if(direction.sqrMagnitude>.0001f)selectionRing.transform.rotation=Quaternion.LookRotation(-direction.normalized,Vector3.up);
+            }
             if (billboard == null || camera == null) return;
             Vector3 away = billboard.position - camera.transform.position;
             if (away.sqrMagnitude > 0.0001f)
                 billboard.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
             float parentScale = Mathf.Max(0.001f, Mathf.Abs(transform.lossyScale.x));
             billboard.localScale = Vector3.one * Mathf.Max(0.00065f, visualDiameter / 180f) / parentScale;
+        }
+
+        private void BuildSelectionRing(float diameter)
+        {
+            GameObject root=new GameObject("Selection Ring (Non-interactive)");root.transform.SetParent(transform,false);
+            selectionRing=root.AddComponent<LineRenderer>();selectionRing.useWorldSpace=false;selectionRing.loop=true;
+            selectionRing.positionCount=64;selectionRing.shadowCastingMode=ShadowCastingMode.Off;selectionRing.receiveShadows=false;
+            float radius=diameter*.57f;float width=Mathf.Max(.004f,diameter*.035f);
+            selectionRing.startWidth=selectionRing.endWidth=width;
+            for(int i=0;i<64;i++){float angle=Mathf.PI*2f*i/64f;selectionRing.SetPosition(i,new Vector3(Mathf.Cos(angle)*radius,Mathf.Sin(angle)*radius,0f));}
+            Shader shader=Shader.Find("Universal Render Pipeline/Unlit")??Shader.Find("Unlit/Color");
+            selectionRingMaterial=new Material(shader){name="Idea Bubble Selection Ring Runtime"};selectionRing.sharedMaterial=selectionRingMaterial;
+            selectionRing.enabled=false;
         }
 
         private void BuildBoundingBox(float diameter)
@@ -432,6 +453,13 @@ namespace ThinkingSpace.Speech
             if (material.HasProperty("_EmissionColor"))
                 material.SetColor("_EmissionColor", category * EmissionMultiplier(
                     interactionAvailable, isMoving, VisualState));
+            if(selectionRing!=null&&selectionRingMaterial!=null)
+            {
+                IdeaBubbleVisualState state=VisualState;bool visible=interactionAvailable&&(state==IdeaBubbleVisualState.Hovered||state==IdeaBubbleVisualState.Selected);
+                Color ring=state==IdeaBubbleVisualState.Selected?new Color(.1f,1f,.22f,1f):new Color(.1f,.9f,1f,1f);
+                selectionRingMaterial.color=ring;if(selectionRingMaterial.HasProperty("_BaseColor"))selectionRingMaterial.SetColor("_BaseColor",ring);
+                selectionRing.startColor=selectionRing.endColor=ring;selectionRing.enabled=visible;
+            }
         }
 
         public static float EmissionMultiplier(bool available, bool manipulating,
@@ -497,6 +525,7 @@ namespace ThinkingSpace.Speech
             if (boundsLineMaterial != null) Destroy(boundsLineMaterial);
             if (boundsCornerMaterial != null) Destroy(boundsCornerMaterial);
             if (boundsAccentMaterial != null) Destroy(boundsAccentMaterial);
+            if (selectionRingMaterial != null) Destroy(selectionRingMaterial);
         }
     }
 
