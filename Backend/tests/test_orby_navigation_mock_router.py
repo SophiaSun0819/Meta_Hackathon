@@ -36,9 +36,9 @@ class OrbyNavigationMockRouterTests(unittest.TestCase):
         }
 
     @staticmethod
-    def binding(session_id="Session 1"):
-        return AuthenticatedSessionBinding(session_id=session_id, subject_id="user-test",
-            client_instance_id="client-test", authenticated_at_ms=500, expires_at_ms=60_000)
+    def binding(session_id="Session 1", subject_id="user-test", client_id="client-test"):
+        return AuthenticatedSessionBinding(session_id=session_id, subject_id=subject_id,
+            client_instance_id=client_id, authenticated_at_ms=500, expires_at_ms=60_000)
 
     def test_fixture_driven_mock_routing(self):
         names = {case["name"] for case in self.cases}
@@ -118,7 +118,8 @@ class OrbyNavigationMockRouterTests(unittest.TestCase):
             "session_id": acknowledgement.session_id,
             "operation_id": acknowledgement.operation_id, "action": "approach_idea",
             "target_idea_ids": ["idea-solar"], "status": "completed", "failure_code": None}
-        self.assertEqual(coordinator.record_result(result).status, "completed")
+        self.assertEqual(coordinator.record_result(result, binding=self.binding()).status,
+                         "completed")
 
     def test_result_with_wrong_request_session_or_target_is_rejected(self):
         for field, value in (("request_id", "other-request"),
@@ -138,7 +139,7 @@ class OrbyNavigationMockRouterTests(unittest.TestCase):
                     "failure_code": None}
                 result[field] = value
                 with self.assertRaises(ValueError):
-                    coordinator.record_result(result)
+                    coordinator.record_result(result, binding=self.binding())
 
     def test_stop_without_active_operation_is_blocked(self):
         result = self.router.route(self.request_for({"name": "idle-stop"}),
@@ -160,6 +161,63 @@ class OrbyNavigationMockRouterTests(unittest.TestCase):
             received_at_ms=1_000, now_ms=1_001, binding=self.binding(),
             known_idea_ids={"idea-solar", "idea-garden"}, resumable=False)
         self.assertEqual(rejected.failure_code, "not_authorized")
+
+    def test_disabled_and_legacy_contracts_fall_through_without_acknowledgement(self):
+        command = self.router.route(self.request_for({"name": "fallback"}),
+                                   "Move to my right", self.default_ideas).model_dump(mode="json")
+        context = dict(received_at_ms=1_000, now_ms=1_001, binding=self.binding(),
+                       known_idea_ids=set(), resumable=False)
+        self.assertIsNone(MockNavigationCoordinator().accept(command, enabled=False, **context))
+        legacy = dict(command)
+        legacy["contract_version"] = "1.0"
+        self.assertIsNone(MockNavigationCoordinator().accept(legacy, enabled=True, **context))
+
+    def test_replay_scope_includes_authenticated_subject_and_client(self):
+        command = self.router.route(self.request_for({"name": "scoped-replay"}),
+                                   "Move to my right", self.default_ideas).model_dump(mode="json")
+        coordinator = MockNavigationCoordinator()
+        base = dict(enabled=True, received_at_ms=1_000, now_ms=1_001,
+                    known_idea_ids=set(), resumable=False)
+        first = coordinator.accept(command, binding=self.binding(), **base)
+        self.assertEqual(first.status, "accepted")
+        other = coordinator.accept(command,
+            binding=self.binding(subject_id="other-user", client_id="other-client"), **base)
+        self.assertEqual(other.status, "accepted")
+
+    def test_operation_id_and_interruption_match_web_lifecycle_semantics(self):
+        first_command = self.router.route(self.request_for({"name": "interrupt-first"}),
+            "Follow me", self.default_ideas).model_dump(mode="json")
+        second_command = self.router.route(self.request_for({"name": "interrupt-second"}),
+            "Move to my right", self.default_ideas).model_dump(mode="json")
+        coordinator = MockNavigationCoordinator()
+        context = dict(enabled=True, received_at_ms=1_000, now_ms=1_001,
+                       binding=self.binding(), known_idea_ids=set(), resumable=False)
+        first = coordinator.accept(first_command, **context)
+        self.assertEqual(first.operation_id, ("op-" + first.request_id)[:128])
+        second = coordinator.accept(second_command, **{**context, "now_ms": 1_002})
+        self.assertEqual(second.status, "accepted")
+        self.assertEqual(len(coordinator.interrupted_results), 1)
+        interrupted = coordinator.interrupted_results[0]
+        self.assertEqual(interrupted.operation_id, first.operation_id)
+        self.assertEqual(interrupted.status, "interrupted")
+        self.assertEqual(interrupted.failure_code, "interrupted_by_new_command")
+
+    def test_stop_and_resume_require_matching_active_operation_snapshot(self):
+        for action, transcript, state in (("stop", "Stop moving", "following"),
+                                          ("resume", "Resume movement", "paused")):
+            with self.subTest(action=action):
+                request = self.request_for({"name": "snapshot-" + action,
+                    "navigation_state": state, "active_operation_id": "nav-active-1",
+                    "resumable": True})
+                command = self.router.route(request, transcript,
+                    self.default_ideas).model_dump(mode="json")
+                context = dict(enabled=True, received_at_ms=1_000, now_ms=1_001,
+                    binding=self.binding(), known_idea_ids=set(), resumable=True)
+                missing = MockNavigationCoordinator().accept(command, **context)
+                self.assertEqual(missing.failure_code, "operation_not_resumable")
+                accepted = MockNavigationCoordinator().accept(command,
+                    **{**context, "active_operation_id": "nav-active-1"})
+                self.assertEqual(accepted.status, "accepted")
 
 
 if __name__ == "__main__":

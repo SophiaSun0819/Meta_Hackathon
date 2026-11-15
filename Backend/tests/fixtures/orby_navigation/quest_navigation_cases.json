@@ -1,0 +1,30 @@
+{
+  "safety_policy": {
+    "maximum_speed_mps": 1.2,
+    "maximum_acceleration_mps2": 2.5,
+    "comfortable_follow_distance_m": 0.9,
+    "follow_stop_distance_m": 0.06,
+    "tracking_ready_hold_seconds": 0.6,
+    "minimum_tracked_head_height_m": 0.5
+  },
+  "authenticated_session_binding": {
+    "session_id": "Session 1",
+    "subject_id": "quest-user",
+    "client_instance_id": "quest-device",
+    "authenticated_at_ms": 90000,
+    "expires_at_ms": 200000
+  },
+  "cases": [
+    {"name":"follow","command_fixture":"follow_user","terminal":"completed","expected_operation_id":"op-nav-follow-001","expected_result_failure":null},
+    {"name":"approach_known_idea","command_fixture":"approach_idea","known_idea_ids":["idea-solar"],"terminal":"completed","expected_operation_id":"op-nav-idea-001","expected_result_failure":null},
+    {"name":"home","command_fixture":"return_home","terminal":"completed","expected_operation_id":"op-nav-home-001","expected_result_failure":null},
+    {"name":"reposition","command_fixture":"reposition","terminal":"completed","expected_operation_id":"op-nav-position-001","expected_result_failure":null},
+    {"name":"stop","command_fixture":"stop","resumable":true,"active_operation_id":"nav-active-1","terminal":"completed","expected_operation_id":"op-nav-stop-001","expected_result_failure":null},
+    {"name":"resume","command_fixture":"resume","resumable":true,"active_operation_id":"nav-active-1","terminal":"completed","expected_operation_id":"op-nav-resume-001","expected_result_failure":null},
+    {"name":"interruption","sequence":["follow_user","reposition"],"expected_interrupted_operation_id":"op-nav-follow-001","expected_interrupted_failure":"interrupted_by_new_command"},
+    {"name":"tracking_loss","command_fixture":"follow_user","event":"tracking_loss","expected_operation_id":"op-nav-follow-001","expected_result_failure":"movement_failed"},
+    {"name":"invalid_destination","command_fixture":"return_home","destination_available":false,"expected_operation_id":"op-nav-home-001","expected_result_failure":"destination_unavailable"},
+    {"name":"stale","command_fixture":"follow_user","received_at_ms":100000,"now_ms":130001,"expected_ack_failure":"stale_command"},
+    {"name":"replay","command_fixture":"reposition","repeat":2,"expected_second_ack_failure":"replayed_command"}
+  ]
+}

@@ -81,24 +81,27 @@ class OrbyNavigationContractFixtureTests(unittest.TestCase):
         self.assertEqual(negotiate_capability(offer, False), disabled)
         binding = AuthenticatedSessionBinding.model_validate(
             self.lifecycle["authenticated_session_binding"])
-        commands = {case["name"]: case["response"] for case in self.cases}
+        commands = {case["name"]: case for case in self.cases}
         self.assertEqual({case["name"] for case in self.lifecycle["cases"]},
             {"follow", "approach_idea", "reposition", "home", "stop", "resume",
              "interruption", "stale", "ambiguous", "rejected"})
         for case in self.lifecycle["cases"]:
             with self.subTest(case=case["name"]):
+                fixture = commands[case["command_fixture"]]
                 command = NavigationCommand.model_validate(
-                    commands[case["command_fixture"]]).model_dump(mode="json")
+                    fixture["response"]).model_dump(mode="json")
                 coordinator = MockNavigationCoordinator()
                 actual = coordinator.accept(command, enabled=case["enabled"],
                     received_at_ms=case["received_at_ms"], now_ms=case["now_ms"],
                     binding=binding, known_idea_ids=set(case["known_idea_ids"]),
-                    resumable=case["resumable"])
+                    resumable=case["resumable"], active_operation_id=
+                    fixture["request"]["navigation_context"].get("active_operation_id"))
                 expected = NavigationAcknowledgement.model_validate(case["acknowledgement"])
                 self.assertEqual(actual, expected)
                 if "result" in case:
                     result = NavigationExecutionResult.model_validate(case["result"])
-                    self.assertEqual(coordinator.record_result(case["result"]), result)
+                    self.assertEqual(coordinator.record_result(case["result"], binding=binding),
+                                     result)
 
     def test_interrupted_result_closes_operation_and_cannot_be_replayed(self):
         binding = AuthenticatedSessionBinding.model_validate(
@@ -111,9 +114,10 @@ class OrbyNavigationContractFixtureTests(unittest.TestCase):
             "session_id": command["session_id"], "operation_id": acknowledgement.operation_id,
             "action": "follow_user", "target_idea_ids": [], "status": "interrupted",
             "failure_code": "interrupted_by_new_command"}
-        self.assertEqual(coordinator.record_result(interrupted).status, "interrupted")
+        self.assertEqual(coordinator.record_result(interrupted, binding=binding).status,
+                         "interrupted")
         with self.assertRaises(ValueError):
-            coordinator.record_result(interrupted)
+            coordinator.record_result(interrupted, binding=binding)
 
     def test_ambiguous_and_unavailable_destinations_never_execute(self):
         by_name = {case["name"]: case for case in self.cases}
