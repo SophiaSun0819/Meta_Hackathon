@@ -3765,6 +3765,7 @@ GameObject:
   - component: {fileID: 8041887007722004180}
   - component: {fileID: 5835116228244287519}
   - component: {fileID: 869762943481549921}
+  - component: {fileID: 3675543820750184688}
   m_Layer: 0
   m_Name: BrainstormMenuTemplate
   m_TagString: Untagged
@@ -4099,6 +4100,23 @@ MonoBehaviour:
     ReEnterDistance: 0.02
   _closeDistanceThreshold: 0.001
   _tiebreakerScore: 0
+--- !u!114 &3675543820750184688
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7151993673433341258}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a6d43d3c2c84c8992dc650748a831a1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ThinkingSpace.UI.DesignKit.QuestUIActiveMenuSkin
+  roundedPanel: {fileID: 21300000, guid: 1fa831bc1dd842047816ca73cef9fe16, type: 3}
+  orbIcon: {fileID: 21300000, guid: faad34628f8501f44abd3fa53b91fc26, type: 3}
+  sessionsIcon: {fileID: 21300000, guid: e2e2817bc4112c142944636376062eb8, type: 3}
+  voiceIcon: {fileID: 21300000, guid: ad61407ec9c09ee4caf6262d7f130849, type: 3}
+  gesturesIcon: {fileID: 21300000, guid: ae80c57c11779984399e54991e577be3, type: 3}
 --- !u!1 &7234252609523915202
 GameObject:
   m_ObjectHideFlags: 0

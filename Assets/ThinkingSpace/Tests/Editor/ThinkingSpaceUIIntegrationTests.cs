@@ -6,6 +6,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.HandGrab;
+using ThinkingSpace.UI.DesignKit;
+using UnityEditor;
 
 namespace ThinkingSpace.Tests.Editor
 {
@@ -162,6 +164,48 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(BrainstormMenuView.ExplicitConversationControlsEnabled(true),Is.True);
             Assert.That(ThinkingSpaceLocalizationController.Get("settings.conversation.unavailable"),
                 Is.Not.Empty);
+        }
+
+        [Test]
+        public void ActiveMenuPrefabCarriesApprovedDesignKitSkinAndExistingMetaCanvas()
+        {
+            GameObject prefab=AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/ThinkingSpace/UI/Prefabs/BrainstormMenuTemplate.prefab");
+            Assert.That(prefab,Is.Not.Null);
+            Assert.That(prefab.GetComponent<BrainstormMenuView>(),Is.Not.Null);
+            Assert.That(prefab.GetComponent<QuestUIActiveMenuSkin>(),Is.Not.Null);
+            Assert.That(prefab.GetComponent<PointableCanvas>(),Is.Not.Null);
+        }
+
+        [Test]
+        public void ActiveMenuUsesOneAuthoritativeShellAcrossFirstOpenAndReopen()
+        {
+            GameObject prefab=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ThinkingSpace/UI/Prefabs/BrainstormMenuTemplate.prefab");
+            GameObject instance=Object.Instantiate(prefab);
+            try
+            {
+                BrainstormMenuView view=instance.GetComponent<BrainstormMenuView>();
+                QuestUIActiveMenuSkin skin=instance.GetComponent<QuestUIActiveMenuSkin>();
+                typeof(BrainstormMenuView).GetMethod("Awake",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)?.Invoke(view,null);
+                view.ShowMain(System.Array.Empty<BrainstormSession>(),ThumbRecordingGestureController.RecordingHand.Right,_=>{},_=>{});
+                Assert.That(skin.AuthoritativeShellCount,Is.EqualTo(1));
+                Assert.That(skin.LegacyFrameBehindContent,Is.True,"SlimUI frame must decorate behind the active shell instead of washing it out.");
+                view.ShowDesignKitSessions();
+                view.ShowDesignKitHelp();
+                Assert.That(skin.IsHelpVisible,Is.True,"Header Help must open the DesignKit help hub, not a legacy destination.");
+                view.ShowMain(System.Array.Empty<BrainstormSession>(),ThumbRecordingGestureController.RecordingHand.Right,_=>{},_=>{});
+                Assert.That(skin.AuthoritativeShellCount,Is.EqualTo(1));
+                Assert.That(instance.GetComponentsInChildren<QuestUIActiveMenuSkin>(true).Length,Is.EqualTo(1));
+                Assert.That(instance.transform.Find("Fixed Header"),Is.Null,"Header must not escape the panel shell into the canvas root.");
+            }
+            finally{Object.DestroyImmediate(instance);}
+        }
+
+        [Test]
+        public void UnfinishedSessionActionsRemainExplicitlyUnavailable()
+        {
+            Assert.That(ThinkingSpaceLocalizationController.Get("menu.feature.unavailable"),Is.Not.Empty);
+            Assert.That(BrainstormMenuView.ExplicitConversationControlsEnabled(false),Is.False);
         }
     }
 }
