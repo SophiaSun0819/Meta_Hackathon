@@ -23,6 +23,7 @@ namespace ThinkingSpace.Speech
         private float shownAt;
         private RecoverableWorkflowFailureKind visibleKind;
         private bool visibleRetainedInput;
+        private WorldSpacePanelManipulator manipulator;
         public bool IsVisible => canvas != null && canvas.gameObject.activeSelf;
 
         private void Awake(){Build();canvas.gameObject.SetActive(false);}
@@ -35,14 +36,14 @@ namespace ThinkingSpace.Speech
             RefreshLocalizedContent();
             ConfigureButton(retryButton,L("common.retry"),retry!=null);
             ConfigureButton(dismissButton,L("common.dismiss"),dismiss!=null);
-            shownAt=Time.unscaledTime;canvas.gameObject.SetActive(true);PositionAtHeadset();
+            shownAt=Time.unscaledTime;manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);PositionAtHeadset();
         }
         public void ShowStatus(string title,string message)
         {
             if(canvas==null)Build();retryAction=null;dismissAction=null;
             heading.text=title??string.Empty;body.text=message??string.Empty;
             ConfigureButton(retryButton,string.Empty,false);ConfigureButton(dismissButton,string.Empty,false);
-            shownAt=Time.unscaledTime;canvas.gameObject.SetActive(true);PositionAtHeadset();
+            shownAt=Time.unscaledTime;manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);PositionAtHeadset();
         }
         public void Hide(){retryAction=null;dismissAction=null;if(canvas!=null)canvas.gameObject.SetActive(false);}
         public static string MessageKey(RecoverableWorkflowFailureKind kind)
@@ -74,7 +75,7 @@ namespace ThinkingSpace.Speech
                 ?RecoverableWorkflowFailureKind.NetworkUnavailable:RecoverableWorkflowFailureKind.AiProcessingFailed;
         }
         private void Update(){if(!IsVisible||retryAction!=null||dismissAction!=null)return;if(Time.unscaledTime-shownAt>=automaticDismissSeconds)Hide();}
-        private void LateUpdate(){if(IsVisible)PositionAtHeadset();}
+        private void LateUpdate(){if(IsVisible&&!(manipulator?.HasManualPlacement??false))PositionAtHeadset();}
         private void PositionAtHeadset(){if(headset==null||canvas==null)return;canvas.transform.position=headset.TransformPoint(headsetLocalPosition);Vector3 away=canvas.transform.position-headset.position;if(away.sqrMagnitude>.0001f)canvas.transform.rotation=Quaternion.LookRotation(away.normalized,Vector3.up);}
         private void Build()
         {
@@ -89,6 +90,7 @@ namespace ThinkingSpace.Speech
             retryButton=MakeButton("Retry",rect,new Vector2(.08f,.06f),new Vector2(.46f,.24f));
             dismissButton=MakeButton("Dismiss",rect,new Vector2(.54f,.06f),new Vector2(.92f,.24f));
             retryButton.gameObject.AddComponent<PrimaryButton>();dismissButton.gameObject.AddComponent<SecondaryButton>();
+            manipulator=WorldSpacePanelManipulator.Attach(rect);
             retryButton.onClick.AddListener(()=>{Action action=retryAction;Hide();action?.Invoke();});
             dismissButton.onClick.AddListener(()=>{Action action=dismissAction;Hide();action?.Invoke();});
         }

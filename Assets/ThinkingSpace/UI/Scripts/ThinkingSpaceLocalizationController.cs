@@ -99,6 +99,8 @@ namespace ThinkingSpace.UI
             new("language.hindi", "Hindi", "Hindi", "Hindi"),
             new("settings.language.title", "Language Settings", "Ajustes de idioma", "Paramètres de langue"),
             new("settings.conversation_mode", "Conversation Language", "Idioma de conversación", "Langue de conversation"),
+            new("settings.conversation.unavailable", "Explicit languages unavailable — backend compatibility mode", "Idiomas explícitos no disponibles — modo de compatibilidad del servidor", "Langues explicites indisponibles — mode de compatibilité du serveur"),
+            new("settings.conversation.active", "Active: {0}", "Activo: {0}", "Actif : {0}"),
             new("settings.language.auto", "Automatic", "Automático", "Automatique"),
             new("settings.language.specific", "Specific Language", "Idioma específico", "Langue spécifique"),
             new("settings.voice_profile", "Orby Voice", "Voz de Orby", "Voix d'Orby"),

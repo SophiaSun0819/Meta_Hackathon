@@ -23,7 +23,9 @@ namespace ThinkingSpace.UI
         public virtual void ApplyVisuals()
         {
             Image background=GetComponent<Image>();ThinkingSpaceUITheme resolved=Theme;
-            background.raycastTarget=backgroundReceivesRaycasts;background.sprite=null;background.type=Image.Type.Simple;
+            background.raycastTarget=backgroundReceivesRaycasts;
+            background.sprite=resolved!=null?resolved.PanelBackground:null;background.type=Image.Type.Simple;
+            background.preserveAspect=background.sprite!=null;
             background.color=resolved!=null?resolved.PanelColor:new Color(.025f,.045f,.075f,.96f);
             if(showDecorativeFrame)EnsureBorder(resolved);
         }

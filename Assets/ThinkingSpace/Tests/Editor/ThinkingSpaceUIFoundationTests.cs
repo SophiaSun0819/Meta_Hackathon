@@ -34,13 +34,18 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void CompactPanelUsesNonRaycastDecorativeEdgesAndSolidBackground()
+        public void CompactPanelUsesNonRaycastEdgesAndUnstretchedSlimUiArtwork()
         {
             GameObject root=new GameObject("Compact",typeof(RectTransform),typeof(Image));
             try
             {
                 CompactPanel panel=root.AddComponent<CompactPanel>();panel.ApplyVisuals();
-                Assert.That(root.GetComponent<Image>().sprite,Is.Null,"Zero-border SlimUI sprites must not be stretched as sliced backgrounds.");
+                Image background=root.GetComponent<Image>();
+                Assert.That(background.sprite,Is.Not.Null);
+                Assert.That(background.type,Is.EqualTo(Image.Type.Simple),
+                    "Zero-border SlimUI artwork must not be treated as a sliced sprite.");
+                Assert.That(background.preserveAspect,Is.True,
+                    "Zero-border SlimUI artwork must retain its authored aspect ratio.");
                 Image[] images=root.GetComponentsInChildren<Image>(true);Assert.That(images.Length,Is.EqualTo(5));
                 for(int index=1;index<images.Length;index++)Assert.That(images[index].raycastTarget,Is.False);
             }

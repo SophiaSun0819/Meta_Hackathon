@@ -21,6 +21,7 @@ namespace ThinkingSpace.Speech
         private Canvas canvas;
         private TMP_Text heading, body, pageIndicator, primaryLabel, secondaryLabel;
         private Button previousButton, nextButton, primaryButton, secondaryButton;
+        private WorldSpacePanelManipulator manipulator;
         private readonly List<string> pages = new List<string>();
         private int page;
         private Action primaryAction, secondaryAction;
@@ -38,7 +39,7 @@ namespace ThinkingSpace.Speech
             secondaryAction = secondary;
             ConfigureButton(primaryButton, primaryLabel, primaryText, primary);
             ConfigureButton(secondaryButton, secondaryLabel, secondaryText, secondary);
-            canvas.gameObject.SetActive(true);
+            manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
 
@@ -89,7 +90,8 @@ namespace ThinkingSpace.Speech
         }
 
         private void LateUpdate()
-        { if (canvas != null && canvas.gameObject.activeSelf) PositionAtHeadset(); }
+        { if (canvas != null && canvas.gameObject.activeSelf
+            && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset(); }
 
         private void PositionAtHeadset()
         {
@@ -124,7 +126,7 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             BoundsClipper clipper = root.AddComponent<BoundsClipper>();
-            clipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            clipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clipped = root.AddComponent<ClippedPlaneSurface>();
             clipped.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { clipper });
             RayInteractable ray = root.AddComponent<RayInteractable>();
@@ -150,6 +152,7 @@ namespace ThinkingSpace.Speech
             secondaryButton.onClick.AddListener(() => { if (secondaryButton.interactable) secondaryAction?.Invoke(); });
             ThinkingSpaceUIStyler.StylePanel(root,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(root);
+            manipulator=WorldSpacePanelManipulator.Attach(rect);
         }
 
         private static TMP_Text Text(string name, Transform parent, float size, FontStyles style,

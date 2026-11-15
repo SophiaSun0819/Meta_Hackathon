@@ -2,6 +2,7 @@ using NUnit.Framework;
 using ThinkingSpace.Speech;
 using ThinkingSpace.UI;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ThinkingSpace.Tests.Editor
@@ -89,6 +90,79 @@ namespace ThinkingSpace.Tests.Editor
         {
             Assert.That(ThinkingSpaceAIWorkflowController.ShouldPlayPrerecordedErrorAcknowledgement(true),Is.False);
             Assert.That(ThinkingSpaceAIWorkflowController.ShouldPlayPrerecordedErrorAcknowledgement(false),Is.True);
+        }
+
+        [Test]
+        public void SharedPanelManipulatorCreatesOneSlimUiGrabHandle()
+        {
+            GameObject root=new GameObject("Movable Panel",typeof(RectTransform),typeof(Image));
+            try
+            {
+                RectTransform rect=root.GetComponent<RectTransform>();rect.sizeDelta=new Vector2(600f,400f);
+                WorldSpacePanelManipulator first=WorldSpacePanelManipulator.Attach(rect);
+                WorldSpacePanelManipulator second=WorldSpacePanelManipulator.Attach(rect);
+                Assert.That(second,Is.SameAs(first));
+                Assert.That(root.GetComponentsInChildren<WorldSpacePanelManipulator>(true).Length,Is.EqualTo(1));
+                Image handle=first.GetComponent<Image>();
+                Assert.That(handle.raycastTarget,Is.True);
+                Assert.That(handle.sprite,Is.Not.Null,"Grab affordance should reuse the installed SlimUI theme.");
+            }
+            finally{Object.DestroyImmediate(root);}
+        }
+
+        [Test]
+        public void MetaSelectionBoundsIncludeReachTolerance()
+        {
+            Vector3 size=MetaHandInteractionAdapter.CalculateBoundsSize(new Vector2(600f,400f),28f,.035f);
+            Assert.That(size,Is.EqualTo(new Vector3(656f,456f,.035f)));
+        }
+
+        [Test]
+        public void PanelManipulatorMovesOnlyAfterDeliberatePointerDrag()
+        {
+            GameObject eventOwner=new GameObject("Event System",typeof(EventSystem));
+            GameObject root=new GameObject("Movable Panel",typeof(RectTransform),typeof(Image));
+            try
+            {
+                RectTransform rect=root.GetComponent<RectTransform>();
+                WorldSpacePanelManipulator handle=WorldSpacePanelManipulator.Attach(rect);
+                PointerEventData pointer=new PointerEventData(eventOwner.GetComponent<EventSystem>());
+                pointer.pointerCurrentRaycast=new RaycastResult{gameObject=handle.gameObject,worldPosition=Vector3.zero};
+                handle.OnPointerDown(pointer);handle.OnBeginDrag(pointer);
+                pointer.pointerCurrentRaycast=new RaycastResult{gameObject=handle.gameObject,worldPosition=new Vector3(.02f,.01f,0f)};
+                handle.OnDrag(pointer);
+                Assert.That(handle.IsDragging,Is.True);
+                Assert.That(handle.HasManualPlacement,Is.True);
+                Assert.That(rect.position,Is.EqualTo(new Vector3(.02f,.01f,0f)));
+                handle.OnEndDrag(pointer);
+                Assert.That(handle.IsDragging,Is.False);
+            }
+            finally{Object.DestroyImmediate(root);Object.DestroyImmediate(eventOwner);}
+        }
+
+        [Test]
+        public void RectangularButtonsUseSlicedSlimUiSprites()
+        {
+            GameObject root=new GameObject("Button",typeof(RectTransform),typeof(Image),typeof(Button));
+            try
+            {
+                root.GetComponent<RectTransform>().sizeDelta=new Vector2(240f,72f);
+                ThinkingSpaceUIStyler.StyleButton(root.GetComponent<Button>());
+                Image image=root.GetComponent<Image>();
+                Assert.That(image.sprite,Is.Not.Null);
+                Assert.That(image.type,Is.EqualTo(Image.Type.Sliced));
+                Assert.That(root.GetComponent<Button>().transition,Is.EqualTo(Selectable.Transition.SpriteSwap));
+            }
+            finally{Object.DestroyImmediate(root);}
+        }
+
+        [Test]
+        public void ExplicitConversationControlsFollowBackendCapability()
+        {
+            Assert.That(BrainstormMenuView.ExplicitConversationControlsEnabled(false),Is.False);
+            Assert.That(BrainstormMenuView.ExplicitConversationControlsEnabled(true),Is.True);
+            Assert.That(ThinkingSpaceLocalizationController.Get("settings.conversation.unavailable"),
+                Is.Not.Empty);
         }
     }
 }

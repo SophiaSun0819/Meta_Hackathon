@@ -37,6 +37,7 @@ namespace ThinkingSpace.Speech
         private int page, slot;
         private bool hovered, pressed, confirmingDelete, returnAvailable, movementHidden,colorPage;
         private bool borderProximity, dragging, hasManualOffset;
+        private WorldSpacePanelManipulator pointerManipulator;
         private Vector3 stablePosition;
         private Vector3 bubbleRelativeOffset, dragHandOffset, dragVelocity;
         private Quaternion stableRotation;
@@ -209,6 +210,12 @@ namespace ThinkingSpace.Speech
         private void LateUpdate()
         {
             if(canvas==null||!canvas.gameObject.activeSelf)return;
+            if(pointerManipulator!=null&&pointerManipulator.IsDragging)
+            {
+                stablePosition=transform.position;stableRotation=transform.rotation;
+                hasManualOffset=true;if(bubble!=null)bubbleRelativeOffset=stablePosition-bubble.transform.position;
+                return;
+            }
             transform.position=stablePosition;
             if(hovered||pressed||dragging)return;
             if(TryGetViewerFacingRotation(transform.position,headset,transform.rotation,out Quaternion target))
@@ -332,7 +339,8 @@ namespace ThinkingSpace.Speech
             Image background=gameObject.AddComponent<Image>();background.color=new Color(.035f,.055f,.09f,.98f);background.raycastTarget=true;
             BuildBorder(rect);
             PlaneSurface plane=gameObject.AddComponent<PlaneSurface>();plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward,false);
-            BoundsClipper clipper=gameObject.AddComponent<BoundsClipper>();clipper.Size=new Vector3(600,400,.01f);
+            BoundsClipper clipper=gameObject.AddComponent<BoundsClipper>();
+            clipper.Size=MetaHandInteractionAdapter.CalculateBoundsSize(rect.sizeDelta,28f,.035f);
             ClippedPlaneSurface clipped=gameObject.AddComponent<ClippedPlaneSurface>();clipped.InjectAllClippedPlaneSurface(plane,new List<IBoundsClipper>{clipper});
             rayInteractable=gameObject.AddComponent<RayInteractable>();rayInteractable.InjectAllRayInteractable(clipped);rayInteractable.InjectOptionalPointableElement(pointable);
             pokeInteractable=gameObject.AddComponent<PokeInteractable>();pokeInteractable.InjectAllPokeInteractable(clipped);pokeInteractable.InjectOptionalPointableElement(pointable);
@@ -350,6 +358,7 @@ namespace ThinkingSpace.Speech
             confirmDelete=Button("Confirm Delete",rect,new Vector2(.56f,.05f),new Vector2(.94f,.16f));confirmDelete.onClick.AddListener(ConfirmDelete);
             ThinkingSpaceUIStyler.StylePanel(gameObject,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(gameObject);
+            pointerManipulator=WorldSpacePanelManipulator.Attach(rect);
             for(int i=0;i<IdeaVisualColorPalette.Names.Length;i++)
             {
                 int row=i/3,column=i%3;Vector2 min=new Vector2(.06f+column*.31f,.64f-row*.15f);

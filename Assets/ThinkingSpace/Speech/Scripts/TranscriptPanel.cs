@@ -32,6 +32,7 @@ namespace ThinkingSpace.Speech
         private int currentPage;
         private Action retryAction;
         private Action closeAction;
+        private WorldSpacePanelManipulator manipulator;
 
         private void Awake()
         {
@@ -121,7 +122,7 @@ namespace ThinkingSpace.Speech
         private void Show()
         {
             if (canvas == null) BuildPanel();
-            canvas.gameObject.SetActive(true);
+            manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
 
@@ -168,7 +169,8 @@ namespace ThinkingSpace.Speech
 
         private void LateUpdate()
         {
-            if (canvas != null && canvas.gameObject.activeSelf) PositionAtHeadset();
+            if (canvas != null && canvas.gameObject.activeSelf
+                && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset();
         }
 
         private void PositionAtHeadset()
@@ -205,7 +207,7 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             BoundsClipper clipper = root.AddComponent<BoundsClipper>();
-            clipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            clipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clipped = root.AddComponent<ClippedPlaneSurface>();
             clipped.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { clipper });
             RayInteractable ray = root.AddComponent<RayInteractable>();
@@ -262,6 +264,7 @@ namespace ThinkingSpace.Speech
             });
             ThinkingSpaceUIStyler.StylePanel(root,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(root);
+            manipulator=WorldSpacePanelManipulator.Attach(rootRect);
         }
 
         private static TMP_Text CreateText(

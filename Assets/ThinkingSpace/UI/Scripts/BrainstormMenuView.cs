@@ -69,6 +69,7 @@ namespace ThinkingSpace.UI
         private readonly List<Button> sessionConversationLanguageButtons=new List<Button>();
         private Button mainConversationAutoButton,sessionConversationAutoButton;
         private TMP_Text mainConversationLabel,sessionConversationLabel;
+        private TMP_Text mainConversationAvailability,sessionConversationAvailability;
         private Button exportSessionButton,importSessionButton;
         private Button accountConnectionButton;
         private GameObject mainSessionActionRow;
@@ -112,9 +113,9 @@ namespace ThinkingSpace.UI
             ArrangeSessionHelpPage();
             CreateLanguageSettings();
             CreateConversationLanguageSettings(mainPanel,mainCloseButton,mainConversationLanguageButtons,
-                out mainConversationAutoButton,out mainConversationLabel);
+                out mainConversationAutoButton,out mainConversationLabel,out mainConversationAvailability);
             CreateConversationLanguageSettings(sessionPanel,sessionCloseButton,sessionConversationLanguageButtons,
-                out sessionConversationAutoButton,out sessionConversationLabel);
+                out sessionConversationAutoButton,out sessionConversationLabel,out sessionConversationAvailability);
             CreateSessionTransferActions();
             CreateSessionDeleteConfirmation();
             CreateLanguageConfirmation();
@@ -169,6 +170,7 @@ namespace ThinkingSpace.UI
             SetButtonLabel(sessionConversationAutoButton,L("settings.language.auto"));
             RefreshConversationButtonLabels(mainConversationLanguageButtons);
             RefreshConversationButtonLabels(sessionConversationLanguageButtons);
+            RefreshConversationLanguageState();
             string language=ThinkingSpaceLocalizationController.Instance?.InterfaceLanguageCode??"en";
             SetButtonSelected(mainEnglishButton,language=="en");SetButtonSelected(mainSpanishButton,language=="es");SetButtonSelected(mainFrenchButton,language=="fr");
             SetButtonSelected(sessionEnglishButton,language=="en");SetButtonSelected(sessionSpanishButton,language=="es");SetButtonSelected(sessionFrenchButton,language=="fr");
@@ -382,7 +384,7 @@ namespace ThinkingSpace.UI
             if (settingsTitle != null) settingsTitle.gameObject.SetActive(audioPage);
             SetLanguageSettingsVisible(mainEnglishButton,mainSpanishButton,mainFrenchButton,mainLanguageLabel,languagePage);
             SetConversationSettingsVisible(mainConversationLanguageButtons,mainConversationAutoButton,
-                mainConversationLabel,languagePage);
+                mainConversationLabel,mainConversationAvailability,languagePage);
             SetLabelVisible(mainPanel, "menu.sessions.title", sessionPage);
             SetLabelVisible(mainPanel, "settings.recording_hand", settingsPage);
             UpdateNavigation(mainPreviousButton, mainNextButton, mainPageIndicator, mainPage, mainPageCount);
@@ -440,16 +442,19 @@ namespace ThinkingSpace.UI
         {
             // Page two combines four authored help/hand buttons with the two runtime wrist controls.
             // Give every control an explicit row so localized labels cannot occupy the same space.
-            SetButtonRect(sessionVoiceButton,new Vector2(.08f,.59f),new Vector2(.47f,.70f));
-            SetButtonRect(sessionGesturesButton,new Vector2(.53f,.59f),new Vector2(.92f,.70f));
-            SetButtonRect(sessionLeftHandButton,new Vector2(.08f,.39f),new Vector2(.47f,.50f));
-            SetButtonRect(sessionRightHandButton,new Vector2(.53f,.39f),new Vector2(.92f,.50f));
+            SetButtonRect(sessionVoiceButton,new Vector2(.08f,.64f),new Vector2(.47f,.75f));
+            SetButtonRect(sessionGesturesButton,new Vector2(.53f,.64f),new Vector2(.92f,.75f));
+            SetButtonRect(sessionLeftHandButton,new Vector2(.08f,.46f),new Vector2(.47f,.57f));
+            SetButtonRect(sessionRightHandButton,new Vector2(.53f,.46f),new Vector2(.92f,.57f));
             if(sessionWristLabel!=null)SetRect(sessionWristLabel.rectTransform,
-                new Vector2(.08f,.27f),new Vector2(.92f,.35f));
-            SetButtonRect(sessionWristLeftButton,new Vector2(.08f,.14f),new Vector2(.47f,.25f));
-            SetButtonRect(sessionWristRightButton,new Vector2(.53f,.14f),new Vector2(.92f,.25f));
+                new Vector2(.08f,.32f),new Vector2(.92f,.40f));
+            SetButtonRect(sessionWristLeftButton,new Vector2(.08f,.18f),new Vector2(.47f,.29f));
+            SetButtonRect(sessionWristRightButton,new Vector2(.53f,.18f),new Vector2(.92f,.29f));
             SetLabelRect(sessionPanel,"settings.recording_hand",
-                new Vector2(.08f,.73f),new Vector2(.92f,.84f));
+                new Vector2(.08f,.79f),new Vector2(.92f,.88f));
+            LimitButtonText(sessionVoiceButton,16f);LimitButtonText(sessionGesturesButton,16f);
+            LimitButtonText(sessionLeftHandButton,16f);LimitButtonText(sessionRightHandButton,16f);
+            LimitButtonText(sessionWristLeftButton,16f);LimitButtonText(sessionWristRightButton,16f);
         }
 
         private static void SetButtonRect(Button button,Vector2 min,Vector2 max)
@@ -484,12 +489,12 @@ namespace ThinkingSpace.UI
         }
 
         private static void CreateConversationLanguageSettings(GameObject panel,Button source,
-            List<Button> languages,out Button automatic,out TMP_Text label)
+            List<Button> languages,out Button automatic,out TMP_Text label,out TMP_Text availability)
         {
-            automatic=null;label=null;if(panel==null||source==null)return;
+            automatic=null;label=null;availability=null;if(panel==null||source==null)return;
             RectTransform parent=panel.GetComponent<RectTransform>();
             automatic=Instantiate(source,parent);ConfigureNavigationButton(automatic,L("settings.language.auto"),
-                new Vector2(.08f,.36f),new Vector2(.31f,.47f));
+                new Vector2(.08f,.39f),new Vector2(.31f,.50f));
             BindButton(automatic,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetConversationLanguage("auto",null,"orby-auto"));
             string[] codes={"en","es","fr","zh-CN","hi-IN"};
             BrainstormMenuController controller=FindFirstObjectByType<BrainstormMenuController>();
@@ -497,7 +502,7 @@ namespace ThinkingSpace.UI
             {
                 string code=codes[i];float width=.84f/codes.Length;float x=.08f+i*width;
                 Button button=Instantiate(source,parent);button.name="Conversation Language "+code;
-                ConfigureNavigationButton(button,ConversationLanguageLabel(code),new Vector2(x,.17f),new Vector2(x+width-.012f,.30f));
+                ConfigureNavigationButton(button,ConversationLanguageLabel(code),new Vector2(x,.20f),new Vector2(x+width-.012f,.31f));
                 button.interactable=controller!=null&&controller.MultilingualBackendContractEnabled;
                 BindButton(button,()=>FindFirstObjectByType<BrainstormMenuController>()?.SetConversationLanguage(
                     "explicit",code,VoiceProfileForLanguage(code)));
@@ -506,7 +511,10 @@ namespace ThinkingSpace.UI
             TMP_Text sourceLabel=source.GetComponentInChildren<TMP_Text>(true);
             if(sourceLabel!=null){label=Instantiate(sourceLabel,parent);label.text=L("settings.conversation_mode");
                 label.alignment=TextAlignmentOptions.Center;label.raycastTarget=false;
-                SetRect(label.rectTransform,new Vector2(.34f,.35f),new Vector2(.92f,.49f));}
+                SetRect(label.rectTransform,new Vector2(.34f,.39f),new Vector2(.92f,.50f));
+                availability=Instantiate(sourceLabel,parent);availability.alignment=TextAlignmentOptions.Center;
+                availability.raycastTarget=false;availability.enableAutoSizing=true;availability.fontSizeMin=14f;
+                availability.fontSizeMax=20f;SetRect(availability.rectTransform,new Vector2(.08f,.125f),new Vector2(.92f,.18f));}
         }
 
         private static string VoiceProfileForLanguage(string code)=>code=="es"?"orby-es":code=="fr"?"orby-fr":
@@ -516,8 +524,40 @@ namespace ThinkingSpace.UI
             code=="hi-IN"?L("language.hindi"):L("language.english");
         private static void RefreshConversationButtonLabels(List<Button> buttons)
         {for(int i=0;i<buttons.Count;i++){string[] codes={"en","es","fr","zh-CN","hi-IN"};if(i<codes.Length)SetButtonLabel(buttons[i],ConversationLanguageLabel(codes[i]));}}
-        private static void SetConversationSettingsVisible(List<Button> buttons,Button automatic,TMP_Text label,bool visible)
-        {SetActive(automatic,visible);for(int i=0;i<buttons.Count;i++)SetActive(buttons[i],visible);if(label!=null)label.gameObject.SetActive(visible);}
+
+        private void RefreshConversationLanguageState()
+        {
+            BrainstormMenuController controller=FindFirstObjectByType<BrainstormMenuController>();
+            bool enabled=controller!=null&&controller.MultilingualBackendContractEnabled;
+            string mode=controller?.ConversationLanguageMode??ThinkingSpacePreferencesStore.DefaultConversationLanguageMode;
+            string code=controller?.ConversationLanguageCode??string.Empty;
+            SetButtonSelected(mainConversationAutoButton,mode=="auto");
+            SetButtonSelected(sessionConversationAutoButton,mode=="auto");
+            RefreshExplicitConversationButtons(mainConversationLanguageButtons,enabled,mode,code);
+            RefreshExplicitConversationButtons(sessionConversationLanguageButtons,enabled,mode,code);
+            string status=enabled?L("settings.conversation.active",
+                mode=="explicit"?ConversationLanguageLabel(code):L("settings.language.auto"))
+                :L("settings.conversation.unavailable");
+            if(mainConversationAvailability!=null)mainConversationAvailability.text=status;
+            if(sessionConversationAvailability!=null)sessionConversationAvailability.text=status;
+        }
+
+        private static void RefreshExplicitConversationButtons(List<Button> buttons,bool enabled,string mode,string code)
+        {
+            string[] codes={"en","es","fr","zh-CN","hi-IN"};
+            for(int i=0;i<buttons.Count;i++)
+            {
+                buttons[i].interactable=enabled;
+                SetButtonSelected(buttons[i],enabled&&mode=="explicit"&&i<codes.Length&&codes[i]==code);
+            }
+        }
+
+        public static bool ExplicitConversationControlsEnabled(bool backendContractEnabled)
+            =>backendContractEnabled;
+        private static void SetConversationSettingsVisible(List<Button> buttons,Button automatic,TMP_Text label,
+            TMP_Text availability,bool visible)
+        {SetActive(automatic,visible);for(int i=0;i<buttons.Count;i++)SetActive(buttons[i],visible);
+            if(label!=null)label.gameObject.SetActive(visible);if(availability!=null)availability.gameObject.SetActive(visible);}
 
         private static void SetLanguageSettingsVisible(Button english,Button spanish,Button french,
             TMP_Text label,bool visible)
@@ -778,7 +818,7 @@ namespace ThinkingSpace.UI
             SetLanguageSettingsVisible(sessionEnglishButton,sessionSpanishButton,sessionFrenchButton,
                 sessionLanguageLabel,languageSettings);
             SetConversationSettingsVisible(sessionConversationLanguageButtons,sessionConversationAutoButton,
-                sessionConversationLabel,languageSettings);
+                sessionConversationLabel,sessionConversationAvailability,languageSettings);
             SetLabelVisible(sessionPanel, "settings.recording_hand", helpAndHand);
             SetActive(endSessionButton, finish);
             SetActive(sessionCloseButton, finish);
@@ -884,6 +924,13 @@ namespace ThinkingSpace.UI
             if (text != null) text.text = label;
             ThinkingSpaceUIStyler.StyleButton(button, ThinkingSpaceButtonKind.Navigation);
             button.gameObject.SetActive(true);
+        }
+
+        private static void LimitButtonText(Button button,float minimumSize)
+        {
+            TMP_Text text=button!=null?button.GetComponentInChildren<TMP_Text>(true):null;
+            if(text==null)return;text.enableAutoSizing=true;text.fontSizeMin=minimumSize;
+            text.fontSizeMax=Mathf.Max(minimumSize,26f);text.textWrappingMode=TextWrappingModes.Normal;
         }
 
         private void ApplyFoundationStyling()

@@ -43,8 +43,15 @@ namespace ThinkingSpace.UI
         {
             ThinkingSpaceUITheme resolved=theme!=null?theme:ThinkingSpaceUITheme.LoadDefault();
             Image image=GetComponent<Image>();Button button=Button;
-            image.raycastTarget=true;image.type=Image.Type.Simple;image.preserveAspect=false;image.sprite=SafeSprite(resolved);image.color=BaseColor(resolved);
-            button.targetGraphic=image;button.transition=Selectable.Transition.ColorTint;
+            image.raycastTarget=true;image.sprite=SafeSprite(resolved);image.color=BaseColor(resolved);
+            bool sliced=image.sprite!=null&&image.sprite.border.sqrMagnitude>0f;
+            image.type=sliced?Image.Type.Sliced:Image.Type.Simple;image.preserveAspect=!sliced&&image.sprite!=null;
+            button.targetGraphic=image;button.transition=image.sprite!=null?Selectable.Transition.SpriteSwap:Selectable.Transition.ColorTint;
+            SpriteState sprites=button.spriteState;
+            sprites.highlightedSprite=resolved!=null?resolved.ButtonHover:null;
+            sprites.pressedSprite=resolved!=null?resolved.ButtonPressed:null;
+            sprites.selectedSprite=resolved!=null?resolved.ButtonSelected:null;
+            sprites.disabledSprite=image.sprite;button.spriteState=sprites;
             ColorBlock colors=button.colors;colors.normalColor=Color.white;colors.highlightedColor=new Color(.82f,.96f,1f,1f);
             colors.pressedColor=new Color(.62f,.82f,.9f,1f);colors.selectedColor=resolved!=null?resolved.SelectedColor:new Color(1f,.62f,.16f,1f);
             colors.disabledColor=resolved!=null?resolved.DisabledColor:new Color(.18f,.21f,.25f,.72f);colors.colorMultiplier=1f;colors.fadeDuration=.08f;button.colors=colors;
@@ -65,8 +72,9 @@ namespace ThinkingSpace.UI
         {
             if(resolved==null)return null;RectTransform rect=transform as RectTransform;
             float width=rect!=null?Mathf.Abs(rect.rect.width):0f,height=rect!=null?Mathf.Abs(rect.rect.height):0f;
-            bool square=width>0f&&height>0f&&width/height>=.75f&&width/height<=1.33f;if(!square)return null;
-            return buttonKind==ThinkingSpaceButtonKind.Navigation&&resolved.NavigationArrow!=null?resolved.NavigationArrow:resolved.ButtonNormal;
+            bool square=width>0f&&height>0f&&width/height>=.75f&&width/height<=1.33f;
+            if(buttonKind==ThinkingSpaceButtonKind.Navigation&&square&&resolved.NavigationArrow!=null)return resolved.NavigationArrow;
+            return resolved.ButtonNormal;
         }
     }
 

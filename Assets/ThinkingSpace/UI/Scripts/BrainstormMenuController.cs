@@ -122,6 +122,9 @@ namespace ThinkingSpace.UI
         [Tooltip("Enable only after the multilingual conversation backend contract is deployed and verified.")]
         [SerializeField] private bool multilingualBackendContractEnabled;
         public bool MultilingualBackendContractEnabled => multilingualBackendContractEnabled;
+        public string ConversationLanguageMode=>preferencesStore?.Data?.ConversationLanguageMode
+            ??ThinkingSpacePreferencesStore.DefaultConversationLanguageMode;
+        public string ConversationLanguageCode=>preferencesStore?.Data?.ConversationLanguageCode??string.Empty;
 
         [Header("Open Palm Diagnostics")]
         [SerializeField] private bool showOpenPalmDiagnostics;
@@ -172,6 +175,7 @@ namespace ThinkingSpace.UI
         private RectTransform contentRoot;
         private RectTransform canvasRect;
         private BoundsClipper canvasBoundsClipper;
+        private WorldSpacePanelManipulator pointerMenuManipulator;
         private GameObject diagnosticsRoot;
         private TextMeshPro diagnosticsText;
         private GameObject diagnosticsBackground;
@@ -816,6 +820,9 @@ namespace ThinkingSpace.UI
             menuCanvas = authoredView.GetComponent<Canvas>();
             canvasRect = menuCanvas.GetComponent<RectTransform>();
             canvasBoundsClipper = authoredView.GetComponent<BoundsClipper>();
+            if(canvasBoundsClipper!=null)canvasBoundsClipper.Size=
+                MetaHandInteractionAdapter.CalculateBoundsSize(canvasRect.sizeDelta,28f,.035f);
+            ConfigurePointerMenuManipulator();
             authoredView.Bind(
                 () => InvokeGuarded(StartNewSession),
                 () => InvokeGuarded(() => OpenHelp(MenuScreen.VoiceHelp)),
@@ -1315,7 +1322,7 @@ namespace ThinkingSpace.UI
             PlaneSurface plane = canvasObject.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             canvasBoundsClipper = canvasObject.AddComponent<BoundsClipper>();
-            canvasBoundsClipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            canvasBoundsClipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clippedSurface = canvasObject.AddComponent<ClippedPlaneSurface>();
             clippedSurface.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { canvasBoundsClipper });
             RayInteractable rayInteractable = canvasObject.AddComponent<RayInteractable>();
@@ -1357,7 +1364,37 @@ namespace ThinkingSpace.UI
             scroll.inertia = true;
             scroll.decelerationRate = 0.12f;
             scroll.scrollSensitivity = 25f;
+            ConfigurePointerMenuManipulator();
             menuCanvas.gameObject.SetActive(false);
+        }
+
+        private void ConfigurePointerMenuManipulator()
+        {
+            if(canvasRect==null)return;
+            WorldSpacePanelManipulator value=WorldSpacePanelManipulator.Attach(canvasRect);
+            if(pointerMenuManipulator==value)return;
+            if(pointerMenuManipulator!=null)
+            {
+                pointerMenuManipulator.DragStarted-=HandlePointerMenuDragStarted;
+                pointerMenuManipulator.DragEnded-=HandlePointerMenuDragEnded;
+            }
+            pointerMenuManipulator=value;
+            pointerMenuManipulator.DragStarted+=HandlePointerMenuDragStarted;
+            pointerMenuManipulator.DragEnded+=HandlePointerMenuDragEnded;
+        }
+
+        private void HandlePointerMenuDragStarted()
+        {
+            menuPlacementState=MenuPlacementState.Detached;menuPoseLocked=true;followVelocity=Vector3.zero;
+            SetMenuFrameColor(new Color(.35f,.95f,1f,1f));
+            recordingGestureController?.SetBubbleManipulationSuppressed(true,duplicateClickGuard);
+        }
+
+        private void HandlePointerMenuDragEnded()
+        {
+            menuPlacementState=MenuPlacementState.Detached;menuPoseLocked=menuHovered||menuSelected;
+            SetMenuFrameColor(new Color(.08f,.32f,.48f,.72f));
+            recordingGestureController?.SetBubbleManipulationSuppressed(false,watchToggleCooldown);
         }
 
         private void BuildDiagnostics()
@@ -2318,7 +2355,8 @@ namespace ThinkingSpace.UI
             float height = Mathf.Min(pixelHeight, panelSize.y);
             canvasRect.sizeDelta = new Vector2(panelSize.x, height);
             if (canvasBoundsClipper != null)
-                canvasBoundsClipper.Size = new Vector3(panelSize.x, height, 0.01f);
+                canvasBoundsClipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(
+                    new Vector2(panelSize.x,height),28f,.035f);
         }
 
         private void OpenHelp(MenuScreen helpScreen)

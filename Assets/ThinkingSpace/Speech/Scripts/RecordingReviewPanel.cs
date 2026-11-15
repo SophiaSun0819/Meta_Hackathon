@@ -27,6 +27,7 @@ namespace ThinkingSpace.Speech
         private TMP_Text playLabel;
         private Button playButton, sendButton, discardButton, rerecordButton, exportButton;
         private Action play, send, discard, rerecord, export;
+        private WorldSpacePanelManipulator manipulator;
 
         private void Awake() { BuildPanel(); Hide(); }
         public void SetHeadset(Transform value) => headset = value;
@@ -40,7 +41,7 @@ namespace ThinkingSpace.Speech
             SetExportStatus(string.Empty);
             SetPlaying(false);
             SetButtonsInteractable(true);
-            canvas.gameObject.SetActive(true);
+            manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
 
@@ -95,7 +96,8 @@ namespace ThinkingSpace.Speech
 
         private void LateUpdate()
         {
-            if (canvas != null && canvas.gameObject.activeSelf) PositionAtHeadset();
+            if (canvas != null && canvas.gameObject.activeSelf
+                && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset();
         }
 
         private void PositionAtHeadset()
@@ -131,7 +133,7 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             BoundsClipper clipper = root.AddComponent<BoundsClipper>();
-            clipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            clipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clipped = root.AddComponent<ClippedPlaneSurface>();
             clipped.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { clipper });
             RayInteractable ray = root.AddComponent<RayInteractable>();
@@ -182,6 +184,7 @@ namespace ThinkingSpace.Speech
             exportButton.onClick.AddListener(() => export?.Invoke());
             ThinkingSpaceUIStyler.StylePanel(root,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(root);
+            manipulator=WorldSpacePanelManipulator.Attach(rect);
             ThinkingSpaceLocalizationController.LocalizeKnownText(root);
         }
 
