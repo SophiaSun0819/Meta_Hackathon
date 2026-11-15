@@ -103,8 +103,6 @@ namespace ThinkingSpace.Editor
                 failure = "Meta DevAgent credential remained populated after sanitization.";
                 return false;
             }
-            if (!enabled)
-                NormalizeEmptyCredentialLine(Path.GetFullPath(SettingsAssetPath));
             return true;
         }
 

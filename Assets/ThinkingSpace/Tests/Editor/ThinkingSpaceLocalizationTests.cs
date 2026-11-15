@@ -456,5 +456,31 @@ namespace ThinkingSpace.Tests.Editor
                 "enabled: 0\r\n  accessToken:\r\n  serverPort: 48735\r\n");
             Assert.That(File.ReadAllBytes(path),Is.EqualTo(expected));
         }
+
+        [Test]
+        public void DisabledDevAgentLiveSanitizationDoesNotPerformSecondRawFileRewrite()
+        {
+            Type guard=typeof(ThinkingSpace.Editor.DisabledMetaDevAgentCredentialGuard);
+            var live=guard.GetMethod("TrySanitizeProjectAsset",
+                System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+            var rawRewrite=guard.GetMethod("NormalizeEmptyCredentialLine",
+                System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+            Assert.That(live,Is.Not.Null);
+            Assert.That(rawRewrite,Is.Not.Null);
+            byte[] il=live.GetMethodBody()?.GetILAsByteArray();
+            Assert.That(il,Is.Not.Null.And.Not.Empty);
+            byte[] token=BitConverter.GetBytes(rawRewrite.MetadataToken);
+            bool callsRawRewrite=false;
+            for(int index=0;index+token.Length<il.Length;index++)
+            {
+                if(il[index]!=(byte)System.Reflection.Emit.OpCodes.Call.Value)continue;
+                bool matches=true;
+                for(int offset=0;offset<token.Length;offset++)
+                    if(il[index+1+offset]!=token[offset]){matches=false;break;}
+                if(matches){callsRawRewrite=true;break;}
+            }
+            Assert.That(callsRawRewrite,Is.False,
+                "Live sanitization must use Unity serialization only; a second raw disk write races Asset Import Workers.");
+        }
     }
 }
