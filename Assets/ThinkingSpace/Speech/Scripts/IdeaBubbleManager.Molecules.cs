@@ -17,7 +17,8 @@ namespace ThinkingSpace.Speech
         [SerializeField, Range(0.5f, 2f)] private float fuseHoldDuration = 1.0f;
         [SerializeField, Range(0.5f, 3f)] private float fuseCooldown = 1.2f;
         [SerializeField, Range(0.4f, 0.9f)] private float sourceScale = 0.65f;
-        [SerializeField, Range(0f, 0.06f)] private float bondGap = 0.02f;
+        // 0 = sources touch the center. The bond line only appears while a source is pulled away.
+        [SerializeField, Range(0f, 0.06f)] private float bondGap = 0f;
         [SerializeField, Range(0.05f, 0.3f)] private float bondBreakStretch = 0.12f;
         [SerializeField, Range(0.05f, 0.2f)] private float rejectionPushDistance = 0.10f;
 
@@ -236,8 +237,10 @@ namespace ThinkingSpace.Speech
                         if (!held && !movements.ContainsKey(sourceId) && !fusingIdeaIds.Contains(sourceId)
                             && sourceOffsets.TryGetValue(sourceId, out Vector3 offset))
                             source.transform.position = center.transform.position + offset;
+                        // Resting sources touch the center, so the bond is only drawn while one is held.
+                        if (!held) continue;
                         activeBonds.Add(sourceId);
-                        DrawBond(sourceId, center, source, held && IsBondStretched(center, source));
+                        DrawBond(sourceId, center, source, IsBondStretched(center, source));
                     }
                 }
             var stale = new List<string>();
