@@ -22,4 +22,4 @@ MonoBehaviour:
   handPushToTalkGesture: 0
   enableDelayedRelease: 1
   releaseDelay: 0.8
-  accessToken: 4e4f2f1140c14e7f8da8fbabbca8825d
+  accessToken:

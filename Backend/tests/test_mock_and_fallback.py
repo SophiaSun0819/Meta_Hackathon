@@ -218,6 +218,23 @@ class ConversationFallbackLineTests(unittest.TestCase):
         self.assertEqual(data["status"], "error")
         self.assertEqual(data["fallback_spoken_response"], backend_app.FALLBACK_SPOKEN_RESPONSES[502])
 
+    def test_provider_failure_uses_resolved_language_without_hiding_error(self):
+        backend_app.conversation_orchestrator = ConversationOrchestrator(
+            FailingConversationProvider(), timeout_seconds=1.0)
+        response = self.client.post("/api/conversations/process",
+            headers={"X-ThinkingSpace-Token": TOKEN}, json={
+                "request_id": "conversation-down-es", "session_id": "Session 1",
+                "raw_transcript": "Hola.", "context": {
+                    "response_language_mode": "explicit", "response_language": "es",
+                    "voice_profile_id": "orby-auto"}})
+        self.assertEqual(response.status_code, 502)
+        data = response.json()
+        self.assertEqual(data["status"], "error")
+        self.assertEqual(data["response_language"], "es")
+        self.assertEqual(data["voice_profile_id"], "orby-es")
+        self.assertEqual(data["fallback_spoken_response"],
+                         backend_app.LOCALIZED_CONVERSATION_FALLBACKS["es"][502])
+
 
 class MockModeEndpointTests(unittest.TestCase):
     def setUp(self):

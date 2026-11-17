@@ -52,31 +52,30 @@ class MockConversationProvider:
     async def respond(self, request: ConversationRequest) -> ConversationModelOutput:
         text = request.selected_transcript.strip()
         lowered = text.lower()
+        language = request.context.language_resolution.language_code
         idea_ids = [idea.idea_id for idea in request.available_ideas]
         recent = request.context.most_recent_idea_id or (idea_ids[-1] if idea_ids else None)
 
         if _has_any(lowered, ("combine", "merge", "mix ")) and len(idea_ids) >= 2:
             targets = _combination_targets(idea_ids, recent)
             return _output("idea_modification", "combine_ideas", targets,
-                           "Combining those two could spark something new.",
+                           _localized("combine", language),
                            "excited", relationship="combination")
         if _has_any(lowered, ("expand", "more detail", "build on", "develop")) and recent:
             return _output("idea_modification", "expand_idea", [recent],
-                           "Let's build on that idea and take it further.",
+                           _localized("expand", language),
                            "excited", relationship="derived_expansion")
         if _has_any(lowered, ("risk", "challenge", "problem", "weakness", "wrong with")) and recent:
             return _output("conversational_idea_challenge", "conversational_challenge", [recent],
-                           "One risk to consider: who maintains it after launch, and what happens "
-                           "if early users don't come back?",
+                           _localized("challenge", language),
                            "thinking", discourse_context="challenge")
         if lowered.endswith("?") or lowered.split(" ", 1)[0] in {
                 "what", "how", "why", "who", "when", "where", "can", "could", "should", "is", "are"}:
             return _output("general_conversation", "converse", [],
-                           "That's a good question. In mock mode I can only give short canned "
-                           "answers, but the live service will answer this properly.",
+                           _localized("general", language),
                            "attentive")
         return _output("clear_new_idea", "create_idea", [],
-                       "That sounds like a promising idea.", "happy",
+                       _localized("idea", language), "happy",
                        relationship="standalone", create=True)
 
 
@@ -105,7 +104,7 @@ class MockIntentProvider:
 class MockVoiceProvider:
     """Mock mode has no generated audio; Unity falls back to subtitles on a 503."""
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, profile=None) -> bytes:
         raise VoiceConfigurationError("Voice is disabled in mock mode.")
 
 
@@ -180,6 +179,47 @@ def _combination_targets(idea_ids: list[str], recent: str | None) -> list[str]:
 
 def _has_any(text: str, keywords) -> bool:
     return any(keyword in text for keyword in keywords)
+
+
+def _localized(key: str, language: str) -> str:
+    messages = {
+        "en": {
+            "combine": "Combining those two could spark something new.",
+            "expand": "Let's build on that idea and take it further.",
+            "challenge": "One risk to consider is who maintains it after launch and whether early users return.",
+            "general": "That's a good question. Mock mode only gives short canned answers, but the live service will answer properly.",
+            "idea": "That sounds like a promising idea.",
+        },
+        "es": {
+            "combine": "Combinar esas dos ideas podría inspirar algo nuevo.",
+            "expand": "Desarrollemos esa idea y llevémosla más lejos.",
+            "challenge": "Un riesgo importante es quién la mantendrá después del lanzamiento y si los primeros usuarios volverán.",
+            "general": "Es una buena pregunta. El modo de prueba solo ofrece respuestas breves, pero el servicio real responderá mejor.",
+            "idea": "Parece una idea prometedora.",
+        },
+        "fr": {
+            "combine": "Combiner ces deux idées pourrait créer quelque chose de nouveau.",
+            "expand": "Développons cette idée pour aller plus loin.",
+            "challenge": "Un risque important concerne sa maintenance après le lancement et le retour des premiers utilisateurs.",
+            "general": "C'est une bonne question. Le mode simulé donne des réponses brèves, mais le service réel répondra mieux.",
+            "idea": "Cette idée semble prometteuse.",
+        },
+        "zh-CN": {
+            "combine": "把这两个想法结合起来，可能会产生新的灵感。",
+            "expand": "我们可以继续发展这个想法。",
+            "challenge": "一个重要风险是发布后由谁维护，以及早期用户是否会再次使用。",
+            "general": "这是个好问题。模拟模式只提供简短回答，正式服务会给出更完整的回应。",
+            "idea": "这听起来是个很有潜力的想法。",
+        },
+        "hi-IN": {
+            "combine": "इन दोनों विचारों को मिलाने से कुछ नया बन सकता है।",
+            "expand": "आइए इस विचार को आगे बढ़ाएँ।",
+            "challenge": "एक बड़ा जोखिम यह है कि लॉन्च के बाद इसे कौन संभालेगा और शुरुआती उपयोगकर्ता वापस आएँगे या नहीं।",
+            "general": "यह अच्छा सवाल है। मॉक मोड छोटे उत्तर देता है, लेकिन लाइव सेवा बेहतर जवाब देगी।",
+            "idea": "यह एक आशाजनक विचार लगता है।",
+        },
+    }
+    return messages.get(language, messages["en"])[key]
 
 
 def _one_paragraph(text: str) -> str:

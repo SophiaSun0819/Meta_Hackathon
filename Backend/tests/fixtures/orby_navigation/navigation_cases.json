@@ -1,0 +1,53 @@
+[
+  {
+    "name": "follow_user",
+    "request": {
+      "contract_version": "1.1",
+      "request_id": "nav-follow-001",
+      "session_id": "Session 1",
+      "client_capabilities": ["companion_navigation.v1"],
+      "navigation_context": {"platform": "quest_3d", "navigation_state": "idle", "user_anchor_available": true, "home_anchor_available": true, "resumable": false}
+    },
+    "response": {
+      "contract_version": "1.1", "request_id": "nav-follow-001", "session_id": "Session 1",
+      "intent_category": "companion_navigation", "proposed_action": "follow_user", "target_idea_ids": [],
+      "navigation": {"destination_kind": "user", "relative_position": "front_right", "distance_band": "standard", "movement_mode": "continuous", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null},
+      "spoken_response": "I can follow you.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null
+    }
+  },
+  {
+    "name": "approach_idea",
+    "request": {"contract_version": "1.1", "request_id": "nav-idea-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "quest_3d", "navigation_state": "idle", "selected_idea_id": "idea-solar", "user_anchor_available": true, "home_anchor_available": true, "resumable": false}},
+    "response": {"contract_version": "1.1", "request_id": "nav-idea-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "approach_idea", "target_idea_ids": ["idea-solar"], "navigation": {"destination_kind": "idea", "relative_position": "viewing_side", "distance_band": "standard", "movement_mode": "one_shot", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null}, "spoken_response": "I can move beside the Solar idea.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null}
+  },
+  {
+    "name": "return_home",
+    "request": {"contract_version": "1.1", "request_id": "nav-home-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "web_3d", "navigation_state": "idle", "user_anchor_available": true, "home_anchor_available": true, "resumable": false}},
+    "response": {"contract_version": "1.1", "request_id": "nav-home-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "return_companion_home", "target_idea_ids": [], "navigation": {"destination_kind": "home", "relative_position": "default", "distance_band": "standard", "movement_mode": "one_shot", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null}, "spoken_response": "I can return to my home position.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null}
+  },
+  {
+    "name": "reposition",
+    "request": {"contract_version": "1.1", "request_id": "nav-position-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "web_2d", "navigation_state": "idle", "user_anchor_available": true, "home_anchor_available": true, "resumable": false}},
+    "response": {"contract_version": "1.1", "request_id": "nav-position-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "reposition_companion", "target_idea_ids": [], "navigation": {"destination_kind": "viewport_anchor", "relative_position": "right", "distance_band": "standard", "movement_mode": "one_shot", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null}, "spoken_response": "I can move to the right side.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null}
+  },
+  {
+    "name": "stop",
+    "request": {"contract_version": "1.1", "request_id": "nav-stop-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "quest_3d", "navigation_state": "following", "active_operation_id": "nav-active-1", "user_anchor_available": true, "home_anchor_available": true, "resumable": true}},
+    "response": {"contract_version": "1.1", "request_id": "nav-stop-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "stop_companion_navigation", "target_idea_ids": [], "navigation": {"destination_kind": "none", "relative_position": "default", "distance_band": "standard", "movement_mode": "immediate", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null}, "spoken_response": "I'll stop moving.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null}
+  },
+  {
+    "name": "resume",
+    "request": {"contract_version": "1.1", "request_id": "nav-resume-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "quest_3d", "navigation_state": "paused", "active_operation_id": "nav-active-1", "user_anchor_available": true, "home_anchor_available": true, "resumable": true}},
+    "response": {"contract_version": "1.1", "request_id": "nav-resume-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "resume_companion_navigation", "target_idea_ids": [], "navigation": {"destination_kind": "none", "relative_position": "default", "distance_band": "standard", "movement_mode": "resume", "operation_scope": "companion_only", "execution_disposition": "authorized", "failure_code": null}, "spoken_response": "I can resume the paused movement.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": true, "status": "completed", "error": null}
+  },
+  {
+    "name": "ambiguous_target",
+    "request": {"contract_version": "1.1", "request_id": "nav-ambiguous-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "quest_3d", "navigation_state": "idle", "user_anchor_available": true, "home_anchor_available": true, "resumable": false}},
+    "response": {"contract_version": "1.1", "request_id": "nav-ambiguous-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "approach_idea", "target_idea_ids": [], "navigation": {"destination_kind": "idea", "relative_position": "viewing_side", "distance_band": "standard", "movement_mode": "one_shot", "operation_scope": "companion_only", "execution_disposition": "clarification_required", "failure_code": null}, "spoken_response": "Which idea should I move beside?", "requires_confirmation": true, "clarification_id": "clarify-nav-1", "clarification_question": "Which idea should I move beside?", "candidate_idea_ids": ["idea-solar", "idea-garden"], "should_execute_action": false, "status": "completed", "error": null}
+  },
+  {
+    "name": "unavailable_destination",
+    "request": {"contract_version": "1.1", "request_id": "nav-unavailable-001", "session_id": "Session 1", "client_capabilities": ["companion_navigation.v1"], "navigation_context": {"platform": "quest_3d", "navigation_state": "idle", "user_anchor_available": true, "home_anchor_available": false, "resumable": false}},
+    "response": {"contract_version": "1.1", "request_id": "nav-unavailable-001", "session_id": "Session 1", "intent_category": "companion_navigation", "proposed_action": "return_companion_home", "target_idea_ids": [], "navigation": {"destination_kind": "home", "relative_position": "default", "distance_band": "standard", "movement_mode": "one_shot", "operation_scope": "companion_only", "execution_disposition": "blocked", "failure_code": "destination_unavailable"}, "spoken_response": "My home position is unavailable, so I'll stay here.", "requires_confirmation": false, "clarification_id": null, "clarification_question": null, "candidate_idea_ids": [], "should_execute_action": false, "status": "completed", "error": null}
+  }
+]

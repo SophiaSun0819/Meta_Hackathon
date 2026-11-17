@@ -71,6 +71,36 @@ FALLBACK_SPOKEN_RESPONSES = {
     503: "My thinking service isn't available right now. Your ideas are still safe here.",
     504: "Sorry, that took me too long. Could you say it again?",
 }
+LOCALIZED_CONVERSATION_FALLBACKS = {
+    "es": {
+        429: "Necesito un momento. Inténtalo de nuevo en unos segundos.",
+        500: "Lo siento, algo salió mal. ¿Puedes repetirlo?",
+        502: "Lo siento, perdí el hilo. ¿Puedes repetirlo?",
+        503: "Mi servicio no está disponible ahora. Tus ideas siguen seguras.",
+        504: "Lo siento, tardé demasiado. ¿Puedes repetirlo?",
+    },
+    "fr": {
+        429: "J'ai besoin d'un instant. Réessayez dans quelques secondes.",
+        500: "Désolée, un problème est survenu. Pouvez-vous répéter ?",
+        502: "Désolée, j'ai perdu le fil. Pouvez-vous répéter ?",
+        503: "Mon service est indisponible. Vos idées restent en sécurité.",
+        504: "Désolée, cela a pris trop de temps. Pouvez-vous répéter ?",
+    },
+    "zh-CN": {
+        429: "我需要一点时间，请几秒后再试。",
+        500: "抱歉，系统出了点问题。请再说一次。",
+        502: "抱歉，我刚才没能完成思考。请再说一次。",
+        503: "我的思考服务暂时不可用，但你的想法仍然安全。",
+        504: "抱歉，这次处理时间太长了。请再说一次。",
+    },
+    "hi-IN": {
+        429: "मुझे थोड़ा समय चाहिए। कुछ सेकंड बाद फिर कोशिश करें।",
+        500: "माफ़ कीजिए, मेरी तरफ़ कुछ गड़बड़ हुई। कृपया फिर कहें।",
+        502: "माफ़ कीजिए, मेरी सोच बीच में रुक गई। कृपया फिर कहें।",
+        503: "मेरी सेवा अभी उपलब्ध नहीं है, लेकिन आपके विचार सुरक्षित हैं।",
+        504: "माफ़ कीजिए, इसमें बहुत समय लगा। कृपया फिर कहें।",
+    },
+}
 app = FastAPI(title="Thinking Space Backend", version="1.4.0")
 request_times: deque[float] = deque()
 rate_limit_lock = asyncio.Lock()
@@ -251,8 +281,10 @@ async def synthesize_voice(request: Request,
         return make_voice_error(409, "Another voice request is already active for this session.", voice_request)
     completed = False
     try:
+        resolved_profile = voice_request.resolved_profile
         audio = await asyncio.wait_for(
-            voice_provider.synthesize(voice_request.text), timeout=ELEVENLABS_TIMEOUT_SECONDS)
+            voice_provider.synthesize(voice_request.text, resolved_profile),
+            timeout=ELEVENLABS_TIMEOUT_SECONDS)
         if len(audio) > MAX_TTS_AUDIO_BYTES:
             raise VoiceAudioTooLarge("Generated voice audio exceeded the configured limit.")
         if not is_probable_mp3(audio):
@@ -263,6 +295,8 @@ async def synthesize_voice(request: Request,
             "X-ThinkingSpace-Request-ID": voice_request.request_id,
             "X-ThinkingSpace-Session-ID": quote(voice_request.session_id, safe="._:-"),
             "X-ThinkingSpace-Audio-Format": "mp3_44100_128",
+            "X-ThinkingSpace-Response-Language": resolved_profile.language_code,
+            "X-ThinkingSpace-Voice-Profile": resolved_profile.profile_id,
         })
     except VoiceConfigurationError:
         return make_voice_error(503, "Voice service is not configured.", voice_request)
@@ -574,7 +608,8 @@ def make_conversation_error(status_code: int, message: str,
         output_characters: int | None = None,
         structured_parse_attempted: bool | None = None) -> JSONResponse:
     response = conversation_error_response(message, conversation_request)
-    response.fallback_spoken_response = FALLBACK_SPOKEN_RESPONSES.get(status_code)
+    response.fallback_spoken_response = (LOCALIZED_CONVERSATION_FALLBACKS
+        .get(response.response_language, FALLBACK_SPOKEN_RESPONSES).get(status_code))
     headers = None
     if validation_stage and validation_field and validation_category:
         headers = {

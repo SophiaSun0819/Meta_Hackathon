@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -20,6 +21,7 @@ namespace ThinkingSpace.Speech
         private Canvas canvas;
         private TMP_Text heading, body, pageIndicator, primaryLabel, secondaryLabel;
         private Button previousButton, nextButton, primaryButton, secondaryButton;
+        private WorldSpacePanelManipulator manipulator;
         private readonly List<string> pages = new List<string>();
         private int page;
         private Action primaryAction, secondaryAction;
@@ -37,7 +39,7 @@ namespace ThinkingSpace.Speech
             secondaryAction = secondary;
             ConfigureButton(primaryButton, primaryLabel, primaryText, primary);
             ConfigureButton(secondaryButton, secondaryLabel, secondaryText, secondary);
-            canvas.gameObject.SetActive(true);
+            manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
 
@@ -81,13 +83,15 @@ namespace ThinkingSpace.Speech
         private void RefreshPage()
         {
             body.text = pages.Count > 0 ? pages[page] : string.Empty;
-            pageIndicator.text = "Page " + (page + 1) + " / " + Mathf.Max(1, pages.Count);
+            pageIndicator.text = ThinkingSpaceLocalizationController.Get(
+                "common.page_format",page+1,Mathf.Max(1,pages.Count));
             previousButton.interactable = page > 0;
             nextButton.interactable = page < pages.Count - 1;
         }
 
         private void LateUpdate()
-        { if (canvas != null && canvas.gameObject.activeSelf) PositionAtHeadset(); }
+        { if (canvas != null && canvas.gameObject.activeSelf
+            && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset(); }
 
         private void PositionAtHeadset()
         {
@@ -122,7 +126,7 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             BoundsClipper clipper = root.AddComponent<BoundsClipper>();
-            clipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            clipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clipped = root.AddComponent<ClippedPlaneSurface>();
             clipped.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { clipper });
             RayInteractable ray = root.AddComponent<RayInteractable>();
@@ -146,6 +150,9 @@ namespace ThinkingSpace.Speech
             primaryButton.onClick.AddListener(() => { if (primaryButton.interactable) primaryAction?.Invoke(); });
             secondaryButton = Button("Secondary", rect, new Vector2(0.53f, 0.05f), new Vector2(0.93f, 0.17f), out secondaryLabel);
             secondaryButton.onClick.AddListener(() => { if (secondaryButton.interactable) secondaryAction?.Invoke(); });
+            ThinkingSpaceUIStyler.StylePanel(root,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(root);
+            manipulator=WorldSpacePanelManipulator.Attach(rect);
         }
 
         private static TMP_Text Text(string name, Transform parent, float size, FontStyles style,

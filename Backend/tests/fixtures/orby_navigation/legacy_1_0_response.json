@@ -1,0 +1,23 @@
+{
+  "contract_version": "1.0",
+  "request_id": "legacy-conversation-001",
+  "session_id": "Session 1",
+  "intent_category": "spatial_command",
+  "proposed_action": "move_bubble",
+  "target_idea_ids": ["idea-solar"],
+  "parameters": {"scale": null, "direction": "closer", "settings_section": null},
+  "spoken_response": "I can bring the Solar idea closer.",
+  "subtitle_text": "I can bring the Solar idea closer.",
+  "suggested_emotion": "attentive",
+  "requires_confirmation": false,
+  "clarification_id": null,
+  "clarification_question": null,
+  "candidate_idea_ids": [],
+  "should_create_idea": false,
+  "should_execute_action": true,
+  "status": "completed",
+  "error": null,
+  "fallback_spoken_response": null,
+  "response_language": "en",
+  "voice_profile_id": "orby-en"
+}

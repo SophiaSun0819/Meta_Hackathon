@@ -1,0 +1,29 @@
+{
+  "FormatIdentifier": "thinking-space-session",
+  "FormatVersion": 1,
+  "ExportedUtc": "2026-11-13T12:00:00.0000000Z",
+  "SessionId": "session-spatial",
+  "SessionTitle": "Spatial Transform Coverage",
+  "SessionNumber": 9,
+  "CreatedUtc": "2026-11-12T08:00:00.0000000Z",
+  "UpdatedUtc": "2026-11-13T10:00:00.0000000Z",
+  "Ideas": [
+    {
+      "IdeaId": "idea-spatial",
+      "Title": "Rotated Bubble",
+      "Summary": "A fixture with nontrivial position, quaternion rotation, and nonuniform scale.",
+      "Category": "Spatial",
+      "VisualColor": "Cyan",
+      "SourceTranscript": "Place the bubble behind me and rotate it gently.",
+      "CreatedUtc": "2026-11-12T08:01:00.0000000Z",
+      "RelatedIdeaIds": [],
+      "Bubble": {
+        "Position": { "x": -12.5, "y": 3.125, "z": 42.75 },
+        "Rotation": { "x": 0.19134171, "y": -0.33141357, "z": 0.46193977, "w": 0.8001031 },
+        "Scale": { "x": 0.25, "y": 1.5, "z": 2.75 }
+      }
+    }
+  ],
+  "Relationships": [],
+  "Conversation": []
+}

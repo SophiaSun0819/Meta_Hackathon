@@ -56,7 +56,7 @@ namespace ThinkingSpace.Companion
         public void TurnListeningOffFromAnyState()
         {
             ListeningOffRequested?.Invoke();
-            SetState(OrbyConversationState.Idle);
+            SetState(OrbyConversationState.Paused);
         }
     }
 }

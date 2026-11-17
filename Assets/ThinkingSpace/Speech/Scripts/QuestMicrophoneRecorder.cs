@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using ThinkingSpace.Audio;
 
 namespace ThinkingSpace.Speech
 {
@@ -211,6 +212,7 @@ namespace ThinkingSpace.Speech
                     SetState(MicrophoneRecordingState.Recording);
                     LastStatus = "Recording started";
                     RecordingStarted?.Invoke();
+                    ThinkingSpaceSfxManager.PlayUi(ThinkingSpaceSfxCue.RecordingStart);
                 }
                 else if (Time.unscaledTime - stateEnteredAt >= startTimeout)
                     Fail("Microphone did not begin producing samples before the start timeout.");
@@ -366,6 +368,7 @@ namespace ThinkingSpace.Speech
                 + (meaningful ? "; audio detected" : "; audio level was near silent");
             SetState(MicrophoneRecordingState.Idle);
             RecordingCompleted?.Invoke(result);
+            ThinkingSpaceSfxManager.PlayUi(ThinkingSpaceSfxCue.RecordingStop);
         }
 
         public void CancelRecording(string reason = null)
@@ -414,6 +417,7 @@ namespace ThinkingSpace.Speech
             SetState(MicrophoneRecordingState.Error);
             Debug.LogError(message, this);
             RecordingFailed?.Invoke(message);
+            ThinkingSpaceSfxManager.PlayUi(ThinkingSpaceSfxCue.GentleError);
         }
 
         private void SetState(MicrophoneRecordingState next)

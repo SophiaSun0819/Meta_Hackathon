@@ -17,8 +17,9 @@ from pydantic import ValidationError
 import app as backend_app
 from conversation_orchestrator import (ConversationClarificationStore, ConversationMalformedOutput,
     ConversationContextError, ConversationModelOutput, ConversationOrchestrator, ConversationRequest,
-    OpenAIConversationProvider)
+    OpenAIConversationProvider, disabled_visual_capability_request)
 from idea_manager import IdeaRequestRegistry
+from mock_providers import MockConversationProvider
 
 
 class FixedConversationProvider:
@@ -128,6 +129,122 @@ class ConversationEndpointTests(unittest.TestCase):
             data = self.post(self.payload(f"conversation-{index}")).json()
             self.assertFalse(data["should_create_idea"])
             self.assertEqual(data["spoken_response"], data["subtitle_text"])
+
+    def test_disabled_visual_generation_is_honest_and_skips_provider(self):
+        for index, transcript in enumerate((
+                "Generate a diagram of these ideas.", "Create an image for this project.",
+                "Make a chart from my ideas.", "Build a presentation about the session.")):
+            provider = FixedConversationProvider(response="I generated it for you.", execute=True)
+            self.use(provider)
+            response = self.post(self.payload(f"disabled-visual-{index}", transcript))
+            self.assertEqual(response.status_code, 200, response.text)
+            data = response.json()
+            self.assertEqual(data["proposed_action"], "converse")
+            self.assertFalse(data["should_execute_action"])
+            self.assertFalse(data["should_create_idea"])
+            self.assertIn("can't generate that yet", data["spoken_response"])
+            self.assertEqual(data["spoken_response"], data["subtitle_text"])
+            self.assertEqual(provider.calls, 0)
+
+    def test_visual_planning_remains_normal_conversation(self):
+        for transcript in ("Help me plan a diagram.", "How could I design a useful chart?",
+                           "Brainstorm ideas for a presentation."):
+            self.assertFalse(disabled_visual_capability_request(transcript))
+        provider = FixedConversationProvider(response="Let's plan the structure together.")
+        self.use(provider)
+        response = self.post(self.payload("visual-planning", "Help me plan a diagram."))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(response.json()["proposed_action"], "converse")
+
+    def test_disabled_visual_generation_uses_resolved_language(self):
+        provider = FixedConversationProvider()
+        self.use(provider)
+        payload = self.payload("disabled-visual-spanish", "Generate an image for this idea.")
+        payload["context"].update({"response_language_mode": "explicit",
+                                   "response_language": "es",
+                                   "voice_profile_id": "orby-es"})
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["response_language"], "es")
+        self.assertEqual(data["voice_profile_id"], "orby-es")
+        self.assertEqual(provider.calls, 0)
+
+    def test_disabled_visual_generation_is_detected_in_supported_languages(self):
+        samples = (
+            "Crea una imagen de este proyecto.",
+            "Crée une présentation de cette session.",
+            "生成这个项目的图像。",
+            "इस परियोजना का चित्र बनाओ।",
+        )
+        for transcript in samples:
+            with self.subTest(transcript=transcript):
+                self.assertTrue(disabled_visual_capability_request(transcript))
+
+    def test_legacy_request_defaults_to_english_profile(self):
+        self.use(FixedConversationProvider())
+        response = self.post(self.payload("legacy-language-client"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["response_language"], "en")
+        self.assertEqual(response.json()["voice_profile_id"], "orby-en")
+
+    def test_explicit_and_auto_languages_resolve_without_extra_provider_calls(self):
+        cases = (("en", "orby-en"), ("es", "orby-es"), ("fr", "orby-fr"),
+                 ("zh-CN", "orby-zh"), ("hi-IN", "orby-hi"))
+        for index, (language, profile) in enumerate(cases):
+            provider = FixedConversationProvider(response="Validated localized response.")
+            self.use(provider)
+            payload = self.payload(f"explicit-language-{index}")
+            payload["context"].update({"response_language_mode": "explicit",
+                                       "response_language": language,
+                                       "voice_profile_id": profile})
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 200, response.text)
+            data = response.json()
+            self.assertEqual(data["response_language"], language)
+            self.assertEqual(data["voice_profile_id"], profile)
+            self.assertEqual(data["spoken_response"], data["subtitle_text"])
+            self.assertEqual(provider.calls, 1)
+
+        provider = FixedConversationProvider()
+        self.use(provider)
+        auto = self.payload("auto-detected-language")
+        auto["context"].update({"response_language_mode": "auto", "input_language": "es",
+                                "voice_profile_id": "orby-auto"})
+        response = self.post(auto)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["response_language"], "es")
+        self.assertEqual(response.json()["voice_profile_id"], "orby-es")
+        self.assertEqual(provider.calls, 1)
+
+    def test_invalid_or_conflicting_language_context_is_rejected(self):
+        cases = (
+            {"input_language": "xx"},
+            {"voice_profile_id": "arbitrary-voice"},
+            {"response_language_mode": "explicit"},
+            {"response_language_mode": "auto", "response_language": "fr"},
+            {"response_language_mode": "explicit", "response_language": "es",
+             "voice_profile_id": "orby-fr"},
+        )
+        for index, values in enumerate(cases):
+            payload = self.payload(f"invalid-language-{index}")
+            payload["context"].update(values)
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 422, response.text)
+
+    def test_mock_conversation_uses_resolved_language_for_speech_and_subtitles(self):
+        self.use(MockConversationProvider())
+        payload = self.payload("mock-spanish-language", transcript="¿Qué es la realidad virtual?")
+        payload["context"].update({"response_language_mode": "explicit",
+                                   "response_language": "es",
+                                   "voice_profile_id": "orby-auto"})
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["response_language"], "es")
+        self.assertEqual(data["spoken_response"], data["subtitle_text"])
+        self.assertIn("pregunta", data["spoken_response"])
 
     def test_preferred_name_request_compatibility(self):
         cases = [

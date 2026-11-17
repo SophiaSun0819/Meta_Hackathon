@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using ThinkingSpace.Companion;
 using ThinkingSpace.UI;
+using ThinkingSpace.Audio;
 
 namespace ThinkingSpace.Speech
 {
@@ -347,6 +348,9 @@ namespace ThinkingSpace.Speech
             bubble.Initialize(idea, bubbleDiameter, SelectAndShowDetails, bubbleCategorySaturation);
             bubble.SetInteractionAvailable(interactionAvailable);
             visible.Add(idea.IdeaId, bubble);
+            ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleCreate, root.transform.position);
+            if(idea.RelatedIdeaIds!=null&&idea.RelatedIdeaIds.Count>0)
+                ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleConnect,root.transform.position);
             return bubble;
         }
 
@@ -360,6 +364,7 @@ namespace ThinkingSpace.Speech
             lastSelectionIdeaId = idea.IdeaId;
             lastSelectionPointerId = pointerId;
             lastSelectionTime = now;
+            ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleSnap,next.transform.position);
             if (ShouldToggleSelectionOff(selectedIdeaId, openPanels.ContainsKey(idea.IdeaId), idea.IdeaId))
             {
                 ClosePanel(openPanels[idea.IdeaId]);
@@ -458,6 +463,7 @@ namespace ThinkingSpace.Speech
                 Destroy(bubble.gameObject);
             }
             visible.Remove(ideaId);
+            ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleDelete,bubble!=null?bubble.transform.position:panel.transform.position);
             openPanels.Remove(ideaId);
             selectionOwners.Remove(ideaId);
             panelFocusOrder.Remove(ideaId);
@@ -927,6 +933,7 @@ namespace ThinkingSpace.Speech
 
         private void BeginGrab(IdeaBubbleView bubble, BubbleInteractionHand hand, Vector3 palm)
         {
+            ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleGrab,bubble.transform.position);
             directMode = DirectManipulationMode.GlideToGrip;
             directIdeaId = bubble.IdeaId; directOwner = hand;
             directStartPosition = bubble.transform.position;
@@ -975,6 +982,7 @@ namespace ThinkingSpace.Speech
             ReleaseSecondGrab(persist);
             if (visible.TryGetValue(directIdeaId, out IdeaBubbleView bubble) && bubble != null)
             {
+                ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleRelease,bubble.transform.position);
                 bubble.SetMoving(false); bubble.SetBoundingBoxVisible(false); bubble.SetDirectProximity(false);
                 if (persist) CommitManualTransform(bubble);
                 if (persist) FinishMoleculeMovement(directIdeaId);

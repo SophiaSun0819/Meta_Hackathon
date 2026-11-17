@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -26,6 +27,7 @@ namespace ThinkingSpace.Speech
         private TMP_Text playLabel;
         private Button playButton, sendButton, discardButton, rerecordButton, exportButton;
         private Action play, send, discard, rerecord, export;
+        private WorldSpacePanelManipulator manipulator;
 
         private void Awake() { BuildPanel(); Hide(); }
         public void SetHeadset(Transform value) => headset = value;
@@ -34,12 +36,12 @@ namespace ThinkingSpace.Speech
         {
             play = onPlay; send = onSend; discard = onDiscard; rerecord = onRerecord;
             recordingDuration = Mathf.Max(0f, duration);
-            durationText.text = "Total  " + FormatDuration(recordingDuration);
+            durationText.text = ThinkingSpaceLocalizationController.Get("recording.total",FormatDuration(recordingDuration));
             SetPlaybackProgress(0f, recordingDuration);
             SetExportStatus(string.Empty);
             SetPlaying(false);
             SetButtonsInteractable(true);
-            canvas.gameObject.SetActive(true);
+            manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
             PositionAtHeadset();
         }
 
@@ -55,7 +57,8 @@ namespace ThinkingSpace.Speech
 
         public void SetPlaying(bool value)
         {
-            if (playLabel != null) playLabel.text = value ? "Stop Playback" : "Play Recording";
+            if (playLabel != null) playLabel.text = ThinkingSpaceLocalizationController.Get(
+                value ? "recording.stop" : "recording.play");
         }
 
         public void SetPlaybackProgress(float elapsed, float total)
@@ -66,8 +69,8 @@ namespace ThinkingSpace.Speech
             if (playbackProgressFill != null)
                 playbackProgressFill.fillAmount = recordingDuration > 0f ? current / recordingDuration : 0f;
             if (playbackTimeText != null)
-                playbackTimeText.text = FormatDuration(current) + " elapsed     -" + FormatDuration(remaining) + " remaining";
-            if (durationText != null) durationText.text = "Total  " + FormatDuration(recordingDuration);
+                playbackTimeText.text = ThinkingSpaceLocalizationController.Get("recording.elapsed",FormatDuration(current),FormatDuration(remaining));
+            if (durationText != null) durationText.text = ThinkingSpaceLocalizationController.Get("recording.total",FormatDuration(recordingDuration));
         }
 
         public void SetExportStatus(string message)
@@ -93,7 +96,8 @@ namespace ThinkingSpace.Speech
 
         private void LateUpdate()
         {
-            if (canvas != null && canvas.gameObject.activeSelf) PositionAtHeadset();
+            if (canvas != null && canvas.gameObject.activeSelf
+                && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset();
         }
 
         private void PositionAtHeadset()
@@ -129,7 +133,7 @@ namespace ThinkingSpace.Speech
             PlaneSurface plane = root.AddComponent<PlaneSurface>();
             plane.InjectAllPlaneSurface(PlaneSurface.NormalFacing.Backward, false);
             BoundsClipper clipper = root.AddComponent<BoundsClipper>();
-            clipper.Size = new Vector3(panelSize.x, panelSize.y, 0.01f);
+            clipper.Size = MetaHandInteractionAdapter.CalculateBoundsSize(panelSize,28f,.035f);
             ClippedPlaneSurface clipped = root.AddComponent<ClippedPlaneSurface>();
             clipped.InjectAllClippedPlaneSurface(plane, new List<IBoundsClipper> { clipper });
             RayInteractable ray = root.AddComponent<RayInteractable>();
@@ -178,6 +182,10 @@ namespace ThinkingSpace.Speech
             discardButton.onClick.AddListener(() => discard?.Invoke());
             rerecordButton.onClick.AddListener(() => rerecord?.Invoke());
             exportButton.onClick.AddListener(() => export?.Invoke());
+            ThinkingSpaceUIStyler.StylePanel(root,false,true);
+            ThinkingSpaceUIStyler.StyleHierarchy(root);
+            manipulator=WorldSpacePanelManipulator.Attach(rect);
+            ThinkingSpaceLocalizationController.LocalizeKnownText(root);
         }
 
         private static Button CreateButton(string label, Transform parent, Vector2 min, Vector2 max, out TMP_Text text)

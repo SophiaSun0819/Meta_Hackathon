@@ -5,6 +5,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
+using ThinkingSpace.UI.DesignKit;
 
 namespace ThinkingSpace.UI
 {
@@ -41,6 +42,22 @@ namespace ThinkingSpace.UI
             && pointableCanvas != null && planeSurface != null && boundsClipper != null
             && clippedPlaneSurface != null && rayInteractable != null && pokeInteractable != null
             && menuButton != null && buttonImage != null && label != null;
+
+        private void Awake()
+        {
+            ThinkingSpaceUIStyler.StyleButton(menuButton,ThinkingSpaceButtonKind.Icon);
+            if(buttonImage!=null)
+            {
+                buttonImage.color=QuestUIDesignTokens.Panel;
+                Outline outline=buttonImage.GetComponent<Outline>()??buttonImage.gameObject.AddComponent<Outline>();
+                outline.effectColor=new Color(QuestUIDesignTokens.Cyan.r,QuestUIDesignTokens.Cyan.g,
+                    QuestUIDesignTokens.Cyan.b,.85f);
+                outline.effectDistance=new Vector2(2f,-2f);
+                outline.useGraphicAlpha=true;
+            }
+            if(label!=null){label.color=QuestUIDesignTokens.Text;label.fontSize=Mathf.Max(22f,label.fontSize);}
+            if(label!=null)label.raycastTarget=false;
+        }
 
         public void SetEligibility(bool eligible)
         {

@@ -1,0 +1,16 @@
+[
+  {"name":"follow_user","transcript":"Orby, follow me","expected_action":"follow_user","expected_disposition":"authorized","expected_execute":true},
+  {"name":"approach_named_idea","transcript":"Move beside the Solar Hub","expected_action":"approach_idea","expected_targets":["idea-solar"],"expected_disposition":"authorized","expected_execute":true},
+  {"name":"approach_selected_idea","transcript":"Approach the selected idea","selected_idea_id":"idea-garden","expected_action":"approach_idea","expected_targets":["idea-garden"],"expected_disposition":"authorized","expected_execute":true},
+  {"name":"return_home","transcript":"Go back home","expected_action":"return_companion_home","expected_disposition":"authorized","expected_execute":true},
+  {"name":"reposition_right","transcript":"Move to my right","expected_action":"reposition_companion","expected_relative_position":"right","expected_disposition":"authorized","expected_execute":true},
+  {"name":"stop","transcript":"Stop moving","active_operation_id":"nav-active-1","navigation_state":"following","resumable":true,"expected_action":"stop_companion_navigation","expected_disposition":"authorized","expected_execute":true},
+  {"name":"resume","transcript":"Resume movement","active_operation_id":"nav-active-1","navigation_state":"paused","resumable":true,"expected_action":"resume_companion_navigation","expected_disposition":"authorized","expected_execute":true},
+  {"name":"ambiguous_idea","transcript":"Move beside an idea","expected_action":"approach_idea","expected_disposition":"clarification_required","expected_execute":false,"expected_candidates":["idea-garden","idea-solar"]},
+  {"name":"ambiguous_subject","transcript":"Come closer","expected_action":"reposition_companion","expected_disposition":"clarification_required","expected_execute":false,"expected_candidates":["idea-garden","idea-solar"]},
+  {"name":"home_unavailable","transcript":"Return home","home_anchor_available":false,"expected_action":"return_companion_home","expected_disposition":"blocked","expected_execute":false,"expected_failure":"destination_unavailable"},
+  {"name":"user_unavailable","transcript":"Follow me","user_anchor_available":false,"expected_action":"follow_user","expected_disposition":"blocked","expected_execute":false,"expected_failure":"destination_unavailable"},
+  {"name":"resume_unavailable","transcript":"Resume movement","navigation_state":"idle","resumable":false,"expected_action":"resume_companion_navigation","expected_disposition":"blocked","expected_execute":false,"expected_failure":"operation_not_resumable"},
+  {"name":"unknown_idea","transcript":"Approach the Moon Base","ideas":[],"expected_action":"approach_idea","expected_disposition":"blocked","expected_execute":false,"expected_failure":"destination_unavailable"},
+  {"name":"legacy_fallthrough","transcript":"Orby, follow me","contract_version":"1.0","client_capabilities":[],"expected_fallthrough":true}
+]

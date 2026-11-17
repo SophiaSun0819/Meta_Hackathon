@@ -64,7 +64,7 @@ namespace ThinkingSpace.Tests.Editor
         [Test]
         public void PrefabReferencesTheImportedBubbleMesh()
         {
-            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Orbi.fbx");
+            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Orbi.fbx");
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/ThinkingSpace/Speech/Resources/IdeaBubbleVisual.prefab");
             Assert.That(model, Is.Not.Null);

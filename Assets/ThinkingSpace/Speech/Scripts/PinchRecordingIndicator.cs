@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Speech
 {
@@ -209,7 +210,7 @@ namespace ThinkingSpace.Speech
             textRect.offsetMax = Vector2.zero;
 
             Text text = textObject.GetComponent<Text>();
-            text.text = "\u25CF Recording";
+            text.text = ThinkingSpaceLocalizationController.Get("recording.active");
             text.alignment = TextAnchor.MiddleCenter;
             text.fontSize = 32;
             text.fontStyle = FontStyle.Bold;

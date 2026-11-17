@@ -4,12 +4,49 @@ using ThinkingSpace.Companion;
 using ThinkingSpace.Speech;
 using ThinkingSpace.UI;
 using UnityEngine;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
+using UnityEngine.TestTools.Utils;
 
 namespace ThinkingSpace.Tests.Editor
 {
     public sealed class BrainstormPersistenceTests
     {
         private string directory;
+
+        [Test]
+        public void SandboxAuthoredWatchIsPreservedAndPresentationCannotInterceptInput()
+        {
+            Scene scene=EditorSceneManager.OpenScene("Assets/Scenes/Sandbox.unity",OpenSceneMode.Additive);
+            try
+            {
+                GameObject watch=BrainstormMenuController.FindAuthoredWatch(scene);
+                Assert.That(watch,Is.Not.Null);Assert.That(watch.name,Is.EqualTo("Watch"));
+                Assert.That(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(watch),Is.EqualTo("Assets/Models/sci-fi-watch/source/Watch.fbx"));
+                Assert.That(watch.transform.parent,Is.Null);Assert.That(watch.transform.localPosition,Is.EqualTo(new Vector3(-.041678f,-.012785f,-.001f)).Using(Vector3ComparerWithEqualsOperator.Instance));
+                Assert.That(watch.transform.localScale,Is.EqualTo(Vector3.one*3.3790793f).Using(Vector3ComparerWithEqualsOperator.Instance));
+                Assert.That(watch.GetComponentsInChildren<Renderer>(true).Length,Is.EqualTo(15));
+                Assert.That(watch.GetComponentsInChildren<Collider>(true).Length,Is.Zero);
+                BrainstormMenuController.ConfigureWatchPresentation(watch);
+                foreach(Transform item in watch.GetComponentsInChildren<Transform>(true))Assert.That(item.gameObject.layer,Is.EqualTo(2));
+            }
+            finally{EditorSceneManager.CloseScene(scene,true);}
+        }
+
+        [Test]
+        public void AuthoredWatchAttachmentMapsModelFaceToDorsalRootWithoutActivationGeometry()
+        {
+            GameObject root=new GameObject("Thinking Space Wristwatch");GameObject watch=new GameObject("Watch");
+            try
+            {
+                watch.transform.SetParent(root.transform,false);watch.transform.localPosition=new Vector3(0f,0f,.077f);watch.transform.localRotation=Quaternion.Euler(-90f,0f,0f);watch.transform.localScale=Vector3.one*3.3790793f;
+                Assert.That(Quaternion.Angle(watch.transform.localRotation,Quaternion.Euler(-90f,0f,0f)),Is.LessThan(.01f));
+                Assert.That(watch.transform.localPosition,Is.EqualTo(new Vector3(0f,0f,.077f)).Using(Vector3ComparerWithEqualsOperator.Instance));
+                Assert.That(root.transform.Find("Menu Poke Button"),Is.Null,"Activation remains a proximity calculation, not a ray-blocking visual button.");
+            }
+            finally{Object.DestroyImmediate(root);}
+        }
 
         [Test]
         public void PalmMenuToggleConsumesOnlyOneCallbackPerPhysicalPress()
@@ -29,6 +66,19 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,false,.5f,.024f,.35f,false),Is.False);
             Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,true,.1f,.024f,.35f,false),Is.False);
             Assert.That(BrainstormMenuController.ShouldAcceptWatchPoke(.02f,true,.5f,.024f,.35f,true),Is.False);
+        }
+
+        [Test]
+        public void WristProximityOnlyGlowsAndActualContactInvokesExactlyOneToggle()
+        {
+            int toggles=0;
+            Assert.That(BrainstormMenuController.ShouldShowWatchProximityGlow(.06f,.085f,true),Is.True);
+            Assert.That(BrainstormMenuController.InvokeWatchPokeIfAccepted(.06f,true,.5f,.018f,.35f,false,()=>toggles++),Is.False);
+            Assert.That(toggles,Is.Zero,"Proximity glow must never toggle the menu.");
+            Assert.That(BrainstormMenuController.ShouldShowWatchProximityGlow(.10f,.085f,true),Is.False);
+            Assert.That(BrainstormMenuController.ShouldShowWatchProximityGlow(.01f,.085f,false),Is.False);
+            Assert.That(BrainstormMenuController.InvokeWatchPokeIfAccepted(.012f,true,.5f,.018f,.35f,false,()=>toggles++),Is.True);
+            Assert.That(toggles,Is.EqualTo(1),"One actual poke invokes the existing toggle callback exactly once.");
         }
 
         [Test]
@@ -62,20 +112,26 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void WristwatchVisibilityUsesFacingHysteresisAndRejectsSidewaysOrDownward()
+        public void WristwatchVisibilityDependsOnTrackedPoseNotWristOrPalmOrientation()
         {
-            Vector3 towardViewer=Vector3.forward;
-            Assert.That(BrainstormMenuController.IsWristwatchReadable(Vector3.forward,
-                towardViewer,false,50f,70f,-.12f),Is.True);
-            Vector3 betweenThresholds=Quaternion.Euler(0f,60f,0f)*Vector3.forward;
-            Assert.That(BrainstormMenuController.IsWristwatchReadable(betweenThresholds,
-                towardViewer,false,50f,70f,-.12f),Is.False);
-            Assert.That(BrainstormMenuController.IsWristwatchReadable(betweenThresholds,
-                towardViewer,true,50f,70f,-.12f),Is.True);
-            Assert.That(BrainstormMenuController.IsWristwatchReadable(Vector3.right,
-                towardViewer,true,50f,70f,-.12f),Is.False);
-            Assert.That(BrainstormMenuController.IsWristwatchReadable(
-                new Vector3(0f,-.5f,.5f),towardViewer,true,50f,70f,-.12f),Is.False);
+            Assert.That(BrainstormMenuController.ShouldRenderTrackedWatch(true,true,0f,.35f),Is.True);
+            Assert.That(BrainstormMenuController.ShouldRenderTrackedWatch(false,true,.10f,.35f),Is.True,
+                "A brief tracking gap holds the last wrist pose without an orientation gate.");
+            Assert.That(BrainstormMenuController.ShouldRenderTrackedWatch(false,true,.36f,.35f),Is.False);
+            Assert.That(BrainstormMenuController.ShouldRenderTrackedWatch(true,false,0f,.35f),Is.False,
+                "At least one resolved wrist pose is required before rendering.");
+        }
+
+        [Test]
+        public void WristwatchPoseRequiresOnlyWristAndThreeKnuckles()
+        {
+            GameObject wrist=new GameObject("Wrist"),index=new GameObject("Index"),middle=new GameObject("Middle"),pinky=new GameObject("Pinky");
+            try
+            {
+                Assert.That(BrainstormMenuController.HasWatchPoseJoints(wrist.transform,index.transform,middle.transform,pinky.transform),Is.True);
+                Assert.That(BrainstormMenuController.HasWatchPoseJoints(wrist.transform,index.transform,middle.transform,null),Is.False);
+            }
+            finally{Object.DestroyImmediate(wrist);Object.DestroyImmediate(index);Object.DestroyImmediate(middle);Object.DestroyImmediate(pinky);}
         }
 
         [Test]
@@ -287,9 +343,9 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(BrainstormMenuView.IsImportOnMainPage(1),Is.False);
             Assert.That(BrainstormMenuView.IsExportOnSessionPage(0),Is.True);
             Assert.That(BrainstormMenuView.IsExportOnSessionPage(1),Is.False);
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(3));
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(3),Is.EqualTo(3));
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(4),Is.EqualTo(4));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(1));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(3),Is.EqualTo(1));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(4),Is.EqualTo(2));
         }
 
         [Test]
@@ -898,22 +954,57 @@ namespace ThinkingSpace.Tests.Editor
         {
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Off, OrbyConversationState.Idle, false,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.MicOff));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.WaitingForSpeech, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.Idle));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.SpeechActive, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.SpeechDetected));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.SilenceCountdown, OrbyConversationState.Listening, true,
+                false,
+                RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.SpeechDetected),
+                "Short gaps within a qualified utterance must remain visibly Listening.");
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.Finalizing, OrbyConversationState.Listening, true,
+                false,
                 RecordingWorkflowState.Ready), Is.EqualTo(MicrophoneStatusDisplayState.FinishingThought));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Suspended, OrbyConversationState.Thinking, true,
+                false,
                 RecordingWorkflowState.Transcribing), Is.EqualTo(MicrophoneStatusDisplayState.Thinking));
             Assert.That(ConversationalListeningHud.ResolveDisplayState(
                 ConversationalListeningState.Suspended, OrbyConversationState.Speaking, true,
+                false,
                 RecordingWorkflowState.Reviewing), Is.EqualTo(MicrophoneStatusDisplayState.Speaking));
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.SilenceCountdown, OrbyConversationState.Thinking, false,
+                true, RecordingWorkflowState.Transcribing),
+                Is.EqualTo(MicrophoneStatusDisplayState.MicOffFinishing));
+            Assert.That(ConversationalListeningHud.ResolveDisplayState(
+                ConversationalListeningState.Off, OrbyConversationState.Speaking, false,
+                false, RecordingWorkflowState.Reviewing),
+                Is.EqualTo(MicrophoneStatusDisplayState.MicOff),
+                "Logical Mic Off must remain visible while Orby speaks.");
+        }
+
+        [Test]
+        public void AiFailureDiagnosticContainsOnlySanitizedTransportMetadata()
+        {
+            string diagnostic = ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                "/api/conversations/process", 502, "provider_request", "provider_error",
+                "route-safe-123");
+            Assert.That(diagnostic, Is.EqualTo(
+                "ThinkingSpaceAI failure endpoint=/api/conversations/process http=502 "
+                + "stage=provider_request category=provider_error request=route-safe-123"));
+            Assert.That(ThinkingSpaceAIBackendClient.BuildSafeFailureDiagnostic(
+                "/api/conversations/process", 422, "request_schema", "enum value",
+                "unsafe request with spaces"), Does.EndWith(
+                "stage=request_schema category=redacted request=redacted"));
         }
 
         private static AdaptiveVoiceActivityDetector NewVad()
@@ -1080,6 +1171,45 @@ namespace ThinkingSpace.Tests.Editor
             StringAssert.DoesNotContain("speaker", json);
             StringAssert.DoesNotContain("clarification_id", json);
             StringAssert.DoesNotContain("cleaned_transcript", json);
+        }
+
+        [Test]
+        public void CleanedConversationJsonMatchesFastApiContractAndRequiresSelectedTranscript()
+        {
+            var request = new ConversationProcessRequest
+            {
+                request_id = "conversation-cleaned-1",
+                session_id = "session-1",
+                raw_transcript = "Synthetic raw input.",
+                cleaned_transcript = "Synthetic cleaned input.",
+                transcript_source = "cleaned",
+                available_ideas = System.Array.Empty<AIIdeaContext>(),
+                context = new ConversationContextPayload
+                {
+                    current_mode = "conversational",
+                    recent_turns = System.Array.Empty<ConversationTurnPayload>()
+                }
+            };
+
+            string error = ThinkingSpaceAIBackendClient.ValidateConversationRequest(
+                request, out string field, out string category);
+            Assert.That(error, Is.Empty, $"{field}:{category}");
+
+            string json = AIRequestJsonSerializer.Serialize(request);
+            StringAssert.Contains("\"request_id\":\"conversation-cleaned-1\"", json);
+            StringAssert.Contains("\"session_id\":\"session-1\"", json);
+            StringAssert.Contains("\"raw_transcript\":\"Synthetic raw input.\"", json);
+            StringAssert.Contains("\"cleaned_transcript\":\"Synthetic cleaned input.\"", json);
+            StringAssert.Contains("\"transcript_source\":\"cleaned\"", json);
+            StringAssert.Contains("\"available_ideas\":[]", json);
+            StringAssert.Contains("\"context\":", json);
+
+            request.cleaned_transcript = null;
+            error = ThinkingSpaceAIBackendClient.ValidateConversationRequest(
+                request, out field, out category);
+            Assert.That(error, Is.Not.Empty);
+            Assert.That(field, Is.EqualTo("cleaned_transcript"));
+            Assert.That(category, Is.EqualTo("missing_value"));
         }
 
         [Test]
@@ -1452,7 +1582,7 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void ListeningOffOverrideReturnsEveryStateToIdle()
+        public void ListeningOffOverrideReturnsEveryStateToPaused()
         {
             var root = new GameObject("Orby State Test");
             var controller = root.AddComponent<OrbyConversationStateController>();
@@ -1460,7 +1590,7 @@ namespace ThinkingSpace.Tests.Editor
             {
                 controller.SetState(state);
                 controller.TurnListeningOffFromAnyState();
-                Assert.That(controller.State, Is.EqualTo(OrbyConversationState.Idle));
+                Assert.That(controller.State, Is.EqualTo(OrbyConversationState.Paused));
             }
             Object.DestroyImmediate(root);
         }

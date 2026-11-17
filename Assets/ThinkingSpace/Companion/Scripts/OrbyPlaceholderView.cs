@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using ThinkingSpace.UI;
 
 namespace ThinkingSpace.Companion
 {
@@ -35,6 +36,7 @@ namespace ThinkingSpace.Companion
 
         public bool IsUsingAuthoredModel => modelAdapter != null && modelAdapter.IsBound;
         public OrbyModelVisualAdapter ModelAdapter => modelAdapter;
+        public BubbleMouthSwap MouthAnimator { get; private set; }
 
         private void Awake()
         {
@@ -55,6 +57,7 @@ namespace ThinkingSpace.Companion
 
         private void LateUpdate()
         {
+            if (modelAdapter == null || !modelAdapter.IsBound) TryBindAuthoredModel();
             if (headset == null && Camera.main != null) headset = Camera.main.transform;
             if (headset == null||!IsValidTrackedHeadPose(headset.position)) return;
             if(currentState==OrbyConversationState.Paused)return;
@@ -184,7 +187,7 @@ namespace ThinkingSpace.Companion
             silenceCountdown = isSilenceCountdown;
             silenceProgress = Mathf.Clamp01(remainingNormalized);
             if (label != null && isSilenceCountdown)
-                label.text = "Orby · Finishing thought…";
+                label.text = ThinkingSpaceLocalizationController.Get("orby.finishing");
         }
         private void HandleStateChanged(OrbyConversationState previous, OrbyConversationState next) => ApplyState(next);
         private void ApplyState(OrbyConversationState state)
@@ -192,7 +195,8 @@ namespace ThinkingSpace.Companion
             currentState = state;
             if (state != OrbyConversationState.SpeechActive)
             { liveAudioLevel = 0f; silenceCountdown = false; }
-            if (label != null) label.text = "Orby · " + state;
+            if (label != null) label.text = ThinkingSpaceLocalizationController.Get(
+                "orby.status",ThinkingSpaceLocalizationController.Get("state."+state.ToString().ToLowerInvariant()));
             if (modelAdapter != null)
                 modelAdapter.ApplyExpression(OrbyModelVisualAdapter.FromConversationState(state));
             if (material == null) return;
@@ -209,18 +213,33 @@ namespace ThinkingSpace.Companion
 
         private void BuildReplaceableVisual()
         {
-            Transform authoredModel = FindAuthoredModel();
-            if (authoredModel != null)
-            {
-                modelAdapter = GetComponent<OrbyModelVisualAdapter>();
-                if (modelAdapter == null) modelAdapter = gameObject.AddComponent<OrbyModelVisualAdapter>();
-                if (!modelAdapter.Bind(authoredModel)) modelAdapter = null;
-            }
+            TryBindAuthoredModel();
 
             if (modelAdapter == null)
                 BuildFallbackSphere();
             BuildStatusLabel();
             SetCompanionVisualVisible(false);
+        }
+
+        private bool TryBindAuthoredModel()
+        {
+            if (modelAdapter != null && modelAdapter.IsBound) return true;
+            Transform authoredModel = FindAuthoredModel();
+            if (authoredModel == null) return false;
+            if (modelAdapter == null) modelAdapter = GetComponent<OrbyModelVisualAdapter>();
+            if (modelAdapter == null) modelAdapter = gameObject.AddComponent<OrbyModelVisualAdapter>();
+            if (!modelAdapter.Bind(authoredModel)) return false;
+
+            MouthAnimator = authoredModel.GetComponentInChildren<BubbleMouthSwap>(true);
+            if (MouthAnimator == null) MouthAnimator = authoredModel.gameObject.AddComponent<BubbleMouthSwap>();
+            if (!MouthAnimator.ResolveAuthoredMouths())
+            {
+                Debug.LogWarning("Animated Orby mouth nodes were not found; speech animation remains closed.");
+                Destroy(MouthAnimator);
+                MouthAnimator = null;
+            }
+            if (followInitialized) SetCompanionVisualVisible(true);
+            return true;
         }
 
         private void BuildFallbackSphere()
@@ -266,18 +285,23 @@ namespace ThinkingSpace.Companion
             Transform[] transforms = FindObjectsByType<Transform>(FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);
             Transform match = null;
+            int matchPriority = -1;
             for (int i = 0; i < transforms.Length; i++)
             {
                 Transform candidate = transforms[i];
-                if (candidate == transform || candidate.parent != null || candidate.name != "Orbi") continue;
+                if (candidate == transform || candidate.parent != null) continue;
+                int priority = candidate.name == "OrbiM_N" ? 2 : candidate.name == "Orbi" ? 1 : 0;
+                if (priority == 0) continue;
                 if (candidate.GetComponentsInChildren<Renderer>(true).Length == 0) continue;
-                if (match != null)
-                {
-                    Debug.LogWarning("Multiple root-level Orbi models were found; keeping the placeholder visible.");
-                    return null;
-                }
-                match = candidate;
+                if (priority > matchPriority) { match = candidate; matchPriority = priority; }
             }
+            if (match != null)
+                for (int i = 0; i < transforms.Length; i++)
+                {
+                    Transform candidate = transforms[i];
+                    if (candidate == match || candidate.parent != null || candidate.name != "Orbi") continue;
+                    candidate.gameObject.SetActive(false);
+                }
             return match;
         }
 
