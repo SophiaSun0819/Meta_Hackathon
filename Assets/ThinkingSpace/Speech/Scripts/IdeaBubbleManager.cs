@@ -8,7 +8,7 @@ using ThinkingSpace.UI;
 namespace ThinkingSpace.Speech
 {
     [DisallowMultipleComponent]
-    public sealed class IdeaBubbleManager : MonoBehaviour
+    public sealed partial class IdeaBubbleManager : MonoBehaviour // molecules: IdeaBubbleManager.Molecules.cs
     {
         [SerializeField, Range(0.12f, 0.15f)] private float bubbleDiameter = 0.135f;
         [SerializeField, Range(0f, 1f)] private float bubbleCategorySaturation = 0.78f;
@@ -234,6 +234,7 @@ namespace ThinkingSpace.Speech
             }
             BuildDiagnostics();
             ResolveInteractionOwners();
+            ConfigureMolecules();
         }
 
         public void SetSessionActive(bool active, string sessionId)
@@ -286,6 +287,7 @@ namespace ThinkingSpace.Speech
             IdeaBubbleView bubble = CreateBubble(idea, position, rotation, scale);
             if (bubble == null) return false;
             LastCreatedIdeaId = ideaId;
+            LayoutIfNewMolecule(ideaId);
             if (!IsValidSavedTransform(idea.Bubble))
             {
                 bool saved = store.TryUpdateBubbleTransform(activeSessionId, ideaId,
@@ -328,6 +330,7 @@ namespace ThinkingSpace.Speech
                 }
             }
             LastLoadResult = "Restored " + restored + " of " + session.Ideas.Count + " saved ideas";
+            RestoreMolecules();
             RefreshDiagnostics();
         }
 
@@ -494,6 +497,7 @@ namespace ThinkingSpace.Speech
 
         private void ClearVisibleBubbles()
         {
+            ClearMoleculeVisuals();
             ClearSelection();
             ClearPanels();
             foreach (IdeaBubbleView bubble in visible.Values)
@@ -544,6 +548,7 @@ namespace ThinkingSpace.Speech
                 RefreshDiagnostics();
             }
             UpdateMovements();
+            UpdateMoleculeBonds();
             gestureCooldownRemaining = Mathf.Max(0f, gestureCooldownRemaining - Time.unscaledDeltaTime);
             if (interactionAvailable && movements.Count == 0)
             {
@@ -883,11 +888,12 @@ namespace ThinkingSpace.Speech
             bool valid = directOwner == BubbleInteractionHand.Left ? leftValid : rightValid;
             Vector3 palm = directOwner == BubbleInteractionHand.Left ? leftPalm : rightPalm;
             bool open = directOwner == BubbleInteractionHand.Left ? leftOpen : rightOpen;
-            if (!valid) { FinishDirectManipulation(true); return; }
+            // If the other hand still holds a bubble, it takes over instead of ending the grab.
+            if (!valid) { if (!TryPromoteSecondGrab()) FinishDirectManipulation(true); return; }
             if (open)
             {
                 directReleaseTimer += Time.unscaledDeltaTime;
-                if (directReleaseTimer >= grabReleaseHold) FinishDirectManipulation(true);
+                if (directReleaseTimer >= grabReleaseHold && !TryPromoteSecondGrab()) FinishDirectManipulation(true);
                 return;
             }
             directReleaseTimer = 0f;
@@ -899,6 +905,7 @@ namespace ThinkingSpace.Speech
                 if (t >= 1f) directMode = DirectManipulationMode.Grabbed;
             }
             else bubble.transform.position = palm;
+            UpdateMoleculeDualGrab(leftValid, leftPalm, leftFist, leftOpen, rightValid, rightPalm, rightFist, rightOpen);
         }
 
         private bool TryGetManipulationHand(BeckonHand hand, out Vector3 palm,
@@ -965,10 +972,12 @@ namespace ThinkingSpace.Speech
         private void FinishDirectManipulation(bool persist)
         {
             if (directMode == DirectManipulationMode.None) return;
+            ReleaseSecondGrab(persist);
             if (visible.TryGetValue(directIdeaId, out IdeaBubbleView bubble) && bubble != null)
             {
                 bubble.SetMoving(false); bubble.SetBoundingBoxVisible(false); bubble.SetDirectProximity(false);
                 if (persist) CommitManualTransform(bubble);
+                if (persist) FinishMoleculeMovement(directIdeaId);
                 if (openPanels.TryGetValue(directIdeaId, out IdeaDetailsPanel panel) && panel != null
                     && ShouldRestoreMovedPanel(directPanelInstanceId, panel.GetInstanceID()))
                 {
@@ -1875,6 +1884,7 @@ namespace ThinkingSpace.Speech
 
         private void OnDestroy()
         {
+            UnsubscribeMolecules();
             ClearInspectionWorkspace();
             ClearVisibleBubbles();
             if (bubbleRoot != null) Destroy(bubbleRoot.gameObject);
