@@ -10,7 +10,7 @@ from typing import Literal, Protocol
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from idea_manager import IDENTIFIER_PATTERN, SESSION_PATTERN, IdeaContext
+from idea_manager import IDENTIFIER_PATTERN, MAX_COMBINE_SOURCES, SESSION_PATTERN, IdeaContext
 from intent_router import BubbleScale, CompanionEmotion, MovementDirection
 
 
@@ -616,8 +616,13 @@ class ConversationOrchestrator:
             should_create = False
             should_execute = False
             candidate_idea_ids = list(dict.fromkeys(target_idea_ids + candidate_idea_ids))
-            requires_confirmation = len(target_idea_ids) < 2
-            if requires_confirmation:
+            too_many_sources = len(target_idea_ids) > MAX_COMBINE_SOURCES
+            requires_confirmation = len(target_idea_ids) < 2 or too_many_sources
+            if too_many_sources:
+                # The idea endpoint rejects more sources, so ask instead of sending a failing request.
+                clarification_question = (f"I can combine up to {MAX_COMBINE_SOURCES} ideas at a time. "
+                                          "Which ones should I use?")
+            elif requires_confirmation:
                 clarification_question = clarification_question or "Which saved ideas should I combine?"
             else:
                 candidate_idea_ids = []
