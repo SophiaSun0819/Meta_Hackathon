@@ -12,6 +12,13 @@ namespace ThinkingSpace.UI
         public string SourceTranscript = string.Empty, CreatedUtc = string.Empty;
         public List<string> RelatedIdeaIds = new List<string>();
         public BubbleTransformRecord Bubble = new BubbleTransformRecord();
+        // Earlier contents of a molecule center, oldest first, so a molecule change can be undone.
+        public List<IdeaVersionRecord> PreviousVersions = new List<IdeaVersionRecord>();
+    }
+    [Serializable] public sealed class IdeaVersionRecord
+    {
+        public string Title = string.Empty, Summary = string.Empty, Category = string.Empty, ReplacedUtc = string.Empty;
+        public List<string> RelatedIdeaIds = new List<string>();
     }
     public static class IdeaVisualColorPalette
     {
@@ -205,8 +212,22 @@ namespace ThinkingSpace.UI
                 Category=source.Category,SourceTranscript=source.SourceTranscript,CreatedUtc=source.CreatedUtc,
                 VisualColor=IdeaVisualColorPalette.Normalize(source.VisualColor),
                 RelatedIdeaIds=source.RelatedIdeaIds==null?new List<string>():new List<string>(source.RelatedIdeaIds),
-                Bubble=new BubbleTransformRecord{Position=bubble.Position,Rotation=bubble.Rotation,Scale=bubble.Scale}};
+                Bubble=new BubbleTransformRecord{Position=bubble.Position,Rotation=bubble.Rotation,Scale=bubble.Scale},
+                PreviousVersions=CloneVersions(source.PreviousVersions)};
         }
+
+        private static List<IdeaVersionRecord> CloneVersions(List<IdeaVersionRecord> source)
+        {
+            var result=new List<IdeaVersionRecord>();
+            if(source==null)return result;
+            for(int i=0;i<source.Count;i++)if(source[i]!=null)result.Add(CloneVersion(source[i]));
+            return result;
+        }
+
+        private static IdeaVersionRecord CloneVersion(IdeaVersionRecord source)
+            =>new IdeaVersionRecord{Title=source.Title,Summary=source.Summary,Category=source.Category,
+                ReplacedUtc=source.ReplacedUtc,
+                RelatedIdeaIds=source.RelatedIdeaIds==null?new List<string>():new List<string>(source.RelatedIdeaIds)};
 
         private static IdeaRelationshipRecord CloneRelationship(IdeaRelationshipRecord source)
         {
@@ -264,6 +285,85 @@ namespace ThinkingSpace.UI
             if(idea==null)return false;
             string previous=idea.VisualColor;idea.VisualColor=IdeaVisualColorPalette.Normalize(visualColor);
             if(Save())return true;idea.VisualColor=previous;return false;
+        }
+
+        public const string CombinedFromRelationship = "combined_from";
+
+        // Replaces a molecule center's content and source list, keeping the old content as a version.
+        public bool TryUpdateCombinedIdea(string sessionId, string centerIdeaId, string title, string summary,
+            string category, IReadOnlyList<string> sourceIdeaIds)
+        {
+            BrainstormIdeaRecord center = FindActiveIdea(sessionId, centerIdeaId);
+            if (center == null || string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(summary)
+                || sourceIdeaIds == null || sourceIdeaIds.Count < 2) return false;
+            for (int i = 0; i < sourceIdeaIds.Count; i++)
+                if (sourceIdeaIds[i] == centerIdeaId || FindActiveIdea(sessionId, sourceIdeaIds[i]) == null) return false;
+            return MutateCenter(center, () =>
+            {
+                PushVersion(center);
+                center.Title = title; center.Summary = summary;
+                if (!string.IsNullOrWhiteSpace(category)) center.Category = category;
+                SetCombinedSources(center, sourceIdeaIds);
+            });
+        }
+
+        // Turns a molecule center back into a standalone idea when fewer than two sources remain.
+        public bool TryDissolveMolecule(string sessionId, string centerIdeaId)
+        {
+            BrainstormIdeaRecord center = FindActiveIdea(sessionId, centerIdeaId);
+            if (center == null) return false;
+            return MutateCenter(center, () => { PushVersion(center); SetCombinedSources(center, new List<string>()); });
+        }
+
+        // Undo: restores the most recent previous version of a molecule center, including its sources.
+        public bool TryRestorePreviousVersion(string sessionId, string centerIdeaId)
+        {
+            BrainstormIdeaRecord center = FindActiveIdea(sessionId, centerIdeaId);
+            if (center == null || center.PreviousVersions == null || center.PreviousVersions.Count == 0) return false;
+            IdeaVersionRecord version = center.PreviousVersions[center.PreviousVersions.Count - 1];
+            var sources = (version.RelatedIdeaIds ?? new List<string>()).FindAll(id => FindActiveIdea(sessionId, id) != null);
+            return MutateCenter(center, () =>
+            {
+                center.PreviousVersions.RemoveAt(center.PreviousVersions.Count - 1);
+                center.Title = version.Title; center.Summary = version.Summary; center.Category = version.Category;
+                SetCombinedSources(center, sources.Count >= 2 ? sources : new List<string>());
+            });
+        }
+
+        private BrainstormIdeaRecord FindActiveIdea(string sessionId, string ideaId)
+        {
+            if (ActiveSession == null || ActiveSession.SessionId != sessionId || string.IsNullOrEmpty(ideaId)) return null;
+            return ActiveSession.Ideas.Find(item => item != null && item.IdeaId == ideaId);
+        }
+
+        private bool MutateCenter(BrainstormIdeaRecord center, Action change)
+        {
+            var prior = CloneIdea(center);
+            var priorRelationships = new List<IdeaRelationshipRecord>(ActiveSession.Relationships);
+            change();
+            if (Save()) return true;
+            center.Title = prior.Title; center.Summary = prior.Summary; center.Category = prior.Category;
+            center.RelatedIdeaIds = prior.RelatedIdeaIds; center.PreviousVersions = prior.PreviousVersions;
+            ActiveSession.Relationships.Clear(); ActiveSession.Relationships.AddRange(priorRelationships);
+            return false;
+        }
+
+        private static void PushVersion(BrainstormIdeaRecord center)
+        {
+            if (center.PreviousVersions == null) center.PreviousVersions = new List<IdeaVersionRecord>();
+            center.PreviousVersions.Add(new IdeaVersionRecord { Title = center.Title, Summary = center.Summary,
+                Category = center.Category, ReplacedUtc = DateTime.UtcNow.ToString("O"),
+                RelatedIdeaIds = center.RelatedIdeaIds == null ? new List<string>() : new List<string>(center.RelatedIdeaIds) });
+        }
+
+        private void SetCombinedSources(BrainstormIdeaRecord center, IReadOnlyList<string> sourceIdeaIds)
+        {
+            center.RelatedIdeaIds = new List<string>(sourceIdeaIds);
+            ActiveSession.Relationships.RemoveAll(value => value == null || (value.SourceIdeaId == center.IdeaId
+                && value.RelationshipType == CombinedFromRelationship));
+            for (int i = 0; i < sourceIdeaIds.Count; i++)
+                ActiveSession.Relationships.Add(new IdeaRelationshipRecord { SourceIdeaId = center.IdeaId,
+                    TargetIdeaId = sourceIdeaIds[i], RelationshipType = CombinedFromRelationship });
         }
 
         public bool TryDeleteIdea(string sessionId, string ideaId)

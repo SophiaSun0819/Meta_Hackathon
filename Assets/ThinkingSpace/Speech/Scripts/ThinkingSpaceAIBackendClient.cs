@@ -71,6 +71,7 @@ namespace ThinkingSpace.Speech
         public string idea_id;
         public string[] related_idea_ids = Array.Empty<string>();
         public AIIdeaContext[] existing_ideas = Array.Empty<AIIdeaContext>();
+        public string center_idea_id; // combine_ideas only: molecule center to update (see MoleculeCombine.cs)
     }
 
     [Serializable] public sealed class IdeaProcessResponse
@@ -221,6 +222,13 @@ namespace ThinkingSpace.Speech
         {
             string[] related = value.related_idea_ids ?? Array.Empty<string>();
             AIIdeaContext[] ideas = value.existing_ideas ?? Array.Empty<AIIdeaContext>();
+            if (!string.IsNullOrEmpty(value.center_idea_id))
+                return JsonUtility.ToJson(new CenterCombineWireRequest
+                {
+                    request_id = value.request_id, session_id = value.session_id, action = value.action,
+                    raw_transcript = value.raw_transcript, transcript_source = value.transcript_source,
+                    center_idea_id = value.center_idea_id, related_idea_ids = related, existing_ideas = ideas
+                });
             if (string.IsNullOrEmpty(value.idea_id))
                 return JsonUtility.ToJson(new UntargetedIdeaWireRequest
                 {
@@ -304,6 +312,13 @@ namespace ThinkingSpace.Speech
 
         public IEnumerator ProcessIdea(IdeaProcessRequest request,
             Action<AIBackendResult<IdeaProcessResponse>> completed)
+        {
+            yield return PostJson("api/ideas/process", request, completed);
+        }
+
+        // Same endpoint as ProcessIdea, read into the molecule response that includes updated_existing_idea.
+        public IEnumerator ProcessMoleculeCombine(IdeaProcessRequest request,
+            Action<AIBackendResult<MoleculeCombineResponse>> completed)
         {
             yield return PostJson("api/ideas/process", request, completed);
         }
@@ -509,6 +524,8 @@ namespace ThinkingSpace.Speech
                 if (!string.IsNullOrEmpty(common)) return common;
                 if (!string.IsNullOrEmpty(idea.idea_id) && !IdentifierPattern.IsMatch(idea.idea_id))
                 { fieldPath = "idea_id"; category = "invalid_identifier"; return "Target idea identifier is invalid."; }
+                if (!string.IsNullOrEmpty(idea.center_idea_id) && !IdentifierPattern.IsMatch(idea.center_idea_id))
+                { fieldPath = "center_idea_id"; category = "invalid_identifier"; return "Center idea identifier is invalid."; }
                 return ValidateIdeaContexts(idea.existing_ideas ?? Array.Empty<AIIdeaContext>(),
                     "existing_ideas", out fieldPath, out category);
             }
