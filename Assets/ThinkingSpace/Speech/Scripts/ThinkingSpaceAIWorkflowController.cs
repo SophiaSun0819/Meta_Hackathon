@@ -133,7 +133,15 @@ namespace ThinkingSpace.Speech
                 return false;
             }
             if(visualIntents!=null&&visualIntents.TryHandle(rawTranscript))
-            {LastSubmissionRejection="None";CurrentStage="Local visual intent: "+visualIntents.LastStatusCode;LastSuccessfulStage=CurrentStage;return true;}
+            {
+                activeSessionId=store.ActiveSession.SessionId;
+                string visualRequestId=NewRequestId("visual");LastRequestId=visualRequestId;
+                store.AppendConversation(activeSessionId,"user",rawTranscript,"approved_transcript",visualRequestId);
+                if(visualIntents.LastOutcome==OrbyVisualIntentOutcome.InvalidContext
+                    &&visualIntents.LastStatusCode=="three_ideas_required")
+                    store.AppendConversation(activeSessionId,"orby","Create at least three ideas, then ask me to compare them in an editable bar chart.","local_visual_clarification",visualRequestId);
+                LastSubmissionRejection="None";CurrentStage="Local visual intent: "+visualIntents.LastStatusCode;LastSuccessfulStage=CurrentStage;return true;
+            }
             LocalInterfaceLanguageCommand localCommand=LocalInterfaceLanguageCommandRouter.Parse(rawTranscript);
             if(localCommand.IsRecognized)return HandleLocalInterfaceLanguageCommand(localCommand);
             if (activeOperation != null)

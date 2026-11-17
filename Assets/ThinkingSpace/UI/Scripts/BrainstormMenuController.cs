@@ -985,7 +985,7 @@ namespace ThinkingSpace.UI
             OpenPalmHand wrist=wristHand==OpeningHand.Left?left:right;
             OpenPalmHand opposite=wristHand==OpeningHand.Left?right:left;
             float priorTrackingLoss=watchTrackingLoss;
-            bool wristValid=UpdateTrackedHand(wrist);
+            bool wristValid=UpdateWatchTrackedHand(wrist);
             if(!wristValid)watchPoseDiagnostic="Unavailable: tracked wrist joints not resolved";
             if(wristValid&&priorTrackingLoss>=wristTrackingHoldDuration)hasReliableWatchTarget=false;
             if(wristValid)wristValid=UpdateWristWatchPose(wrist,wristHand);
@@ -1004,10 +1004,9 @@ namespace ThinkingSpace.UI
                     watchTrackingLoss,wristTrackingHoldDuration));
                 SetWatchProximityGlow(false);
                 if(menuPlacementState==MenuPlacementState.Dragging)EndMenuDrag(true);
-                watchFallbackVisible=false;SetPalmButtonVisible(false);
-                wristFallbackDiagnostic=ShouldShowWristFallback(watchTrackingLoss,wristFallbackDelay)
-                    ?"Wrist unavailable; automatic headset fallback intentionally suppressed"
-                    :"Waiting for wrist tracking";
+                bool recover=ShouldShowWristFallback(watchTrackingLoss,wristFallbackDelay);
+                if(recover)ShowWatchFallback("Wrist tracking unavailable");
+                else{watchFallbackVisible=false;SetPalmButtonVisible(false);wristFallbackDiagnostic="Waiting for wrist tracking";}
                 return;
             }
             watchTrackingLoss=0f;watchFallbackVisible=false;
@@ -1034,6 +1033,18 @@ namespace ThinkingSpace.UI
             if(hand.jointsResolved)UpdateFingerRatios(hand);
             return hand.jointsResolved;
         }
+
+        private bool UpdateWatchTrackedHand(OpenPalmHand hand)
+        {
+            hand.tracked=hand.hand!=null&&hand.skeleton!=null&&hand.hand.IsTracked;
+            if(!hand.tracked)return false;
+            ResolveOpenPalmJoints(hand);
+            return HasWatchPoseJoints(hand.wrist,hand.index.proximal,hand.middle.proximal,hand.pinky.proximal);
+        }
+
+        public static bool HasWatchPoseJoints(Transform wrist,Transform indexKnuckle,
+            Transform middleKnuckle,Transform pinkyKnuckle)
+            =>wrist!=null&&indexKnuckle!=null&&middleKnuckle!=null&&pinkyKnuckle!=null;
 
         private bool IsReliableWatchTracking(OpenPalmHand hand)
         {

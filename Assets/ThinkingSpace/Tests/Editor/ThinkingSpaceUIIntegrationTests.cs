@@ -372,6 +372,7 @@ namespace ThinkingSpace.Tests.Editor
                 var controller=host.AddComponent<OrbyVisualIntentController>();controller.Configure(()=>session,()=>"idea-b",null);
                 Assert.That(controller.TryHandle("Orby, create a bar chart comparing three ideas."),Is.True);
                 EditableChartPanelView panel=controller.LastChartPanel;Assert.That(controller.LastOutcome,Is.EqualTo(OrbyVisualIntentOutcome.ChartCreated));Assert.That(panel,Is.Not.Null);Assert.That(panel.Revision.SessionId,Is.EqualTo(session.SessionId));Assert.That(panel.Revision.IdeaId,Is.EqualTo("idea-b"));
+                Assert.That(panel.Revision.Schema,Is.EqualTo("ChartRevisionV1"));Assert.That(panel.Revision.Action,Is.EqualTo("create_editable_chart"));Assert.That(panel.Revision.ProviderCall,Is.False);Assert.That(panel.Revision.OriginalSpokenRequest,Is.EqualTo("Orby, create a bar chart comparing three ideas."));
                 CollectionAssert.AreEqual(new[]{"Solar","Garden","Transit"},panel.Revision.Points.Select(item=>item.Label));CollectionAssert.AreEqual(new[]{1f,1f,1f},panel.Revision.Points.Select(item=>item.Value));
                 string parent=panel.Revision.RevisionId;EditableChartRevision edited=panel.CreateRevision("revision-edited","Priority",new[]{new EditableChartPoint{Label="S",Value=3},new EditableChartPoint{Label="G",Value=2},new EditableChartPoint{Label="T",Value=1}});
                 Assert.That(edited.ParentRevisionId,Is.EqualTo(parent));Assert.That(edited.Title,Is.EqualTo("Priority"));Assert.That(edited.Points[0].Label,Is.EqualTo("S"));Assert.That(edited.Points[0].Value,Is.EqualTo(3));Assert.That(controller.ImageRequestsStarted,Is.Zero);Assert.That(panel.GetComponent<GeneratedImagePanelAssetLoader>(),Is.Null);
@@ -386,11 +387,27 @@ namespace ThinkingSpace.Tests.Editor
             Assert.That(OrbyVisualIntentRouter.Parse("Let's brainstorm a futuristic city").IsRecognized,Is.False);
             Assert.That(OrbyVisualIntentRouter.Parse("Create an idea about bar charts").IsRecognized,Is.False);
             Assert.That(OrbyVisualIntentRouter.Parse("Orby, generate an image of a futuristic city.").Kind,Is.EqualTo(OrbyVisualIntentKind.GenerateImage));
+            Assert.That(OrbyVisualIntentRouter.Parse("Orby, make me an editable bar chart comparing my three active ideas.").Kind,Is.EqualTo(OrbyVisualIntentKind.CreateBarChart));
             Assert.That(GeneratedImagePanelAssetLoader.MapHttpFailure(503),Is.EqualTo("image_generation_disabled"));
             Assert.That(GeneratedImagePanelAssetLoader.MapHttpFailure(502),Is.EqualTo("provider_error"));
             Assert.That(GeneratedImagePanelAssetLoader.MapHttpFailure(400,"{\"code\":\"invalid_request\"}"),Is.EqualTo("invalid_request"));
             Assert.That(GeneratedImagePanelAssetLoader.MapHttpFailure(429,"{\"code\":\"daily_quota_exhausted\"}"),Is.EqualTo("quota_exhausted"));
             Assert.That(GeneratedImagePanelAssetLoader.MapHttpFailure(429,"{\"code\":\"rate_limited\"}"),Is.EqualTo("rate_limited"));
+        }
+
+
+        [Test]
+        public void SpokenChartIntentRequestsMoreIdeasWithoutProviderOrEmptyPanel()
+        {
+            GameObject host=new GameObject("Visual intents");
+            try
+            {
+                var session=new BrainstormSession(1);session.Ideas.Add(new BrainstormIdeaRecord{IdeaId="idea-a",Title="Solar"});session.Ideas.Add(new BrainstormIdeaRecord{IdeaId="idea-b",Title="Garden"});
+                var controller=host.AddComponent<OrbyVisualIntentController>();controller.Configure(()=>session,()=>"idea-b",null);
+                Assert.That(controller.TryHandle("Orby, create a bar chart comparing three ideas."),Is.True);
+                Assert.That(controller.LastOutcome,Is.EqualTo(OrbyVisualIntentOutcome.InvalidContext));Assert.That(controller.LastStatusCode,Is.EqualTo("three_ideas_required"));Assert.That(controller.LastChartPanel,Is.Null);Assert.That(controller.ImageRequestsStarted,Is.Zero);
+            }
+            finally{Object.DestroyImmediate(host);}
         }
 
         [Test]

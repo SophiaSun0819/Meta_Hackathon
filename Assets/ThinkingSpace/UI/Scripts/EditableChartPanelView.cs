@@ -11,6 +11,8 @@ namespace ThinkingSpace.UI
     [Serializable] public sealed class EditableChartRevision
     {
         public int SchemaVersion=1;
+        public string Schema="ChartRevisionV1",Action="create_editable_chart",OriginalSpokenRequest=string.Empty;
+        public bool ProviderCall;
         public string ChartId=string.Empty,RevisionId=string.Empty,ParentRevisionId=string.Empty;
         public string SessionId=string.Empty,IdeaId=string.Empty,Title=string.Empty;
         public EditableChartType Type=EditableChartType.Bar;
@@ -42,6 +44,7 @@ namespace ThinkingSpace.UI
         {
             if(revision==null)throw new InvalidOperationException("Bind a chart before editing it.");
             var next=new EditableChartRevision{ChartId=revision.ChartId,RevisionId=revisionId,ParentRevisionId=revision.RevisionId,
+                Schema=revision.Schema,Action=revision.Action,ProviderCall=false,OriginalSpokenRequest=revision.OriginalSpokenRequest,
                 SessionId=revision.SessionId,IdeaId=revision.IdeaId,Title=title,Type=revision.Type,Points=CopyPoints(points)};
             Validate(next);Bind(next);return Clone(next);
         }
@@ -71,7 +74,7 @@ namespace ThinkingSpace.UI
         }
         private static void Validate(EditableChartRevision value)
         {
-            if(value==null||value.SchemaVersion!=1)throw new ArgumentException("Chart schema version 1 is required.");
+            if(value==null||value.SchemaVersion!=1||value.Schema!="ChartRevisionV1"||value.Action!="create_editable_chart"||value.ProviderCall)throw new ArgumentException("Provider-free ChartRevisionV1 is required.");
             if(string.IsNullOrWhiteSpace(value.ChartId)||string.IsNullOrWhiteSpace(value.RevisionId)||string.IsNullOrWhiteSpace(value.SessionId))throw new ArgumentException("Chart, revision, and session identities are required.");
             if(value.Points==null||value.Points.Count==0||value.Points.Count>24)throw new ArgumentException("Charts require 1-24 points.");
             foreach(EditableChartPoint point in value.Points)if(point==null||string.IsNullOrWhiteSpace(point.Label)||float.IsNaN(point.Value)||float.IsInfinity(point.Value))throw new ArgumentException("Every point needs a finite value and label.");

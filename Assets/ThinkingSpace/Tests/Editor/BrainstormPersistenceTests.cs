@@ -123,6 +123,18 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void WristwatchPoseRequiresOnlyWristAndThreeKnuckles()
+        {
+            GameObject wrist=new GameObject("Wrist"),index=new GameObject("Index"),middle=new GameObject("Middle"),pinky=new GameObject("Pinky");
+            try
+            {
+                Assert.That(BrainstormMenuController.HasWatchPoseJoints(wrist.transform,index.transform,middle.transform,pinky.transform),Is.True);
+                Assert.That(BrainstormMenuController.HasWatchPoseJoints(wrist.transform,index.transform,middle.transform,null),Is.False);
+            }
+            finally{Object.DestroyImmediate(wrist);Object.DestroyImmediate(index);Object.DestroyImmediate(middle);Object.DestroyImmediate(pinky);}
+        }
+
+        [Test]
         public void HistoricalConversationIdeaReferenceSurvivesDeletedIdeaExportValidation()
         {
             string now=System.DateTime.UtcNow.ToString("O");
