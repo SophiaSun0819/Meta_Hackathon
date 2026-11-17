@@ -27,10 +27,12 @@ namespace ThinkingSpace.UI
         {
             {"english","en"},{"ingles","en"},{"anglais","en"},
             {"spanish","es"},{"espanol","es"},{"espagnol","es"},
-            {"french","fr"},{"francais","fr"},{"frances","fr"}
+            {"french","fr"},{"francais","fr"},{"frances","fr"},
+            {"chinese","zh-CN"},{"mandarin","zh-CN"},{"simplified","zh-CN"},
+            {"hindi","hi-IN"}
         };
         private static readonly HashSet<string> KnownUnsupported=new HashSet<string>
-        {"mandarin","chinese","hindi","german","italian","portuguese","arabic","japanese","korean"};
+        {"german","italian","portuguese","arabic","japanese","korean"};
 
         public static LocalInterfaceLanguageCommand Parse(string transcript)
         {

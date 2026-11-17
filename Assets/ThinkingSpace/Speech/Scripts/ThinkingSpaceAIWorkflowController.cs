@@ -19,6 +19,7 @@ namespace ThinkingSpace.Speech
         private BrainstormMenuController menuController;
         private OrbyConversationStateController orby;
         private IdeaBubbleManager bubbleManager;
+        private OrbyVisualIntentController visualIntents;
         private Coroutine activeOperation;
         private int operationGeneration;
         private bool sessionActive, awaitingDismissal;
@@ -79,6 +80,9 @@ namespace ThinkingSpace.Speech
             if (bubbleManager == null) bubbleManager = gameObject.AddComponent<IdeaBubbleManager>();
             bubbleManager.Configure(() => Store, headset, HandleIdeaDeleted,
                 StartIdeaSummaryPlayback, StopIdeaSummaryPlayback);
+            visualIntents=GetComponent<OrbyVisualIntentController>();
+            if(visualIntents==null)visualIntents=gameObject.AddComponent<OrbyVisualIntentController>();
+            visualIntents.Configure(()=>Store?.ActiveSession,()=>bubbleManager?.SelectedIdeaId,headset);
         }
 
         public void SetSessionActive(bool active)
@@ -128,6 +132,8 @@ namespace ThinkingSpace.Speech
                 LastSubmissionRejection = "The approved transcript is empty.";
                 return false;
             }
+            if(visualIntents!=null&&visualIntents.TryHandle(rawTranscript))
+            {LastSubmissionRejection="None";CurrentStage="Local visual intent: "+visualIntents.LastStatusCode;LastSuccessfulStage=CurrentStage;return true;}
             LocalInterfaceLanguageCommand localCommand=LocalInterfaceLanguageCommandRouter.Parse(rawTranscript);
             if(localCommand.IsRecognized)return HandleLocalInterfaceLanguageCommand(localCommand);
             if (activeOperation != null)

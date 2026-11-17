@@ -6,7 +6,7 @@ namespace ThinkingSpace.Speech.Editor
 {
     internal static class IdeaBubbleVisualAuthoring
     {
-        private const string ModelPath = "Assets/Orbi.fbx";
+        private const string ModelPath = "Assets/Models/Orbi.fbx";
         private const string OriginalMaterialPath = "Assets/Models/Bubble_Mat.mat";
         private const string MaterialFolder = "Assets/ThinkingSpace/Speech/Materials";
         private const string MaterialPath = MaterialFolder + "/IdeaBubble_Mat.mat";
@@ -23,7 +23,7 @@ namespace ThinkingSpace.Speech.Editor
             GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
             if (original == null || model == null)
             {
-                Debug.LogError("Idea bubble visual extraction requires Assets/Orbi.fbx and "
+                Debug.LogError("Idea bubble visual extraction requires Assets/Models/Orbi.fbx and "
                     + "Assets/Models/Bubble_Mat.mat.");
                 return;
             }

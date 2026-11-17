@@ -13,6 +13,8 @@ namespace ThinkingSpace.Pairing
         private Action returnToMain;
         private bool showing;
         private DateTime nextLocalPollUtc;
+        private bool livePollInFlight;
+        private Backend034PairingTransport.ConfirmationContext liveConfirmation;
 
         public QuestPairingUiState State => stateMachine.State;
 
@@ -29,7 +31,8 @@ namespace ThinkingSpace.Pairing
         public void Open()
         {
             showing = true;
-            stateMachine.Open(false, DateTime.UtcNow);
+            bool paired = transport is Backend034PairingTransport backend && backend.HasStoredCredential;
+            stateMachine.Open(paired, DateTime.UtcNow);
         }
 
         public void Hide() => showing = false;
@@ -53,6 +56,35 @@ namespace ThinkingSpace.Pairing
                     else if(status.Status==PairingChallengeStatus.CANCELLED)
                         stateMachine.Fail("pairing.failed.body",now);
                 }
+            }
+            else if (stateMachine.State == QuestPairingUiState.WaitingForWebsite
+                && transport is Backend034PairingTransport backend && !livePollInFlight
+                && now >= nextLocalPollUtc)
+            {
+                livePollInFlight = true;
+                nextLocalPollUtc = now.AddMilliseconds(JudgeAccountSyncContract.PollAfterMilliseconds);
+                backend.PollStatus((status, retryAfterMs, error) =>
+                {
+                    livePollInFlight = false;
+                    DateTime callbackUtc = DateTime.UtcNow;
+                    if (retryAfterMs > 0) nextLocalPollUtc = callbackUtc.AddMilliseconds(retryAfterMs);
+                    if (stateMachine.State != QuestPairingUiState.WaitingForWebsite) return;
+                    if (string.Equals(status, "CLAIMED", StringComparison.Ordinal))
+                    {
+                        backend.RequestConfirmationContext((context, contextError) =>
+                        {
+                            if (stateMachine.State != QuestPairingUiState.WaitingForWebsite) return;
+                            if (context == null || !string.IsNullOrEmpty(contextError))
+                            { stateMachine.Fail("pairing.failed.body", DateTime.UtcNow); return; }
+                            liveConfirmation = context;
+                            stateMachine.ReceiveWebsiteConfirmation(context.SafeAccountLabel, DateTime.UtcNow);
+                        });
+                    }
+                    else if (string.Equals(status, "EXPIRED", StringComparison.Ordinal)) stateMachine.Expire(callbackUtc);
+                    else if (string.Equals(status, "CANCELLED", StringComparison.Ordinal)
+                        || string.Equals(status, "FAILED", StringComparison.Ordinal))
+                        stateMachine.Fail("pairing.failed.body", callbackUtc);
+                });
             }
         }
 
@@ -97,7 +129,21 @@ namespace ThinkingSpace.Pairing
                         if(local.ConfirmAndActivate(requestId,true))stateMachine.ConfirmAccount(true,now);
                         else stateMachine.Fail("pairing.failed.body",now);
                     }
-                    else stateMachine.ConfirmAccount(true, now);
+                    else if (transport is Backend034PairingTransport backend && liveConfirmation != null)
+                    {
+                        Backend034PairingTransport.ConfirmationContext confirmation = liveConfirmation;
+                        backend.Confirm(confirmation.ProofPayload, true, confirmError =>
+                        {
+                            if (!string.IsNullOrEmpty(confirmError))
+                            { stateMachine.Fail("pairing.failed.body", DateTime.UtcNow); return; }
+                            backend.Activate(activateError =>
+                            {
+                                if (string.IsNullOrEmpty(activateError)) stateMachine.ConfirmAccount(true, DateTime.UtcNow);
+                                else stateMachine.Fail("pairing.failed.body", DateTime.UtcNow);
+                            });
+                        });
+                    }
+                    else stateMachine.Fail("pairing.failed.body", now);
                     break;
                 case QuestPairingUiState.Paired:
                     showing = false;
@@ -105,6 +151,7 @@ namespace ThinkingSpace.Pairing
                     break;
                 case QuestPairingUiState.UnpairConfirmation:
                     if(transport is LocalQuestPairingTransport localUnpair)localUnpair.Unpair();
+                    else if (transport is Backend034PairingTransport backendUnpair) backendUnpair.DeleteStoredCredential();
                     stateMachine.ConfirmUnpair(true, now);
                     break;
             }

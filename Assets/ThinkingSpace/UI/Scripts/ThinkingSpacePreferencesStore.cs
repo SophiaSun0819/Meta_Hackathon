@@ -145,6 +145,8 @@ namespace ThinkingSpace.UI
         {
             string normalized = (value ?? string.Empty).Trim().Replace('_', '-').ToLowerInvariant();
             if (normalized == "en" || normalized == "es" || normalized == "fr") return normalized;
+            if (normalized == "zh" || normalized == "zh-cn") return "zh-CN";
+            if (normalized == "hi" || normalized == "hi-in") return "hi-IN";
             return null;
         }
 

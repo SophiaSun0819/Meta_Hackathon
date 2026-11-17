@@ -8,6 +8,7 @@ using Oculus.Interaction;
 using Oculus.Interaction.Input;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.UI;
+using ThinkingSpace.Audio;
 
 namespace ThinkingSpace.Speech
 {
@@ -541,6 +542,7 @@ namespace ThinkingSpace.Speech
         {
             hoveringPointers.Add(eventData != null ? eventData.pointerId : 0);
             owner?.SetHovered(true);
+            if(owner!=null)ThinkingSpaceSfxManager.PlayAt(ThinkingSpaceSfxCue.BubbleHover,owner.transform.position);
         }
 
         public void OnPointerExit(PointerEventData eventData)

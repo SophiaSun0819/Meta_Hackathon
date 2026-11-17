@@ -169,6 +169,12 @@ namespace ThinkingSpace.Pairing
             SetState(QuestPairingUiState.Failed, utcNow);
         }
 
+        public void Expire(DateTime utcNow)
+        {
+            ClearTransient();
+            SetState(QuestPairingUiState.Expired, utcNow);
+        }
+
         public void Tick(DateTime utcNow)
         {
             if (!HasExpiringRequest()) return;

@@ -23,7 +23,7 @@ namespace ThinkingSpace.Pairing
     }
 
     public enum PairingChallengeStatus { PENDING, CLAIMED, DEVICE_CONFIRMED, ACTIVE, CANCELLED, EXPIRED }
-    public enum SessionMutationKind { UPSERT }
+    public enum SessionMutationKind { UPSERT, RENAME, DELETE_EVERYWHERE, RESTORE }
     public enum SessionMutationResultStatus { APPLIED, CONFLICT, REJECTED }
 
     [JsonObject(MemberSerialization.OptIn)]
@@ -135,7 +135,20 @@ namespace ThinkingSpace.Pairing
         [JsonProperty("kind", Required = Required.Always)] public string Kind = "UPSERT";
         [JsonProperty("portableSessionId", Required = Required.Always)] public string PortableSessionId = string.Empty;
         [JsonProperty("deviceLocalSessionId", Required = Required.Always)] public string DeviceLocalSessionId = string.Empty;
-        [JsonProperty("snapshot", Required = Required.Always)] public PortableSessionSnapshotV2 Snapshot = new PortableSessionSnapshotV2();
+        [JsonProperty("snapshot", NullValueHandling = NullValueHandling.Ignore)] public PortableSessionSnapshotV2 Snapshot;
+        [JsonProperty("title", NullValueHandling = NullValueHandling.Ignore)] public string Title;
+    }
+
+    [JsonObject(MemberSerialization.OptIn)]
+    public sealed class SessionTombstoneV2
+    {
+        [JsonProperty("contractVersion", Required = Required.Always)] public int ContractVersion = 2;
+        [JsonProperty("cloudSessionId", Required = Required.Always)] public string CloudSessionId = string.Empty;
+        [JsonProperty("portableSessionId", Required = Required.Always)] public string PortableSessionId = string.Empty;
+        [JsonProperty("deletedRevision", Required = Required.Always)] public int DeletedRevision;
+        [JsonProperty("deletedAt", Required = Required.Always)] public string DeletedAt = string.Empty;
+        [JsonProperty("recoverUntil", Required = Required.Always)] public string RecoverUntil = string.Empty;
+        [JsonProperty("purgedAt", NullValueHandling = NullValueHandling.Ignore)] public string PurgedAt;
     }
 
     [JsonObject(MemberSerialization.OptIn)]

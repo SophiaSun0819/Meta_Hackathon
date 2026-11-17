@@ -18,8 +18,8 @@ namespace ThinkingSpace.UI
     public static class ThinkingSpaceStringCatalog
     {
         public const string TableName = "ThinkingSpace UI";
-        public static readonly string[] SupportedLocaleCodes = { "en", "es", "fr" };
-        public static readonly string[] PreparedLocaleCodes = { "zh-CN", "hi-IN" };
+        public static readonly string[] SupportedLocaleCodes = { "en", "es", "fr", "zh-CN", "hi-IN" };
+        public static readonly string[] PreparedLocaleCodes = Array.Empty<string>();
 
         public static readonly ThinkingSpaceStringEntry[] Entries =
         {
@@ -47,7 +47,7 @@ namespace ThinkingSpace.UI
             new("menu.expand", "Expand My Idea", "Ampliar mi idea", "Développer mon idée"),
             new("menu.connect", "Connect My Ideas", "Conectar mis ideas", "Relier mes idées"),
             new("menu.whiteboard", "Spawn Whiteboard", "Crear pizarra", "Créer un tableau"),
-            new("menu.help.voice", "Voice command reference will be added with speech recognition.", "La guía de comandos de voz se añadirá con el reconocimiento de voz.", "Le guide des commandes vocales sera ajouté avec la reconnaissance vocale."),
+            new("menu.help.voice", "Change the interface with commands such as ‘Switch the UI to Hindi’, ‘Show the interface in Spanish’, or ‘Change menu language to French’. English, Spanish, French, Simplified Chinese, and Hindi are supported.", "Cambia la interfaz con comandos como ‘Cambia la interfaz a hindi’, ‘Muestra la interfaz en español’ o ‘Cambia el idioma del menú a francés’. Se admiten inglés, español, francés, chino simplificado e hindi.", "Changez l’interface avec des commandes comme « Passe l’interface en hindi », « Affiche l’interface en espagnol » ou « Change la langue du menu en français ». L’anglais, l’espagnol, le français, le chinois simplifié et l’hindi sont pris en charge."),
             new("menu.help.gestures", "Gesture reference will be expanded as interactions are finalized.", "La guía de gestos se ampliará al finalizar las interacciones.", "Le guide des gestes sera complété à mesure que les interactions seront finalisées."),
             new("pairing.account.title", "Account / Device Connection", "Cuenta / conexión del dispositivo", "Compte / connexion de l’appareil"),
             new("pairing.account.disconnected", "This headset is not paired. Pairing remains unavailable until the shared website service is finalized.", "Este visor no está vinculado. La vinculación no estará disponible hasta que finalice el servicio web compartido.", "Ce casque n’est pas associé. L’association restera indisponible jusqu’à la finalisation du service web partagé."),
@@ -116,14 +116,15 @@ namespace ThinkingSpace.UI
             new("settings.language.specific", "Specific Language", "Idioma específico", "Langue spécifique"),
             new("settings.voice_profile", "Orby Voice", "Voz de Orby", "Voix d'Orby"),
             new("settings.voice.auto", "Automatic Voice", "Voz automática", "Voix automatique"),
+            new("settings.voice_language.info", "Voice, subtitle and Orby voice language are controlled separately by conversation settings and service capability. Interface language does not change them.", "El idioma de voz, subtítulos y voz de Orby se controla por separado mediante los ajustes de conversación y la capacidad del servicio. El idioma de la interfaz no lo cambia.", "La langue de la voix, des sous-titres et de la voix d’Orby est contrôlée séparément par les réglages de conversation et les capacités du service. La langue de l’interface ne la modifie pas."),
             new("language.confirm.title", "Change Interface Language?", "¿Cambiar el idioma de la interfaz?", "Changer la langue de l'interface ?"),
             new("language.confirm.body", "Change the interface to {0}?", "¿Cambiar la interfaz a {0}?", "Changer l'interface en {0} ?"),
             new("language.unsupported_ui", "That language is available for conversation, but its interface translation is not ready.", "Ese idioma está disponible para conversar, pero la interfaz aún no está traducida.", "Cette langue est disponible pour la conversation, mais son interface n'est pas encore traduite."),
             new("language.command.title", "Interface Language", "Idioma de la interfaz", "Langue de l'interface"),
             new("language.command.success", "Interface changed to {0}.", "La interfaz cambió a {0}.", "L'interface est maintenant en {0}."),
             new("language.command.failed", "I couldn't change the interface language. Your other language settings were not changed.", "No pude cambiar el idioma de la interfaz. Los demás ajustes de idioma no cambiaron.", "Je n'ai pas pu changer la langue de l'interface. Les autres paramètres de langue n'ont pas changé."),
-            new("language.command.unsupported", "That interface language isn't available yet. English, Spanish and French are supported.", "Ese idioma de interfaz aún no está disponible. Se admiten inglés, español y francés.", "Cette langue d'interface n'est pas encore disponible. L'anglais, l'espagnol et le français sont pris en charge."),
-            new("language.command.ambiguous", "Please name one interface language: English, Spanish or French.", "Indica un solo idioma de interfaz: inglés, español o francés.", "Veuillez choisir une seule langue d'interface : anglais, espagnol ou français."),
+            new("language.command.unsupported", "That interface language isn't available yet. English, Spanish, French, Simplified Chinese and Hindi are supported.", "Ese idioma de interfaz aún no está disponible. Se admiten inglés, español, francés, chino simplificado e hindi.", "Cette langue d'interface n'est pas encore disponible. L'anglais, l'espagnol, le français, le chinois simplifié et l'hindi sont pris en charge."),
+            new("language.command.ambiguous", "Please name one interface language: English, Spanish, French, Simplified Chinese or Hindi.", "Indica un solo idioma de interfaz: inglés, español, francés, chino simplificado o hindi.", "Veuillez choisir une seule langue d'interface : anglais, espagnol, français, chinois simplifié ou hindi."),
             new("recording.complete", "Recording Complete", "Grabación completada", "Enregistrement terminé"),
             new("recording.play", "Play Recording", "Reproducir grabación", "Lire l'enregistrement"),
             new("recording.stop", "Stop Playback", "Detener reproducción", "Arrêter la lecture"),
@@ -237,6 +238,27 @@ namespace ThinkingSpace.UI
             ["menu.sessions.empty"]="暂无会话", ["menu.session.start"]="开始新会话",
             ["menu.session.import"]="导入会话", ["menu.session.export"]="导出会话",
             ["menu.session.end"]="结束会话", ["menu.session.format"]="会话 {0}",
+            ["menu.my_sessions"]="我的会话", ["menu.settings"]="设置", ["menu.help"]="帮助",
+            ["menu.home"]="主页", ["menu.ready"]="就绪", ["menu.recenter"]="重新居中",
+            ["menu.start.description"]="开始新的空间头脑风暴",
+            ["menu.sessions.description"]="打开已保存的思维空间",
+            ["menu.voice_commands"]="语音命令", ["menu.hand_gestures"]="手势",
+            ["menu.voice.description"]="查看支持的语音控制",
+            ["menu.gestures.description"]="查看手势交互指南",
+            ["menu.help.voice"]="可使用“将界面切换为印地语”“用西班牙语显示界面”或“将菜单语言改为法语”等命令更改界面。支持英语、西班牙语、法语、简体中文和印地语。",
+            ["menu.help.gestures"]="捏合或指向按钮，并从专用抓取区域移动面板。",
+            ["menu.feature.unavailable"]="尚不可用",
+            ["pairing.account.title"]="账户 / 设备连接",
+            ["pairing.account.disconnected"]="此头显尚未配对。共享网站服务完成前，配对保持不可用。",
+            ["pairing.unavailable.title"]="配对不可用",
+            ["pairing.unavailable.body"]="配对尚不可用或网络离线。您的本地会话是安全的。",
+            ["pairing.code.title"]="配对此头显", ["pairing.code.body"]="在 Thinking Space 网站输入此六位代码。",
+            ["pairing.waiting.title"]="等待网站确认", ["pairing.waiting.body"]="网站确认代码时请保持此页面打开。",
+            ["pairing.confirm.title"]="在 Quest 上确认账户", ["pairing.confirm.body"]="将此头显与 {0} 配对？",
+            ["pairing.paired.title"]="配对成功", ["pairing.paired.body"]="头显已配对。此版本尚未启用云同步。",
+            ["pairing.expired.title"]="配对代码已过期", ["pairing.failed.title"]="连接失败",
+            ["pairing.action.pair"]="配对此头显", ["pairing.action.new_code"]="生成新代码",
+            ["pairing.action.confirm"]="确认账户", ["pairing.action.unpair"]="取消配对", ["pairing.action.done"]="完成",
             ["common.close_menu"]="关闭菜单", ["common.close"]="关闭", ["common.back"]="返回",
             ["common.previous"]="上一页", ["common.next"]="下一页", ["common.page_format"]="第 {0} / {1} 页",
             ["common.delete"]="删除", ["common.cancel"]="取消", ["common.confirm"]="确认",
@@ -246,11 +268,20 @@ namespace ThinkingSpace.UI
             ["settings.manual"]="手动模式", ["settings.subtitles_on"]="字幕开启",
             ["settings.subtitles_off"]="字幕关闭", ["settings.edit_name"]="编辑姓名",
             ["settings.replay_tutorial"]="重播教程", ["settings.wrist.title"]="腕部菜单",
+            ["settings.wrist.left"]="腕表：左手", ["settings.wrist.right"]="腕表：右手",
             ["settings.interface_language"]="界面语言", ["settings.language.title"]="语言设置",
             ["settings.conversation_mode"]="对话语言", ["settings.language.auto"]="自动",
+            ["settings.conversation.active"]="语音语言由自动检测和服务能力决定。",
+            ["settings.decrease_silence"]="缩短静音等待", ["settings.increase_silence"]="延长静音等待",
+            ["settings.seconds_format"]="{0:0.0} 秒",
             ["settings.language.specific"]="指定语言", ["settings.voice_profile"]="Orby 语音",
             ["settings.voice.auto"]="自动语音", ["language.english"]="英语", ["language.spanish"]="西班牙语",
-            ["language.french"]="法语", ["language.mandarin"]="普通话", ["language.hindi"]="印地语",
+            ["language.french"]="法语", ["language.mandarin"]="简体中文", ["language.hindi"]="印地语",
+            ["language.confirm.body"]="将界面语言更改为{0}？这不会更改对话语言或 Orby 的声音。",
+            ["settings.voice_language.info"]="语音、字幕和 Orby 声音的语言由对话设置和服务能力单独决定。界面语言不会更改它们。",
+            ["pairing.expires"]="代码将在 {0} 后过期",
+            ["session.delete.title"]="删除会话", ["session.delete.confirm"]="删除会话",
+            ["session.delete.body"]="删除“{0}”？此操作只会删除这个本地会话。",
             ["recording.complete"]="录音完成", ["recording.play"]="播放录音", ["recording.stop"]="停止播放",
             ["recording.discard"]="丢弃", ["recording.rerecord"]="重新录音", ["recording.send_orby"]="发送给 Orby",
             ["recording.total"]="总时长  {0}", ["recording.elapsed"]="已播放 {0}     剩余 {1}",
@@ -263,7 +294,13 @@ namespace ThinkingSpace.UI
             ["state.idle"]="空闲", ["state.listening"]="正在聆听", ["state.thinking"]="正在思考",
             ["state.speaking"]="正在说话", ["state.reviewing"]="正在查看", ["state.error"]="错误",
             ["state.paused"]="已暂停", ["hud.mic_on"]="麦克风开启", ["hud.mic_off"]="麦克风关闭",
+            ["hud.mic_off_finishing"]="麦克风关闭 · 正在完成当前想法", ["hud.mic_idle"]="麦克风开启 · 空闲",
             ["hud.speech_detected"]="检测到语音", ["hud.finishing"]="正在结束发言",
+            ["orby.status"]="Orby · {0}", ["orby.finishing"]="Orby · 正在完成想法…",
+            ["ai.request_failed"]="AI 请求失败", ["ai.clarification_ended"]="澄清已结束",
+            ["ai.invalid_response"]="AI 回复无效", ["ai.idea_failed"]="想法处理失败",
+            ["ai.idea_save_failed"]="想法保存失败", ["ai.visual_unavailable"]="想法视觉内容不可用",
+            ["ai.voice_unavailable"]="语音不可用",
             ["onboarding.name_prompt"]="Orby 应该怎么称呼你？", ["onboarding.skip_name"]="跳过姓名",
             ["onboarding.skip_tutorial"]="跳过教程", ["onboarding.space"]="空格",
             ["gesture.hold_fist"]="保持握拳", ["recording.active"]="● 正在录音",
@@ -271,12 +308,82 @@ namespace ThinkingSpace.UI
             ["color.green"]="绿色", ["color.yellow"]="黄色", ["color.orange"]="橙色",
             ["color.red"]="红色", ["color.pink"]="粉色", ["color.purple"]="紫色"
         };
+        private static readonly Dictionary<string,string> Hindi = new(StringComparer.Ordinal)
+        {
+            ["app.brainstorm"]="विचार-मंथन", ["menu.sessions.title"]="विचार-मंथन सत्र",
+            ["menu.sessions.empty"]="अभी कोई सत्र नहीं", ["menu.session.start"]="नया सत्र शुरू करें",
+            ["menu.session.import"]="सत्र आयात करें", ["menu.session.export"]="सत्र निर्यात करें",
+            ["menu.session.end"]="सत्र समाप्त करें", ["menu.session.format"]="सत्र {0}",
+            ["menu.my_sessions"]="मेरे सत्र", ["menu.settings"]="सेटिंग्स", ["menu.help"]="सहायता",
+            ["menu.home"]="होम", ["menu.ready"]="तैयार", ["menu.recenter"]="फिर केंद्रित करें",
+            ["menu.start.description"]="नया स्थानिक विचार-मंथन शुरू करें",
+            ["menu.sessions.description"]="सहेजा हुआ थिंकिंग स्पेस खोलें",
+            ["menu.voice_commands"]="वॉइस कमांड", ["menu.hand_gestures"]="हाथ के संकेत",
+            ["menu.voice.description"]="समर्थित वॉइस नियंत्रण देखें",
+            ["menu.gestures.description"]="हाथ से इंटरैक्शन की जानकारी देखें",
+            ["menu.help.voice"]="‘यूआई को हिन्दी में बदलें’, ‘इंटरफ़ेस स्पेनिश में दिखाएँ’ या ‘मेनू भाषा फ़्रेंच करें’ जैसे कमांड से इंटरफ़ेस बदलें। अंग्रेज़ी, स्पेनिश, फ़्रेंच, सरलीकृत चीनी और हिन्दी समर्थित हैं।",
+            ["menu.help.gestures"]="बटन के लिए पिंच या पॉइंट करें और पैनल को उसके ग्रैब क्षेत्र से खींचें।",
+            ["menu.feature.unavailable"]="अभी उपलब्ध नहीं",
+            ["pairing.account.title"]="खाता / डिवाइस कनेक्शन",
+            ["pairing.account.disconnected"]="यह हेडसेट पेयर नहीं है। साझा वेबसाइट सेवा तैयार होने तक पेयरिंग उपलब्ध नहीं है।",
+            ["pairing.unavailable.title"]="पेयरिंग उपलब्ध नहीं",
+            ["pairing.unavailable.body"]="पेयरिंग अभी उपलब्ध नहीं है या नेटवर्क ऑफ़लाइन है। आपके स्थानीय सत्र सुरक्षित हैं।",
+            ["pairing.code.title"]="इस हेडसेट को पेयर करें",
+            ["pairing.code.body"]="Thinking Space वेबसाइट पर यह छह अंकों का कोड दर्ज करें।",
+            ["pairing.waiting.title"]="वेबसाइट की पुष्टि की प्रतीक्षा",
+            ["pairing.waiting.body"]="वेबसाइट कोड की पुष्टि करे तब तक यह पृष्ठ खुला रखें।",
+            ["pairing.confirm.title"]="Quest पर खाता पुष्टि करें", ["pairing.confirm.body"]="इस हेडसेट को {0} से पेयर करें?",
+            ["pairing.paired.title"]="पेयरिंग सफल", ["pairing.paired.body"]="हेडसेट पेयर है। इस संस्करण में क्लाउड सिंक चालू नहीं है।",
+            ["pairing.expired.title"]="पेयरिंग कोड समाप्त", ["pairing.failed.title"]="कनेक्शन विफल",
+            ["pairing.action.pair"]="इस हेडसेट को पेयर करें", ["pairing.action.new_code"]="नया कोड बनाएँ",
+            ["pairing.action.confirm"]="खाता पुष्टि करें", ["pairing.action.unpair"]="अनपेयर", ["pairing.action.done"]="पूर्ण",
+            ["common.close_menu"]="मेनू बंद करें", ["common.close"]="बंद करें", ["common.back"]="वापस",
+            ["common.previous"]="पिछला", ["common.next"]="अगला", ["common.page_format"]="पृष्ठ {0} / {1}",
+            ["common.delete"]="हटाएँ", ["common.cancel"]="रद्द करें", ["common.confirm"]="पुष्टि करें",
+            ["common.yes"]="हाँ", ["common.no"]="नहीं", ["common.retry"]="फिर प्रयास करें", ["common.menu"]="मेनू",
+            ["settings.recording.title"]="रिकॉर्डिंग सेटिंग्स", ["settings.recording_hand"]="रिकॉर्डिंग वाला हाथ",
+            ["settings.left"]="बायाँ", ["settings.right"]="दायाँ", ["settings.conversational"]="संवाद मोड",
+            ["settings.manual"]="मैन्युअल", ["settings.subtitles_on"]="उपशीर्षक चालू",
+            ["settings.subtitles_off"]="उपशीर्षक बंद", ["settings.edit_name"]="नाम बदलें",
+            ["settings.replay_tutorial"]="ट्यूटोरियल फिर चलाएँ", ["settings.wrist.title"]="कलाई मेनू",
+            ["settings.wrist.left"]="वॉच: बायाँ", ["settings.wrist.right"]="वॉच: दायाँ",
+            ["settings.interface_language"]="इंटरफ़ेस भाषा", ["settings.language.title"]="भाषा सेटिंग्स",
+            ["settings.conversation_mode"]="वॉइस भाषा", ["settings.conversation.active"]="वॉइस भाषा स्वचालित पहचान और सेवा क्षमता से तय होती है।",
+            ["settings.decrease_silence"]="मौन प्रतीक्षा घटाएँ", ["settings.increase_silence"]="मौन प्रतीक्षा बढ़ाएँ",
+            ["settings.seconds_format"]="{0:0.0} सेकंड", ["settings.language.auto"]="स्वचालित",
+            ["language.english"]="अंग्रेज़ी", ["language.spanish"]="स्पेनिश", ["language.french"]="फ़्रेंच",
+            ["language.mandarin"]="सरलीकृत चीनी", ["language.hindi"]="हिन्दी",
+            ["language.confirm.body"]="इंटरफ़ेस भाषा को {0} में बदलें? इससे संवाद भाषा या Orby की आवाज़ नहीं बदलेगी।",
+            ["settings.voice_language.info"]="वाणी, उपशीर्षक और Orby की आवाज़ की भाषा संवाद सेटिंग और सेवा क्षमता से अलग तय होती है। इंटरफ़ेस भाषा उन्हें नहीं बदलती।",
+            ["pairing.expires"]="कोड {0} में समाप्त होगा",
+            ["session.delete.title"]="सत्र हटाएँ", ["session.delete.body"]="“{0}” हटाएँ? इससे केवल यह स्थानीय सत्र हटेगा।",
+            ["transcript.transcribing"]="लिप्यंतरण हो रहा है…", ["transcript.complete"]="लिप्यंतरण पूर्ण",
+            ["transcript.failed"]="लिप्यंतरण विफल", ["transcript.back"]="रिकॉर्डिंग पर वापस जाएँ",
+            ["ai.response"]="AI उत्तर", ["ai.clarification"]="Orby को स्पष्टीकरण चाहिए", ["ai.record_answer"]="उत्तर रिकॉर्ड करें",
+            ["state.idle"]="निष्क्रिय", ["state.listening"]="सुन रहा है", ["state.thinking"]="सोच रहा है",
+            ["state.speaking"]="बोल रहा है", ["state.reviewing"]="समीक्षा हो रही है", ["state.error"]="त्रुटि", ["state.paused"]="रुका हुआ",
+            ["hud.mic_on"]="माइक चालू", ["hud.mic_off"]="माइक बंद",
+            ["hud.mic_off_finishing"]="माइक बंद · वर्तमान विचार पूरा हो रहा है", ["hud.mic_idle"]="माइक चालू · निष्क्रिय",
+            ["hud.speech_detected"]="वाणी मिली", ["hud.finishing"]="विचार पूरा हो रहा है",
+            ["orby.status"]="Orby · {0}", ["orby.finishing"]="Orby · विचार पूरा कर रहा है…",
+            ["ai.request_failed"]="AI अनुरोध विफल", ["ai.clarification_ended"]="स्पष्टीकरण समाप्त",
+            ["ai.invalid_response"]="AI उत्तर अमान्य", ["ai.idea_failed"]="विचार संसाधन विफल",
+            ["ai.idea_save_failed"]="विचार सहेजना विफल", ["ai.visual_unavailable"]="विचार का दृश्य उपलब्ध नहीं",
+            ["ai.voice_unavailable"]="आवाज़ उपलब्ध नहीं",
+            ["recording.complete"]="रिकॉर्डिंग पूर्ण", ["recording.play"]="रिकॉर्डिंग चलाएँ",
+            ["recording.stop"]="प्लेबैक रोकें", ["recording.discard"]="हटाएँ",
+            ["recording.rerecord"]="फिर रिकॉर्ड करें", ["recording.send_orby"]="Orby को भेजें",
+            ["idea.details"]="विचार विवरण", ["idea.summary"]="सारांश", ["idea.category"]="श्रेणी",
+            ["idea.color"]="रंग", ["idea.delete"]="विचार हटाएँ",
+            ["session.delete.confirm"]="सत्र हटाएँ", ["transfer.choose_import"]="आयात करने के लिए Thinking Space JSON सत्र चुनें।"
+        };
         private static Dictionary<string,ThinkingSpaceStringEntry> BuildByKey()
         { var result=new Dictionary<string,ThinkingSpaceStringEntry>(StringComparer.Ordinal); foreach(var entry in Entries)result[entry.Key]=entry;return result; }
         private static Dictionary<string,string> BuildByEnglish()
         { var result=new Dictionary<string,string>(StringComparer.Ordinal);foreach(var entry in Entries)if(!result.ContainsKey(entry.English))result[entry.English]=entry.Key;return result; }
         public static bool TryGet(string key,out ThinkingSpaceStringEntry entry)=>ByKey.TryGetValue(key,out entry);
         public static bool TryGetChinese(string key,out string value)=>Chinese.TryGetValue(key??string.Empty,out value);
+        public static bool TryGetHindi(string key,out string value)=>Hindi.TryGetValue(key??string.Empty,out value);
         public static bool TryGetKeyForEnglish(string english,out string key)=>KeyByEnglish.TryGetValue(english??string.Empty,out key);
     }
 
@@ -395,7 +502,9 @@ namespace ThinkingSpace.UI
             string normalized=raw=="zh"||raw=="zh-cn"?"zh-cn":
                 ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage(raw)??"en";
             string template=normalized=="es"?entry.Spanish:normalized=="fr"?entry.French:
-                normalized=="zh-cn"&&ThinkingSpaceStringCatalog.TryGetChinese(key,out string chinese)?chinese:entry.English;
+                normalized=="zh-cn"&&ThinkingSpaceStringCatalog.TryGetChinese(key,out string chinese)?chinese:
+                normalized.Equals("hi-IN",StringComparison.OrdinalIgnoreCase)&&
+                    ThinkingSpaceStringCatalog.TryGetHindi(key,out string hindi)?hindi:entry.English;
             if(string.IsNullOrWhiteSpace(template))template=entry.English;
             if(arguments==null||arguments.Length==0)return template;
             try{return string.Format(CultureInfo.GetCultureInfo(normalized),template,arguments);}
@@ -414,6 +523,19 @@ namespace ThinkingSpace.UI
                     text.gameObject.AddComponent<ThinkingSpaceLocalizedText>().Configure(key);
             }
         }
+
+        public static string RuntimeFontResourcePathForLanguage(string languageCode)
+        {
+            string normalized=ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage(languageCode)??"en";
+            return normalized=="hi-IN"?"Fonts/NotoSansDevanagari-Regular SDF":
+                normalized=="zh-CN"?"Fonts/NotoSansCJKsc-Regular SDF":string.Empty;
+        }
+
+        public static TMP_FontAsset RuntimeFontForLanguage(string languageCode)
+        {
+            string path=RuntimeFontResourcePathForLanguage(languageCode);
+            return string.IsNullOrEmpty(path)?null:Resources.Load<TMP_FontAsset>(path);
+        }
     }
 
     [DisallowMultipleComponent]
@@ -431,11 +553,17 @@ namespace ThinkingSpace.UI
         {
             if(target==null)target=GetComponent<TMP_Text>();
             if(target==null)return;
-            TMP_FontAsset fallback=TMP_Settings.defaultFontAsset;
-            if(target.font!=null&&fallback!=null&&target.font!=fallback
-                &&target.font.fallbackFontAssetTable!=null
-                &&!target.font.fallbackFontAssetTable.Contains(fallback))
-                target.font.fallbackFontAssetTable.Add(fallback);
+            if(target.font==null)target.font=TMP_Settings.defaultFontAsset;
+            TMP_FontAsset fallback=ThinkingSpaceLocalizationController.RuntimeFontForLanguage(
+                ThinkingSpaceLocalizationController.Instance?.InterfaceLanguageCode??
+                ThinkingSpacePreferencesStore.DefaultInterfaceLanguageCode);
+            if(target.font!=null&&fallback!=null&&target.font!=fallback)
+            {
+                if(target.font.fallbackFontAssetTable==null)
+                    target.font.fallbackFontAssetTable=new System.Collections.Generic.List<TMP_FontAsset>();
+                if(!target.font.fallbackFontAssetTable.Contains(fallback))
+                    target.font.fallbackFontAssetTable.Add(fallback);
+            }
             if(!string.IsNullOrEmpty(stringKey))target.text=ThinkingSpaceLocalizationController.Get(stringKey);
         }
     }

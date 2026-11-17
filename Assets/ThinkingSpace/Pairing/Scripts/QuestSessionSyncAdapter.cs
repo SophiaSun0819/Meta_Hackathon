@@ -12,18 +12,22 @@ namespace ThinkingSpace.Pairing
 {
     public sealed class LocalSessionSyncStore
     {
-        private sealed class Entry { public int Revision;public string CanonicalJson;public string Fingerprint; }
+        private sealed class Entry { public int Revision;public string CanonicalJson;public string Fingerprint;public SessionTombstoneV2 Tombstone; }
         private readonly Dictionary<string,Entry> entries=new Dictionary<string,Entry>(StringComparer.Ordinal);
         private sealed class Operation { public string Fingerprint;public SessionMutationResultStatus Result; }
         private readonly Dictionary<string,Operation> operations=new Dictionary<string,Operation>(StringComparer.Ordinal);
 
         public SessionMutationResultStatus Apply(SessionSyncMutationV2 mutation)
         {
-            if(mutation==null||mutation.Snapshot==null||mutation.Kind!="UPSERT")return SessionMutationResultStatus.REJECTED;
-            string expectedFingerprint=QuestSessionSyncAdapter.Sha256Hex(new UTF8Encoding(false).GetBytes(
-                QuestSessionSyncAdapter.CanonicalJson(mutation.Snapshot.CanonicalDocument)));
-            if(!string.Equals(expectedFingerprint,mutation.Snapshot.CanonicalFingerprint,StringComparison.Ordinal))
-                return SessionMutationResultStatus.REJECTED;
+            if(mutation==null||!Enum.TryParse(mutation.Kind,false,out SessionMutationKind kind))return SessionMutationResultStatus.REJECTED;
+            if(kind==SessionMutationKind.UPSERT)
+            {
+                if(mutation.Snapshot==null||mutation.Snapshot.CanonicalDocument==null)return SessionMutationResultStatus.REJECTED;
+                string expectedFingerprint=QuestSessionSyncAdapter.Sha256Hex(new UTF8Encoding(false).GetBytes(
+                    QuestSessionSyncAdapter.CanonicalJson(mutation.Snapshot.CanonicalDocument)));
+                if(!string.Equals(expectedFingerprint,mutation.Snapshot.CanonicalFingerprint,StringComparison.Ordinal))
+                    return SessionMutationResultStatus.REJECTED;
+            }
             string operationFingerprint=QuestSessionSyncAdapter.Sha256Hex(new UTF8Encoding(false).GetBytes(
                 JsonConvert.SerializeObject(mutation,Formatting.None)));
             if(operations.TryGetValue(mutation.OperationId,out Operation replay))
@@ -32,14 +36,33 @@ namespace ThinkingSpace.Pairing
             entries.TryGetValue(mutation.CloudSessionId,out Entry current);
             int revision=current?.Revision??0;
             if(revision!=mutation.ExpectedRevision){operations[mutation.OperationId]=new Operation{Fingerprint=operationFingerprint,Result=SessionMutationResultStatus.CONFLICT};return SessionMutationResultStatus.CONFLICT;}
-            entries[mutation.CloudSessionId]=new Entry{Revision=mutation.Snapshot.Revision,
-                CanonicalJson=mutation.Snapshot.CanonicalDocument.ToString(Formatting.None),Fingerprint=mutation.Snapshot.CanonicalFingerprint};
+            if(kind==SessionMutationKind.UPSERT)
+                entries[mutation.CloudSessionId]=new Entry{Revision=mutation.Snapshot.Revision,
+                    CanonicalJson=mutation.Snapshot.CanonicalDocument.ToString(Formatting.None),Fingerprint=mutation.Snapshot.CanonicalFingerprint};
+            else if(current==null)return SessionMutationResultStatus.REJECTED;
+            else if(kind==SessionMutationKind.RENAME)
+            {
+                JObject document=JObject.Parse(current.CanonicalJson);document["SessionTitle"]=mutation.Title??string.Empty;
+                current.CanonicalJson=document.ToString(Formatting.None);current.Fingerprint=QuestSessionSyncAdapter.Fingerprint(document);current.Revision++;
+            }
+            else if(kind==SessionMutationKind.DELETE_EVERYWHERE)
+            {
+                current.Revision++;
+                current.Tombstone=new SessionTombstoneV2{CloudSessionId=mutation.CloudSessionId,
+                    PortableSessionId=mutation.PortableSessionId,DeletedRevision=current.Revision,
+                    DeletedAt=DateTime.UtcNow.ToString("O",CultureInfo.InvariantCulture),
+                    RecoverUntil=DateTime.UtcNow.AddDays(30).ToString("O",CultureInfo.InvariantCulture)};
+            }
+            else if(kind==SessionMutationKind.RESTORE)
+            { if(current.Tombstone==null)return SessionMutationResultStatus.REJECTED;current.Revision++;current.Tombstone=null; }
             operations[mutation.OperationId]=new Operation{Fingerprint=operationFingerprint,Result=SessionMutationResultStatus.APPLIED};
             return SessionMutationResultStatus.APPLIED;
         }
 
         public bool TryDownload(string cloudSessionId,out string canonicalJson,out int revision)
-        {if(entries.TryGetValue(cloudSessionId??string.Empty,out Entry value)){canonicalJson=value.CanonicalJson;revision=value.Revision;return true;}canonicalJson=string.Empty;revision=0;return false;}
+        {if(entries.TryGetValue(cloudSessionId??string.Empty,out Entry value)&&value.Tombstone==null){canonicalJson=value.CanonicalJson;revision=value.Revision;return true;}canonicalJson=string.Empty;revision=0;return false;}
+        public bool TryGetTombstone(string cloudSessionId,out SessionTombstoneV2 tombstone)
+        {if(entries.TryGetValue(cloudSessionId??string.Empty,out Entry value)&&value.Tombstone!=null){tombstone=value.Tombstone;return true;}tombstone=null;return false;}
     }
 
     public sealed class QuestSessionSyncAdapter
@@ -87,6 +110,30 @@ namespace ThinkingSpace.Pairing
             catch(Exception exception){return SessionTransferResult.Fail("Downloaded session could not be staged: "+exception.Message);}
             finally{transfer.DeleteStagedImport(fileName);}
         }
+
+        public SessionSyncMutationV2 CreateRename(string operationId,string cloudSessionId,string portableSessionId,
+            string deviceLocalSessionId,int expectedRevision,string title)
+            =>CreateMetadataMutation(SessionMutationKind.RENAME,operationId,cloudSessionId,portableSessionId,
+                deviceLocalSessionId,expectedRevision,title);
+
+        public SessionSyncMutationV2 CreateDelete(string operationId,string cloudSessionId,string portableSessionId,
+            string deviceLocalSessionId,int expectedRevision)
+            =>CreateMetadataMutation(SessionMutationKind.DELETE_EVERYWHERE,operationId,cloudSessionId,portableSessionId,
+                deviceLocalSessionId,expectedRevision,null);
+
+        public SessionSyncMutationV2 CreateRestore(string operationId,string cloudSessionId,string portableSessionId,
+            string deviceLocalSessionId,int expectedRevision)
+            =>CreateMetadataMutation(SessionMutationKind.RESTORE,operationId,cloudSessionId,portableSessionId,
+                deviceLocalSessionId,expectedRevision,null);
+
+        private static SessionSyncMutationV2 CreateMetadataMutation(SessionMutationKind kind,string operationId,
+            string cloudSessionId,string portableSessionId,string deviceLocalSessionId,int expectedRevision,string title)
+            =>new SessionSyncMutationV2{OperationId=RequireUuid(operationId),CloudSessionId=RequireUuid(cloudSessionId),
+                ExpectedRevision=expectedRevision,Kind=kind.ToString(),PortableSessionId=RequireId(portableSessionId),
+                DeviceLocalSessionId=RequireId(deviceLocalSessionId),Title=title};
+
+        public static string Fingerprint(JToken document)
+            =>Sha256Hex(new UTF8Encoding(false).GetBytes(CanonicalJson(document)));
 
         public static string Sha256Hex(byte[] bytes)
         {using(SHA256 sha=SHA256.Create()){byte[] hash=sha.ComputeHash(bytes);var builder=new StringBuilder(64);for(int i=0;i<hash.Length;i++)builder.Append(hash[i].ToString("x2",CultureInfo.InvariantCulture));return builder.ToString();}}

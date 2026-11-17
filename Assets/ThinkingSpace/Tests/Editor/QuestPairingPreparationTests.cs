@@ -124,9 +124,10 @@ namespace ThinkingSpace.Tests.Editor
         [Test]
         public void AccountConnectionRemainsOnFirstPaginatedMainMenuPage()
         {
-            Assert.That(BrainstormMenuView.IsAccountConnectionOnMainPage(0),Is.True);
+            Assert.That(BrainstormMenuView.IsAccountConnectionOnMainPage(0),Is.False,
+                "Account/device connection belongs on Home, not inside My Sessions.");
             Assert.That(BrainstormMenuView.IsAccountConnectionOnMainPage(1),Is.False);
-            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.GreaterThanOrEqualTo(4));
+            Assert.That(BrainstormMenuView.CalculateMainPageCount(0),Is.EqualTo(1));
         }
 
         [Test]

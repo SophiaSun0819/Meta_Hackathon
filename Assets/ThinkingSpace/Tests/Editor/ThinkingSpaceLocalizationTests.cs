@@ -70,14 +70,14 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
-        public void InterfaceLocalesAreValidatedAndPreparedLocalesRemainHidden()
+        public void FiveInterfaceLocalesAreValidatedAndAvailable()
         {
             Assert.That(ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage("fr"),Is.EqualTo("fr"));
-            Assert.That(ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage("zh-CN"),Is.Null);
-            Assert.That(ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage("hi-IN"),Is.Null);
-            CollectionAssert.AreEquivalent(new[]{"en","es","fr"},
+            Assert.That(ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage("zh-CN"),Is.EqualTo("zh-CN"));
+            Assert.That(ThinkingSpacePreferencesStore.NormalizeInterfaceLanguage("hi-IN"),Is.EqualTo("hi-IN"));
+            CollectionAssert.AreEquivalent(new[]{"en","es","fr","zh-CN","hi-IN"},
                 ThinkingSpaceLocalizationController.SupportedInterfaceLanguages);
-            CollectionAssert.AreEquivalent(new[]{"zh-CN","hi-IN"},
+            CollectionAssert.IsEmpty(
                 ThinkingSpaceLocalizationController.PreparedInterfaceLanguages);
         }
 
@@ -132,6 +132,10 @@ namespace ThinkingSpace.Tests.Editor
             foreach(char value in "नमस्तेक्षित्र")Assert.That(font.HasCharacter(value,false,true),Is.True,$"U+{(int)value:X4}");
             Assert.That(File.Exists(Path.Combine(Application.dataPath,
                 "ThinkingSpace/UI/Fonts/NotoSansDevanagari/OFL.txt")),Is.True);
+            Assert.That(ThinkingSpaceLocalizationController.RuntimeFontResourcePathForLanguage("hi-IN"),
+                Is.EqualTo("Fonts/NotoSansDevanagari-Regular SDF"));
+            Assert.That(ThinkingSpaceLocalizationController.RuntimeFontForLanguage("hi-IN"),Is.SameAs(font),
+                "Hindi menu labels must resolve the packaged Devanagari font, not the Latin default fallback.");
         }
 
         [Test]
@@ -347,7 +351,9 @@ namespace ThinkingSpace.Tests.Editor
                 Assert.That(controller.RequestInterfaceLanguageChange("fr"),Is.True);
                 Assert.That(controller.ConfirmPendingInterfaceLanguageChange(),Is.True);
                 Assert.That(controller.InterfaceLanguageCode,Is.EqualTo("fr"));
-                Assert.That(controller.RequestInterfaceLanguageChange("zh-CN"),Is.False);
+                Assert.That(controller.RequestInterfaceLanguageChange("zh-CN"),Is.True);
+                controller.CancelPendingInterfaceLanguageChange();
+                Assert.That(controller.RequestInterfaceLanguageChange("hi-IN"),Is.True);
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

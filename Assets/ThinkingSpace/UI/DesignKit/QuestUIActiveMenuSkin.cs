@@ -15,12 +15,18 @@ namespace ThinkingSpace.UI.DesignKit
         private GameObject headerRoot,footerRoot;
         private Image shellBackground;
         private TMP_Text statusLabel;
-        private Button startCard,sessionsCard,voiceCard,gesturesCard,helpVoiceCard,helpGesturesCard,settingsButton,helpButton,closeButton,homeButton;
+        private Button startCard,sessionsCard,accountCard,gesturesCard,helpVoiceCard,helpGesturesCard,settingsButton,helpButton,closeButton,homeButton;
         [SerializeField] private Sprite roundedPanel,orbIcon,sessionsIcon,voiceIcon,gesturesIcon;
+        public Sprite RoundedPanelSprite=>roundedPanel;
 
         public bool IsInitialized=>homeRoot!=null;
         public int AuthoritativeShellCount=>homeRoot==null?0:1;
         public bool IsHelpVisible=>helpContent!=null&&helpContent.activeSelf;
+        public bool HasAccountConnectionCard=>accountCard!=null;
+        public bool HasRedundantSinglePageIndicator=>footerRoot!=null&&footerRoot.transform.Find("Home Page Indicator")!=null;
+        public string RuntimeHierarchyState=>"root:"+Active(homeRoot)+"/header:"+Active(headerRoot)
+            +"/home:"+Active(homeContent)+"/functional:"+Active(functionalContent)
+            +"/help:"+Active(helpContent)+"/footer:"+Active(footerRoot);
         public bool LegacyFrameBehindContent
         {
             get
@@ -34,7 +40,7 @@ namespace ThinkingSpace.UI.DesignKit
         {roundedPanel=rounded;orbIcon=orb;sessionsIcon=sessions;voiceIcon=voice;gesturesIcon=gestures;}
 
         public void Initialize(BrainstormMenuView owner,GameObject mainPanel,Button startSource,
-            Button voiceSource,Button gesturesSource,Button closeSource)
+            Button voiceSource,Button gesturesSource,Button accountSource,Button closeSource)
         {
             if(homeRoot!=null||owner==null||mainPanel==null||startSource==null||closeSource==null)return;
             view=owner;
@@ -51,7 +57,6 @@ namespace ThinkingSpace.UI.DesignKit
 
             RectTransform functional=CreateRegion("Functional Page Content",root,new Vector2(.035f,.18f),new Vector2(.965f,.79f),Color.clear);
             functionalContent=functional.gameObject;
-            functionalContent.AddComponent<RectMask2D>();
             for(int i=0;i<existing.Count;i++)existing[i].SetParent(functional,false);
 
             RectTransform header=CreateRegion("Fixed Header",root,new Vector2(.025f,.81f),new Vector2(.975f,.975f),QuestUIDesignTokens.Raised);
@@ -70,7 +75,7 @@ namespace ThinkingSpace.UI.DesignKit
             homeContent=content.gameObject;
             startCard=CreateCard(startSource,content,"Start New Session",orbIcon,QuestUIDesignTokens.Cyan,new Vector2(.02f,.53f),new Vector2(.49f,.98f),()=>startSource.onClick.Invoke());
             sessionsCard=CreateCard(startSource,content,"My Sessions",sessionsIcon,QuestUIDesignTokens.Mint,new Vector2(.51f,.53f),new Vector2(.98f,.98f),owner.ShowDesignKitSessions);
-            voiceCard=CreateCard(voiceSource??startSource,content,"Voice Commands",voiceIcon,QuestUIDesignTokens.Orange,new Vector2(.02f,.02f),new Vector2(.49f,.47f),()=>voiceSource.onClick.Invoke());
+            accountCard=CreateCard(accountSource??startSource,content,"Account / Device Connection",sessionsIcon,QuestUIDesignTokens.Orange,new Vector2(.02f,.02f),new Vector2(.49f,.47f),()=>accountSource?.onClick.Invoke());
             gesturesCard=CreateCard(gesturesSource??startSource,content,"Hand Gestures",gesturesIcon,QuestUIDesignTokens.Coral,new Vector2(.51f,.02f),new Vector2(.98f,.47f),()=>gesturesSource.onClick.Invoke());
 
             RectTransform help=CreateRegion("DesignKit Help Hub",root,new Vector2(.035f,.18f),new Vector2(.965f,.79f),Color.clear);
@@ -81,8 +86,6 @@ namespace ThinkingSpace.UI.DesignKit
             RectTransform footer=CreateRegion("Fixed Footer",root,new Vector2(.025f,.025f),new Vector2(.975f,.15f),QuestUIDesignTokens.Raised);
             footerRoot=footer.gameObject;
             AddOutline(footer.gameObject,new Color(QuestUIDesignTokens.Cyan.r,QuestUIDesignTokens.Cyan.g,QuestUIDesignTokens.Cyan.b,.6f),1.5f);
-            TMP_Text homePage=CreateText("Home Page Indicator",footer,"PAGE 1 OF 1",17,new Vector2(.30f,.14f),new Vector2(.70f,.86f),TextAlignmentOptions.Center,QuestUIDesignTokens.Muted);
-            homePage.gameObject.SetActive(true);
             homeButton=CloneButton(closeSource,footer,"Home",new Vector2(.39f,.14f),new Vector2(.61f,.86f));
             Bind(homeButton,owner.ShowDesignKitHome);
             AdoptNavigation(mainPanel.transform,footer,"Previous Page Button",new Vector2(.02f,.14f),new Vector2(.27f,.86f));
@@ -104,8 +107,6 @@ namespace ThinkingSpace.UI.DesignKit
             if(functionalContent!=null)functionalContent.SetActive(!visible);
             if(shellBackground!=null)shellBackground.color=QuestUIDesignTokens.Panel;
             if(homeButton!=null)homeButton.gameObject.SetActive(!visible);
-            Transform homePage=footerRoot!=null?footerRoot.transform.Find("Home Page Indicator"):null;
-            if(homePage!=null)homePage.gameObject.SetActive(visible);
         }
 
         public void SetHelpVisible()
@@ -114,7 +115,7 @@ namespace ThinkingSpace.UI.DesignKit
             homeRoot.SetActive(true);homeContent.SetActive(false);functionalContent.SetActive(false);helpContent.SetActive(true);
             homeButton.gameObject.SetActive(true);
             if(footerRoot!=null)foreach(Transform child in footerRoot.transform)
-                if(child.name=="Previous Page Button"||child.name=="Next Page Button"||child.name=="Page Indicator"||child.name=="Home Page Indicator")child.gameObject.SetActive(false);
+                if(child.name=="Previous Page Button"||child.name=="Next Page Button"||child.name=="Page Indicator")child.gameObject.SetActive(false);
         }
 
         public void RefreshLocalization()
@@ -122,7 +123,7 @@ namespace ThinkingSpace.UI.DesignKit
             if(homeRoot==null)return;
             SetLocalizedCard(startCard,"menu.session.start","menu.start.description");
             SetLocalizedCard(sessionsCard,"menu.my_sessions","menu.sessions.description");
-            SetLocalizedCard(voiceCard,"menu.voice_commands","menu.voice.description");
+            SetLocalizedCard(accountCard,"pairing.account.title","pairing.account.disconnected");
             SetLocalizedCard(gesturesCard,"menu.hand_gestures","menu.gestures.description");
             SetLocalizedCard(helpVoiceCard,"menu.voice_commands","menu.voice.description");
             SetLocalizedCard(helpGesturesCard,"menu.hand_gestures","menu.gestures.description");
@@ -131,15 +132,118 @@ namespace ThinkingSpace.UI.DesignKit
             if(statusLabel!=null)statusLabel.text="● "+ThinkingSpaceLocalizationController.Get("menu.ready").ToUpperInvariant();
         }
 
+        public void ApplyPaletteToFunctionalPanels(params GameObject[] panels)
+        {
+            if(panels==null)return;
+            for(int i=0;i<panels.Length;i++)
+            {
+                GameObject panel=panels[i];if(panel==null)continue;
+                Image background=panel.GetComponent<Image>();
+                if(background!=null){ApplyRoundedSurface(background,QuestUIDesignTokens.Panel);background.raycastTarget=true;}
+                // Keep one subtle full-panel edge. Applying an Outline to the panel as well as
+                // the dedicated border doubled the cyan frame on Quest and made it look heavy.
+                Outline duplicatePanelOutline=panel.GetComponent<Outline>();
+                if(duplicatePanelOutline!=null)
+                {
+                    duplicatePanelOutline.enabled=false;
+                    if(Application.isPlaying)Object.Destroy(duplicatePanelOutline);
+                    else Object.DestroyImmediate(duplicatePanelOutline);
+                }
+                DisableRedundantInsetBorder(panel);
+                Image[] surfaces=panel.GetComponentsInChildren<Image>(true);
+                for(int j=0;j<surfaces.Length;j++)
+                {
+                    Image surface=surfaces[j];
+                    if(surface==null||surface==background||surface.GetComponent<Button>()!=null)continue;
+                    string surfaceName=surface.name.ToLowerInvariant();
+                    if(surfaceName=="designkit thin border")
+                    {
+                        surface.color=Color.clear;surface.raycastTarget=false;continue;
+                    }
+                    if(surfaceName.Contains("decoration")||surfaceName.Contains("functional page content"))
+                    {
+                        surface.color=Color.clear;surface.raycastTarget=false;continue;
+                    }
+                    RectTransform surfaceRect=surface.rectTransform;
+                    Vector2 anchorSpan=surfaceRect.anchorMax-surfaceRect.anchorMin;
+                    bool largeSurface=anchorSpan.x>=.5f&&anchorSpan.y>=.3f
+                        ||surfaceRect.sizeDelta.x>=300f&&surfaceRect.sizeDelta.y>=180f;
+                    bool structural=surface.sprite==null||surfaceName.Contains("background")
+                        ||surfaceName.Contains("panel")||surfaceName.Contains("frame")
+                        ||surfaceName.Contains("container")||surfaceName.Contains("row")||largeSurface;
+                    if(!structural)continue;
+                    ApplyRoundedSurface(surface,surfaceName.Contains("row")?QuestUIDesignTokens.Raised:
+                        new Color(QuestUIDesignTokens.Panel.r,QuestUIDesignTokens.Panel.g,
+                            QuestUIDesignTokens.Panel.b,.97f));
+                    surface.raycastTarget=false;
+                }
+                Button[] buttons=panel.GetComponentsInChildren<Button>(true);
+                for(int j=0;j<buttons.Length;j++)
+                {
+                    ThinkingSpaceUIStyler.StyleButton(buttons[j],
+                        buttons[j].name.Contains("Previous")||buttons[j].name.Contains("Next")
+                            ?ThinkingSpaceButtonKind.Navigation:ThinkingSpaceButtonKind.Primary);
+                    Image image=buttons[j].GetComponent<Image>();
+                    if(image!=null)ApplyRoundedSurface(image,Color.white);
+                    ApplyButtonStates(buttons[j]);
+                    AddOutline(buttons[j].gameObject,new Color(QuestUIDesignTokens.Cyan.r,
+                        QuestUIDesignTokens.Cyan.g,QuestUIDesignTokens.Cyan.b,.60f),.8f);
+                }
+                TMP_Text[] labels=panel.GetComponentsInChildren<TMP_Text>(true);
+                for(int j=0;j<labels.Length;j++)
+                {
+                    labels[j].color=QuestUIDesignTokens.Text;
+                    labels[j].raycastTarget=false;
+                }
+            }
+        }
+
+        public void PrepareFunctionalPanelForDisplay(GameObject panel)
+        {
+            if(panel==null)return;
+            ApplyPaletteToFunctionalPanels(panel);
+            panel.transform.SetAsLastSibling();
+        }
+
         private Button CreateCard(Button source,RectTransform parent,string name,Sprite icon,Color accent,Vector2 min,Vector2 max,UnityEngine.Events.UnityAction action)
         {
             Button button=CloneButton(source,parent,name,min,max);button.gameObject.AddComponent<QuestUIActionCard>().Configure(name,button,button.GetComponentInChildren<TMP_Text>(true));
             Bind(button,action);
-            Image background=button.GetComponent<Image>();if(background!=null){background.color=QuestUIDesignTokens.Raised;if(roundedPanel!=null){background.sprite=roundedPanel;background.type=Image.Type.Sliced;}}
+            Image background=button.GetComponent<Image>();if(background!=null)ApplyRoundedSurface(background,Color.white);
             AddOutline(button.gameObject,accent,2.5f);CreateIcon("Icon",button.transform as RectTransform,icon,new Vector2(.055f,.54f),new Vector2(.19f,.90f));
             TMP_Text title=button.GetComponentInChildren<TMP_Text>(true);if(title!=null){title.alignment=TextAlignmentOptions.TopLeft;title.enableAutoSizing=false;title.fontSize=28;title.margin=new Vector4(118,20,24,58);}
             TMP_Text description=Object.Instantiate(title,button.transform);description.name="Description";description.fontSize=18;description.color=QuestUIDesignTokens.Muted;description.alignment=TextAlignmentOptions.BottomLeft;description.margin=new Vector4(118,62,24,20);
             return button;
+        }
+
+        private void ApplyRoundedSurface(Image image,Color color)
+        {
+            if(image==null)return;
+            image.material=null;image.color=color;
+            if(roundedPanel!=null){image.sprite=roundedPanel;image.type=Image.Type.Sliced;}
+            else{image.sprite=null;image.type=Image.Type.Simple;}
+        }
+
+        private static void DisableRedundantInsetBorder(GameObject panel)
+        {
+            Transform existing=panel.transform.Find("DesignKit Thin Border");
+            if(existing==null)return;
+            Image image=existing.GetComponent<Image>();if(image!=null){image.raycastTarget=false;image.color=Color.clear;}
+            Outline outline=existing.GetComponent<Outline>();if(outline!=null)outline.enabled=false;
+            existing.gameObject.SetActive(false);
+        }
+
+        private static void ApplyButtonStates(Button button)
+        {
+            if(button==null)return;
+            ColorBlock colors=button.colors;
+            colors.normalColor=QuestUIDesignTokens.Raised;
+            colors.highlightedColor=QuestUIDesignTokens.Hover;
+            colors.pressedColor=QuestUIDesignTokens.Pressed;
+            colors.selectedColor=QuestUIDesignTokens.Cyan;
+            colors.disabledColor=QuestUIDesignTokens.Disabled;
+            colors.colorMultiplier=1f;colors.fadeDuration=.08f;
+            button.colors=colors;
         }
 
         private static void AddOutline(GameObject target,Color color,float width){Outline outline=target.GetComponent<Outline>()??target.AddComponent<Outline>();outline.effectColor=color;outline.effectDistance=new Vector2(width,-width);outline.useGraphicAlpha=true;}
@@ -148,7 +252,8 @@ namespace ThinkingSpace.UI.DesignKit
             if(canvas==null)return;
             Transform frame=FindDeep(canvas,"SlimUI Template Frame");
             if(frame==null)return;
-            Image image=frame.GetComponent<Image>();if(image!=null)image.raycastTarget=false;
+            Image image=frame.GetComponent<Image>();if(image!=null){image.raycastTarget=false;image.color=Color.clear;}
+            Outline outline=frame.GetComponent<Outline>();if(outline!=null)outline.enabled=false;
             int backgroundIndex=0;Transform background=FindDeep(canvas,"SlimUI Template Background");
             if(background!=null)backgroundIndex=background.GetSiblingIndex()+1;
             frame.SetSiblingIndex(Mathf.Clamp(backgroundIndex,0,Mathf.Max(0,frame.parent.childCount-1)));
@@ -169,6 +274,8 @@ namespace ThinkingSpace.UI.DesignKit
             Button button=Object.Instantiate(source,parent);button.name=name;button.gameObject.SetActive(true);button.interactable=true;
             RectTransform rect=button.GetComponent<RectTransform>();Stretch(rect,min,max);button.onClick.RemoveAllListeners();
             ThinkingSpaceUIStyler.StyleButton(button,name=="Close"?ThinkingSpaceButtonKind.Icon:ThinkingSpaceButtonKind.Primary);
+            Image image=button.GetComponent<Image>();if(image!=null)image.color=Color.white;
+            ApplyButtonStates(button);
             return button;
         }
 
@@ -182,5 +289,6 @@ namespace ThinkingSpace.UI.DesignKit
         private static TMP_Text CreateText(string name,RectTransform parent,string value,float size,Vector2 min,Vector2 max,TextAlignmentOptions alignment,Color color)
         {GameObject go=new GameObject(name,typeof(RectTransform),typeof(TextMeshProUGUI));go.transform.SetParent(parent,false);RectTransform rect=go.GetComponent<RectTransform>();Stretch(rect,min,max);TMP_Text text=go.GetComponent<TMP_Text>();text.text=value;text.fontSize=size;text.color=color;text.alignment=alignment;text.raycastTarget=false;return text;}
         private static void Stretch(RectTransform rect,Vector2 min,Vector2 max){rect.anchorMin=min;rect.anchorMax=max;rect.anchoredPosition=Vector2.zero;rect.sizeDelta=Vector2.zero;rect.offsetMin=rect.offsetMax=Vector2.zero;rect.localScale=Vector3.one;}
+        private static string Active(GameObject value)=>value!=null&&value.activeInHierarchy?"1":"0";
     }
 }

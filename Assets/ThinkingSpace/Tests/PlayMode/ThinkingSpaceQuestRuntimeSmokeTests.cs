@@ -47,9 +47,50 @@ namespace ThinkingSpace.Tests.PlayMode
                 "Exactly one visible-companion owner should exist after the runtime bootstrap.");
         }
 
+        [UnityTest]
+        public IEnumerator AnimatedOrbyUsesOneVisualAndAuthoritativeVoiceSource()
+        {
+            if(SceneManager.GetActiveScene().name!="Sandbox")
+            {
+                AsyncOperation load=SceneManager.LoadSceneAsync("Sandbox",LoadSceneMode.Single);
+                while(load!=null&&!load.isDone)yield return null;
+            }
+            yield return null;
+            yield return null;
+
+            Type viewType=RuntimeType("ThinkingSpace.Companion.OrbyPlaceholderView");
+            Type voiceType=RuntimeType("ThinkingSpace.Companion.OrbyVoiceDirector");
+            Component view=UnityEngine.Object.FindFirstObjectByType(viewType) as Component;
+            Component voice=UnityEngine.Object.FindFirstObjectByType(voiceType) as Component;
+            Assert.That(view,Is.Not.Null);
+            Assert.That(voice,Is.Not.Null);
+            object adapter=viewType.GetProperty("ModelAdapter")?.GetValue(view);
+            Transform model=adapter?.GetType().GetProperty("ModelRoot")?.GetValue(adapter) as Transform;
+            Assert.That(model,Is.Not.Null);
+            Assert.That(model.name,Is.EqualTo("OrbiM_N"));
+            Vector3 authoredScale=(Vector3)adapter.GetType().GetProperty("AuthoredScale").GetValue(adapter);
+            Assert.That(authoredScale.x,Is.EqualTo(0.06654542f).Within(0.00001f),
+                "Animated Orby must retain the prior authored world scale.");
+            Component mouth=viewType.GetProperty("MouthAnimator")?.GetValue(view) as Component;
+            Assert.That(mouth,Is.Not.Null);
+            Assert.That(mouth.GetType().GetMethod("ResolveAuthoredMouths")?.Invoke(mouth,null),Is.EqualTo(true));
+            object mouthSource=mouth.GetType().GetProperty("VoiceSource")?.GetValue(mouth);
+            object playbackSource=voiceType.GetProperty("PlaybackSource")?.GetValue(voice);
+            Assert.That(mouthSource,Is.SameAs(playbackSource));
+            Assert.That(model.GetComponentsInChildren<AudioSource>(true),Is.Empty,
+                "The visual model must not introduce a duplicate playback source.");
+
+            GameObject legacy=SceneManager.GetActiveScene().GetRootGameObjects()
+                .FirstOrDefault(root=>root.name=="Orbi");
+            Assert.That(legacy==null||!legacy.activeSelf,Is.True,
+                "The legacy model must not remain visible beside animated Orby.");
+        }
+
         [TestCase("Switch the UI panels to French","fr")]
         [TestCase("Change the interface to Spanish","es")]
         [TestCase("Put the menu in English","en")]
+        [TestCase("Change the interface to Simplified Chinese","zh-CN")]
+        [TestCase("Put the menu in Hindi","hi-IN")]
         public void LocalInterfaceCommandsResolveWithoutBackendRouting(string transcript,string languageCode)
         {
             Type router=RuntimeType("ThinkingSpace.UI.LocalInterfaceLanguageCommandRouter");
@@ -80,6 +121,46 @@ namespace ThinkingSpace.Tests.PlayMode
             Assert.That(transportType.GetProperty("IsAvailable")?.GetValue(transport),Is.EqualTo(false));
             Assert.That(transportType.GetProperty("UnavailableMessageKey")?.GetValue(transport),
                 Is.EqualTo("pairing.unavailable.body"));
+        }
+
+        [UnityTest]
+        public IEnumerator VoiceLifecycleCancellationCompletesCallbacksAndReleasesPendingKeys()
+        {
+            Type directorType=RuntimeType("ThinkingSpace.Companion.OrbyVoiceDirector");
+            Type stateType=RuntimeType("ThinkingSpace.Companion.OrbyConversationStateController");
+            Assert.That(directorType,Is.Not.Null);Assert.That(stateType,Is.Not.Null);
+            Component director=UnityEngine.Object.FindFirstObjectByType(directorType) as Component;
+            bool created=director==null;
+            GameObject owner=null;
+            if(created)
+            {
+                owner=new GameObject("Voice lifecycle test");owner.AddComponent(stateType);
+                director=owner.AddComponent(directorType);
+            }
+            MethodInfo cancelAll=directorType.GetMethod("CancelAllSpeech");
+            MethodInfo setSession=directorType.GetMethod("SetActiveSession");
+            MethodInfo speak=directorType.GetMethod("SpeakDynamicTracked");
+            cancelAll.Invoke(director,null);setSession.Invoke(director,new object[]{"lifecycle-test"});
+            int completions=0;
+            Type priorityType=RuntimeType("ThinkingSpace.Companion.OrbyVoicePriority");
+            object priority=Enum.Parse(priorityType,"AIResponse");Action<bool> completed=_=>completions++;
+            object[] firstArguments={"First synthetic request","lifecycle-test",priority,completed,"dynamic_tts","neutral",null,null};
+            object[] queuedArguments={"Second synthetic request","lifecycle-test",priority,completed,"dynamic_tts","neutral",null,null};
+            string first=speak.Invoke(director,firstArguments) as string;
+            string queued=speak.Invoke(director,queuedArguments) as string;
+            Assert.That(first,Is.Not.Null);Assert.That(queued,Is.Not.Null);
+            directorType.GetMethod("OnApplicationFocus",BindingFlags.Instance|BindingFlags.NonPublic)
+                ?.Invoke(director,new object[]{false});
+            Assert.That(completions,Is.EqualTo(2));
+            Assert.That(directorType.GetProperty("PendingVoiceRequestCount")?.GetValue(director),Is.EqualTo(0));
+            directorType.GetMethod("OnApplicationFocus",BindingFlags.Instance|BindingFlags.NonPublic)
+                ?.Invoke(director,new object[]{true});
+            object[] resumedArguments={"Second synthetic request","lifecycle-test",priority,new Action<bool>(_=>{}),"dynamic_tts","neutral",null,null};
+            string resumed=speak.Invoke(director,resumedArguments) as string;
+            Assert.That(resumed,Is.Not.Null,"Resume must not retain a stale duplicate cache key.");
+            cancelAll.Invoke(director,null);
+            if(created)UnityEngine.Object.Destroy(owner);
+            yield return null;
         }
 
         private static Type RuntimeType(string fullName)

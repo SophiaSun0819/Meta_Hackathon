@@ -102,6 +102,44 @@ namespace ThinkingSpace.Tests.Editor
         }
 
         [Test]
+        public void LocalStorePreservesContentAcrossRenameDeleteAndRestore()
+        {
+            var adapter=CreateAdapter(out _);var store=new LocalSessionSyncStore();
+            const string cloud="dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+            Assert.That(store.Apply(adapter.CreateUpload(ValidPortableJson("portable-5","Original"),
+                "55555555-5555-4555-8555-555555555555",cloud,"portable-5","local-5",0)),Is.EqualTo(SessionMutationResultStatus.APPLIED));
+            Assert.That(store.Apply(adapter.CreateRename("66666666-6666-4666-8666-666666666666",cloud,
+                "portable-5","local-5",1,"Renamed")),Is.EqualTo(SessionMutationResultStatus.APPLIED));
+            Assert.That(store.Apply(adapter.CreateDelete("77777777-7777-4777-8777-777777777777",cloud,
+                "portable-5","local-5",2)),Is.EqualTo(SessionMutationResultStatus.APPLIED));
+            Assert.That(store.TryDownload(cloud,out _,out _),Is.False);
+            Assert.That(store.TryGetTombstone(cloud,out SessionTombstoneV2 tombstone),Is.True);
+            Assert.That(tombstone.DeletedRevision,Is.EqualTo(3));
+            Assert.That(store.Apply(adapter.CreateRestore("88888888-8888-4888-8888-888888888888",cloud,
+                "portable-5","local-5",3)),Is.EqualTo(SessionMutationResultStatus.APPLIED));
+            Assert.That(store.TryDownload(cloud,out string restored,out int revision),Is.True);
+            Assert.That(revision,Is.EqualTo(4));
+            Assert.That((string)JObject.Parse(restored)["SessionTitle"],Is.EqualTo("Renamed"));
+        }
+
+        [Test]
+        public void OfflineQueueIsAccountBoundIdempotentAndHoldsConflicts()
+        {
+            var adapter=CreateAdapter(out _);
+            const string account="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+            var queue=new QuestOfflineSyncQueue(account);
+            SessionSyncMutationV2 mutation=adapter.CreateUpload(ValidPortableJson("portable-6","Offline"),
+                "99999999-9999-4999-8999-999999999999","eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","portable-6","local-6",0);
+            queue.Enqueue(account,mutation);queue.Enqueue(account,mutation);
+            Assert.That(queue.Count,Is.EqualTo(1));
+            Assert.Throws<InvalidOperationException>(()=>queue.NextBatch("bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb"));
+            queue.ApplyResult(account,mutation.OperationId,SessionMutationResultStatus.CONFLICT);
+            Assert.That(queue.Count,Is.EqualTo(1));
+            queue.DiscardConflict(account,mutation.OperationId);
+            Assert.That(queue.Count,Is.Zero);
+        }
+
+        [Test]
         public void DownloadRequiresConfirmationAndImportsAsNewSession()
         {
             QuestSessionSyncAdapter adapter=CreateAdapter(out BrainstormSessionStore sessions);
