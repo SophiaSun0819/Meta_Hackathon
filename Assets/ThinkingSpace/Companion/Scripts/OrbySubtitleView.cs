@@ -80,7 +80,7 @@ namespace ThinkingSpace.Companion
             text.enableAutoSizing=true;text.fontSizeMin=22;text.fontSizeMax=24;
             gameObject.AddComponent<QuestUIOrbySpeechBubble>().Configure(text,false);
             ThinkingSpaceUIStyler.StylePanel(gameObject,false,false);
-            background.color=QuestUIDesignTokens.Panel;
+            QuestUIPanelSkin.Apply(gameObject);
         }
         private static TMP_Text MakeText(string name,Transform parent,float size,Vector2 min,Vector2 max){GameObject go=new GameObject(name,typeof(RectTransform));go.transform.SetParent(parent,false);RectTransform r=go.GetComponent<RectTransform>();r.anchorMin=min;r.anchorMax=max;r.offsetMin=r.offsetMax=Vector2.zero;TMP_Text value=go.AddComponent<TextMeshProUGUI>();value.font=TMP_Settings.defaultFontAsset;value.fontSize=size;value.enableAutoSizing=false;value.alignment=TextAlignmentOptions.Center;value.color=Color.white;value.raycastTarget=false;return value;}
     }

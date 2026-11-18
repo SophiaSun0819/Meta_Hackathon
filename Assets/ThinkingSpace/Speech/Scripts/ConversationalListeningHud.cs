@@ -2,6 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using ThinkingSpace.UI;
+using ThinkingSpace.UI.DesignKit;
 
 namespace ThinkingSpace.Speech
 {
@@ -81,7 +82,7 @@ namespace ThinkingSpace.Speech
             statusText.text = status;
             statusText.color = state == MicrophoneStatusDisplayState.MicOff
                 || state == MicrophoneStatusDisplayState.MicOffFinishing
-                ? new Color(1f, 0.35f, 0.35f) : Color.white;
+                ? QuestUIDesignTokens.Coral : QuestUIDesignTokens.Text;
             timerText.text = FormatTime(utteranceElapsed);
             levelFill.fillAmount = Mathf.Clamp01(rms * 24f);
             float peakValue = Mathf.Clamp01(peak * 18f);
@@ -150,7 +151,7 @@ namespace ThinkingSpace.Speech
             rect.localScale = Vector3.one * 0.0005f;
 
             Image background = root.AddComponent<Image>();
-            background.color = new Color(0.02f, 0.04f, 0.07f, 0.82f);
+            background.color = QuestUIDesignTokens.Panel;
             background.raycastTarget = false;
             statusText = Text("Status", rect, 24f, FontStyles.Bold, TextAlignmentOptions.Left,
                 new Vector2(0.05f, 0.54f), new Vector2(0.72f, 0.94f));
@@ -159,15 +160,15 @@ namespace ThinkingSpace.Speech
 
             RectTransform meter = Rect("Audio Meter", rect, new Vector2(0.05f, 0.17f), new Vector2(0.95f, 0.46f));
             Image meterBack = meter.gameObject.AddComponent<Image>();
-            meterBack.color = new Color(0.08f, 0.12f, 0.17f, 1f); meterBack.raycastTarget = false;
+            QuestUIPanelSkin.Rounded(meterBack, QuestUIDesignTokens.Raised, 0.4f); meterBack.raycastTarget = false;
             RectTransform fill = Rect("Live Level", meter, Vector2.zero, Vector2.one);
             levelFill = fill.gameObject.AddComponent<Image>();
-            levelFill.color = new Color(0.15f, 0.9f, 0.65f, 1f);
+            levelFill.color = QuestUIDesignTokens.Mint;
             levelFill.type = Image.Type.Filled; levelFill.fillMethod = Image.FillMethod.Horizontal;
             levelFill.raycastTarget = false;
             RectTransform peak = Rect("Peak", meter, Vector2.zero, new Vector2(0.012f, 1f));
             peakMarker = peak.gameObject.AddComponent<Image>();
-            peakMarker.color = Color.white; peakMarker.raycastTarget = false;
+            peakMarker.color = QuestUIDesignTokens.Text; peakMarker.raycastTarget = false;
 
             GameObject notice = new GameObject("Mic Notification", typeof(RectTransform));
             notice.transform.SetParent(root.transform, false);
@@ -175,12 +176,14 @@ namespace ThinkingSpace.Speech
             noticeRect.anchorMin = new Vector2(0.25f, 1.08f); noticeRect.anchorMax = new Vector2(0.75f, 1.62f);
             noticeRect.offsetMin = noticeRect.offsetMax = Vector2.zero;
             Image noticeBack = notice.AddComponent<Image>();
-            noticeBack.color = new Color(0.03f, 0.12f, 0.18f, 0.94f); noticeBack.raycastTarget = false;
+            QuestUIPanelSkin.Rounded(noticeBack, QuestUIDesignTokens.Raised, 1.2f); noticeBack.raycastTarget = false;
             notificationGroup = notice.AddComponent<CanvasGroup>();
             notificationGroup.interactable = false; notificationGroup.blocksRaycasts = false;
             notificationText = Text("Notification Text", noticeRect, 30f, FontStyles.Bold,
                 TextAlignmentOptions.Center, Vector2.zero, Vector2.one);
             notice.SetActive(false);
+            QuestUIPanelSkin.Apply(root, 1.6f);
+            statusText.color = QuestUIDesignTokens.Text;
             root.SetActive(false);
         }
 

@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.UI;
+using ThinkingSpace.UI.DesignKit;
 
 namespace ThinkingSpace.Speech
 {
@@ -358,6 +359,7 @@ namespace ThinkingSpace.Speech
             confirmDelete=Button("Confirm Delete",rect,new Vector2(.56f,.05f),new Vector2(.94f,.16f));confirmDelete.onClick.AddListener(ConfirmDelete);
             ThinkingSpaceUIStyler.StylePanel(gameObject,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(gameObject);
+            QuestUIPanelSkin.Apply(gameObject);
             pointerManipulator=WorldSpacePanelManipulator.Attach(rect);
             for(int i=0;i<IdeaVisualColorPalette.Names.Length;i++)
             {
@@ -389,9 +391,10 @@ namespace ThinkingSpace.Speech
 
         private void RefreshBorderVisual()
         {
-            Color color=dragging?new Color(.35f,.95f,1f,1f):borderProximity
-                ?new Color(.2f,.75f,1f,.95f):new Color(.08f,.32f,.48f,.72f);
-            for(int i=0;i<borderImages.Count;i++)if(borderImages[i]!=null)borderImages[i].color=color;
+            Color color=QuestUIDesignTokens.Cyan;color.a=dragging?1f:borderProximity?.85f:.55f;
+            for(int i=0;i<borderImages.Count;i++)if(borderImages[i]!=null)borderImages[i].color=Color.clear;
+            Transform rim=transform.Find(QuestUIPanelSkin.OutlineName);
+            Image rimImage=rim!=null?rim.GetComponent<Image>():null;if(rimImage!=null)rimImage.color=color;
         }
         public void OnPointerEnter(PointerEventData _)=>hovered=true; public void OnPointerExit(PointerEventData _)=>hovered=false;
         public void OnPointerDown(PointerEventData _){pressed=true;focused?.Invoke(this);} public void OnPointerUp(PointerEventData _)=>pressed=false;

@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using ThinkingSpace.UI;
+using ThinkingSpace.UI.DesignKit;
 
 namespace ThinkingSpace.Speech
 {
@@ -90,6 +91,7 @@ namespace ThinkingSpace.Speech
             retryButton=MakeButton("Retry",rect,new Vector2(.08f,.06f),new Vector2(.46f,.24f));
             dismissButton=MakeButton("Dismiss",rect,new Vector2(.54f,.06f),new Vector2(.92f,.24f));
             retryButton.gameObject.AddComponent<PrimaryButton>();dismissButton.gameObject.AddComponent<SecondaryButton>();
+            QuestUIPanelSkin.Apply(root);
             manipulator=WorldSpacePanelManipulator.Attach(rect);
             retryButton.onClick.AddListener(()=>{Action action=retryAction;Hide();action?.Invoke();});
             dismissButton.onClick.AddListener(()=>{Action action=dismissAction;Hide();action?.Invoke();});

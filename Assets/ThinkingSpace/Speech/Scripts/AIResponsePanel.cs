@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using Oculus.Interaction;
 using Oculus.Interaction.Surfaces;
 using ThinkingSpace.UI;
+using ThinkingSpace.UI.DesignKit;
 
 namespace ThinkingSpace.Speech
 {
@@ -165,6 +166,7 @@ namespace ThinkingSpace.Speech
             secondaryButton.onClick.AddListener(() => { if (secondaryButton.interactable) secondaryAction?.Invoke(); });
             ThinkingSpaceUIStyler.StylePanel(root,false,true);
             ThinkingSpaceUIStyler.StyleHierarchy(root);
+            QuestUIPanelSkin.Apply(root);
             manipulator=WorldSpacePanelManipulator.Attach(rect);
         }
 
