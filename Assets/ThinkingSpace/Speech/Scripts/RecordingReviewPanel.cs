@@ -13,7 +13,7 @@ namespace ThinkingSpace.Speech
     [DisallowMultipleComponent]
     public sealed class RecordingReviewPanel : MonoBehaviour
     {
-        [SerializeField] private Vector3 headsetLocalPosition = new Vector3(0f, -0.03f, 0.62f);
+        private bool recentering;
         [SerializeField] private Vector2 panelSize = new Vector2(560f, 430f);
         [SerializeField, Min(0.0001f)] private float canvasScale = 0.0005f;
 
@@ -42,7 +42,7 @@ namespace ThinkingSpace.Speech
             SetPlaying(false);
             SetButtonsInteractable(true);
             manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
-            PositionAtHeadset();
+            PositionAtHeadset(true);
         }
 
         public void ConfigureDevelopmentExport(bool visible, Action onExport)
@@ -97,16 +97,14 @@ namespace ThinkingSpace.Speech
         private void LateUpdate()
         {
             if (canvas != null && canvas.gameObject.activeSelf
-                && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset();
+                && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset(false);
         }
 
-        private void PositionAtHeadset()
+        private void PositionAtHeadset(bool snap)
         {
             if (headset == null || canvas == null) return;
-            canvas.transform.position = headset.TransformPoint(headsetLocalPosition);
-            Vector3 forward = canvas.transform.position - headset.position;
-            if (forward.sqrMagnitude > 0.0001f)
-                canvas.transform.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+            ComfortLayout.StepLazyFollow(canvas.transform, headset, ComfortLayout.Dialog,
+                ref recentering, snap, Time.unscaledDeltaTime);
         }
 
         private void BuildPanel()

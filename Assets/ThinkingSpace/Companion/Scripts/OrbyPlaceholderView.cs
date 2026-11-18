@@ -11,11 +11,13 @@ namespace ThinkingSpace.Companion
         [SerializeField] private Transform headset;
         [SerializeField] private Vector3 headsetOffset = new Vector3(0f, 0f, 0.90f);
         [SerializeField, Min(0.3f)] private float followTriggerRadius = 1.35f;
-        [SerializeField, Min(0.3f)] private float comfortableFollowDistance = 0.9f;
+        [SerializeField, Min(0.3f)] private float comfortableFollowDistance = 1.0f;
+        // Orby sits to the left so the center of view stays free for idea bubbles.
+        [SerializeField, Range(-60f, 60f)] private float sideYaw = -35f;
         [SerializeField, Min(0.01f)] private float followStopDistance = 0.06f;
         [SerializeField, Min(0.1f)] private float maximumFollowSpeed = 1.2f;
         [SerializeField, Min(0.1f)] private float maximumFollowAcceleration = 2.5f;
-        [SerializeField, Range(30f, 120f)] private float viewRecoveryAngle = 65f;
+        [SerializeField, Range(30f, 120f)] private float viewRecoveryAngle = 75f;
         [SerializeField, Min(0.1f)] private float viewRecoveryDelay = 2f;
         [SerializeField, Min(0.05f)] private float heightRecoveryThreshold = 0.18f;
         [SerializeField, Min(0.1f)] private float headsetReadyHoldDuration = 0.6f;
@@ -66,7 +68,7 @@ namespace ThinkingSpace.Companion
                 if(!IsHeadsetUserPresent()) { headsetReadyTimer=0f; return; }
                 headsetReadyTimer+=Time.unscaledDeltaTime;
                 if(headsetReadyTimer<headsetReadyHoldDuration)return;
-                followTarget=CalculateFollowTarget(headset.position,headset.forward,
+                followTarget=CalculateFollowTarget(headset.position,SideDirection(headset.forward),
                     comfortableFollowDistance,headsetOffset.y);
                 transform.position=followTarget;velocity=Vector3.zero;followInitialized=true;
                 SetCompanionVisualVisible(true);
@@ -88,7 +90,7 @@ namespace ThinkingSpace.Companion
             }
             if(followingUser)
             {
-                followTarget=CalculateFollowTarget(headset.position,followDirection,
+                followTarget=CalculateFollowTarget(headset.position,SideDirection(followDirection),
                     comfortableFollowDistance,headsetOffset.y);
                 transform.position=StepBoundedFollow(transform.position,followTarget,ref velocity,
                     maximumFollowSpeed,maximumFollowAcceleration,Time.unscaledDeltaTime);
@@ -128,6 +130,8 @@ namespace ThinkingSpace.Companion
         }
 
         public void SetHeadset(Transform value) => headset = value;
+        private Vector3 SideDirection(Vector3 forward)
+            => Quaternion.AngleAxis(sideYaw,Vector3.up)*Vector3.ProjectOnPlane(forward,Vector3.up);
         public void RecenterOrby()
         {
             if(headset==null&&Camera.main!=null)headset=Camera.main.transform;

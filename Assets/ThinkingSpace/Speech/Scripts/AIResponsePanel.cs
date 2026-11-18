@@ -13,7 +13,10 @@ namespace ThinkingSpace.Speech
     [DisallowMultipleComponent]
     public sealed class AIResponsePanel : MonoBehaviour
     {
-        [SerializeField] private Vector3 headsetLocalPosition = new Vector3(0f, -0.04f, 0.65f);
+        // Below Orby and its subtitles, so the answer reads as coming from Orby.
+        [SerializeField] private float belowOrby = 0.40f;
+        private Transform orby;
+        private bool recentering;
         [SerializeField] private Vector2 panelSize = new Vector2(600f, 410f);
         [SerializeField, Min(0.0001f)] private float canvasScale = 0.0005f;
         [SerializeField, Min(180)] private int charactersPerPage = 520;
@@ -40,7 +43,7 @@ namespace ThinkingSpace.Speech
             ConfigureButton(primaryButton, primaryLabel, primaryText, primary);
             ConfigureButton(secondaryButton, secondaryLabel, secondaryText, secondary);
             manipulator?.ResetManualPlacement();canvas.gameObject.SetActive(true);
-            PositionAtHeadset();
+            PositionAtHeadset(true);
         }
 
         public void Hide()
@@ -91,15 +94,25 @@ namespace ThinkingSpace.Speech
 
         private void LateUpdate()
         { if (canvas != null && canvas.gameObject.activeSelf
-            && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset(); }
+            && !(manipulator?.HasManualPlacement??false)) PositionAtHeadset(false); }
 
-        private void PositionAtHeadset()
+        private void PositionAtHeadset(bool snap)
         {
             if (headset == null || canvas == null) return;
-            canvas.transform.position = headset.TransformPoint(headsetLocalPosition);
-            Vector3 away = canvas.transform.position - headset.position;
-            if (away.sqrMagnitude > 0.0001f)
-                canvas.transform.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
+            if (orby == null)
+            {
+                ThinkingSpace.Companion.OrbyPlaceholderView view =
+                    FindFirstObjectByType<ThinkingSpace.Companion.OrbyPlaceholderView>();
+                if (view != null) orby = view.transform;
+            }
+            if (orby != null)
+            {
+                canvas.transform.position = orby.position + Vector3.down * belowOrby;
+                canvas.transform.rotation = ComfortLayout.FaceViewer(canvas.transform.position, headset.position);
+                return;
+            }
+            ComfortLayout.StepLazyFollow(canvas.transform, headset, ComfortLayout.Dialog,
+                ref recentering, snap, Time.unscaledDeltaTime);
         }
 
         private void Build()

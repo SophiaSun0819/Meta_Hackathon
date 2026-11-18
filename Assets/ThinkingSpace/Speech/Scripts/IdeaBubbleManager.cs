@@ -475,16 +475,53 @@ namespace ThinkingSpace.Speech
             return string.Empty;
         }
 
+        // New bubbles fill an arc in front of the user (ComfortLayout), not a grid around Orby,
+        // so the center of view is the workspace and Orby stays off to the side.
+        private bool bubbleArcInitialized;
+        private Vector3 bubbleArcOrigin, bubbleArcForward = Vector3.forward;
+        private const float BubbleArcReanchorDistance = 1.0f, BubbleArcReanchorAngle = 60f;
+        private const float BubbleArcOccupiedRadius = 0.15f;
+        private const int BubbleArcMaximumSlots = 30;
+
         private Vector3 FallbackPosition(int index)
         {
             Transform reference = headset != null ? headset : Camera.main != null ? Camera.main.transform : null;
-            OrbyPlaceholderView orby = FindFirstObjectByType<OrbyPlaceholderView>();
-            Vector3 anchor = orby != null ? orby.transform.position
-                : reference != null ? reference.position + reference.forward * 0.8f : new Vector3(0f, 1.4f, 0.8f);
-            Vector3 right = reference != null ? Vector3.ProjectOnPlane(reference.right, Vector3.up).normalized : Vector3.right;
-            int column = index % 3;
-            int row = index / 3;
-            return anchor + right * ((column - 1) * 0.22f) + Vector3.up * (0.10f - row * 0.20f);
+            Vector3 headPosition = reference != null ? reference.position : new Vector3(0f, 1.4f, 0f);
+            Vector3 headForward = reference != null ? ComfortLayout.FlatForward(reference.forward) : Vector3.forward;
+            if (ShouldReanchorBubbleArc(bubbleArcInitialized, bubbleArcOrigin, bubbleArcForward,
+                headPosition, headForward))
+            {
+                bubbleArcOrigin = headPosition;
+                bubbleArcForward = headForward;
+                bubbleArcInitialized = true;
+            }
+            List<Vector3> occupied = new List<Vector3>();
+            foreach (IdeaBubbleView bubble in visible.Values)
+                if (bubble != null) occupied.Add(bubble.transform.position);
+            return FirstFreeArcSlot(bubbleArcOrigin, bubbleArcForward, occupied, Mathf.Max(0, index));
+        }
+
+        public static bool ShouldReanchorBubbleArc(bool initialized, Vector3 arcOrigin, Vector3 arcForward,
+            Vector3 headPosition, Vector3 headForward)
+            => !initialized
+                || Vector3.ProjectOnPlane(arcOrigin - headPosition, Vector3.up).magnitude > BubbleArcReanchorDistance
+                || Vector3.Angle(arcForward, headForward) > BubbleArcReanchorAngle;
+
+        /// <summary>First arc slot with no bubble nearby; falls back to the preferred slot when all are taken.</summary>
+        public static Vector3 FirstFreeArcSlot(Vector3 arcOrigin, Vector3 arcForward,
+            IReadOnlyList<Vector3> occupied, int preferred = 0)
+        {
+            for (int slot = 0; slot < BubbleArcMaximumSlots; slot++)
+            {
+                Vector3 candidate = ComfortLayout.BubbleArcSlot(arcOrigin, arcForward, slot);
+                bool taken = false;
+                if (occupied != null)
+                    for (int i = 0; i < occupied.Count; i++)
+                        if ((occupied[i] - candidate).sqrMagnitude < BubbleArcOccupiedRadius * BubbleArcOccupiedRadius)
+                        { taken = true; break; }
+                if (!taken) return candidate;
+            }
+            return ComfortLayout.BubbleArcSlot(arcOrigin, arcForward, preferred % BubbleArcMaximumSlots);
         }
 
         private static bool IsValidSavedTransform(BubbleTransformRecord value)
@@ -503,6 +540,7 @@ namespace ThinkingSpace.Speech
 
         private void ClearVisibleBubbles()
         {
+            bubbleArcInitialized = false;
             ClearMoleculeVisuals();
             ClearSelection();
             ClearPanels();

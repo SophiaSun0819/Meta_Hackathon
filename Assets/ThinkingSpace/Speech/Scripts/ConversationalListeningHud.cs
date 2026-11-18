@@ -19,25 +19,24 @@ namespace ThinkingSpace.Speech
         private Transform viewer;
         private float notificationStartedAt;
         private bool notificationActive, listeningVisible, initializedMode;
+        private bool placed, recentering;
 
+        // The orby argument is kept for callers; the pill now lives low in the center of view
+        // (ComfortLayout.MicPill) instead of under Orby, where it overlapped the subtitles.
         public void Configure(Transform orby,Transform headset=null)
         {
             if (canvas == null) Build();
             if(headset!=null)viewer=headset;
-            if (orby != null && canvas.transform.parent != orby)
-            {
-                canvas.transform.SetParent(orby, false);
-                canvas.transform.localPosition = new Vector3(0f, -0.17f, 0f);
-                canvas.transform.localRotation = Quaternion.identity;
-            }
         }
 
         private void LateUpdate()
         {
-            if(canvas==null||!canvas.gameObject.activeInHierarchy)return;
+            if(canvas==null||!canvas.gameObject.activeInHierarchy){placed=false;return;}
             if(viewer==null&&Camera.main!=null)viewer=Camera.main.transform;
             if(viewer==null)return;
-            canvas.transform.rotation=CalculateReadableCanvasRotation(canvas.transform.position,viewer.position);
+            ComfortLayout.StepLazyFollow(canvas.transform,viewer,ComfortLayout.MicPill,
+                ref recentering,!placed,Time.unscaledDeltaTime);
+            placed=true;
         }
 
         public static Quaternion CalculateReadableCanvasRotation(Vector3 canvasPosition,Vector3 viewerPosition)
@@ -64,6 +63,11 @@ namespace ThinkingSpace.Speech
             float utteranceElapsed)
         {
             if (canvas == null) Build();
+            if (state == MicrophoneStatusDisplayState.MicOff && !notificationActive)
+            {
+                if (canvas.gameObject.activeSelf) canvas.gameObject.SetActive(false);
+                return;
+            }
             if (!canvas.gameObject.activeSelf) canvas.gameObject.SetActive(true);
             string key = state == MicrophoneStatusDisplayState.MicOff ? "hud.mic_off"
                 : state == MicrophoneStatusDisplayState.MicOffFinishing ? "hud.mic_off_finishing"
